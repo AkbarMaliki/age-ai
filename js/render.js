@@ -1,6 +1,6 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
-import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text } from 'pixi.js';
+import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
 import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js';
 import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js';
 
@@ -85,6 +85,13 @@ function circleTex(r, soft = true) {
   const gr = g.createRadialGradient(r, r, 0, r, r, r); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(soft ? 0.5 : 0.9, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = gr; g.fillRect(0, 0, r * 2, r * 2); return Texture.from(c);
 }
+// smooth light pool: full at the centre, fading out to nothing
+function lightTex(r = 64) {
+  const c = document.createElement('canvas'); c.width = c.height = r * 2; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(r, r, 0, r, r, r);
+  for (let i = 0; i <= 8; i++) { const k = i / 8; gr.addColorStop(k, `rgba(255,255,255,${((1 - k) ** 1.6).toFixed(3)})`); }
+  g.fillStyle = gr; g.fillRect(0, 0, r * 2, r * 2); return Texture.from(c);
+}
 function arrowTex() {
   const c = document.createElement('canvas'); c.width = 28; c.height = 5; const g = c.getContext('2d');
   g.fillStyle = '#4a2f18'; g.fillRect(2, 2, 22, 1.4); g.fillStyle = '#ddd'; g.beginPath(); g.moveTo(28, 2.6); g.lineTo(22, 0.5); g.lineTo(22, 4.6); g.fill();
@@ -144,7 +151,11 @@ export class View {
     this.root = new Container(); app.stage.addChild(this.root);
     this.ground = new Container(); this.flat = new Container(); this.objs = new Container(); this.objs.sortableChildren = true;
     this.sky = new Container(); this.sky.sortableChildren = true; this.over = new Container();
-    this.root.addChild(this.ground, this.flat, this.objs, this.sky, this.over);
+    // night lighting: the scene is drawn at full brightness, then multiplied by a light map = ambient darkness + light
+    // pools around torches, windows and fires (so they really light the ground, walls and people around them)
+    this.lightRT = RenderTexture.create({ width: 64, height: 64 }); this.lightS = new Sprite(this.lightRT); this.lightS.blendMode = 'multiply'; this.lightS.visible = false;
+    this.lightC = new Container(); this.lightBg = new Sprite(Texture.WHITE); this.lightC.addChild(this.lightBg); this.lightT = lightTex(64); this.lightPool = []; this.lights = [];
+    this.root.addChild(this.ground, this.flat, this.objs, this.sky, this.lightS, this.over);
     this.weatherG = new Graphics(); app.stage.addChild(this.weatherG);       // rain / snow in screen space
     this.views = new Map();
     this.cam = { x: 0, y: 0, zoom: 1 };
@@ -247,6 +258,26 @@ export class View {
   screenToWorld(px, py) { return unIso((px - this.root.x) / this.cam.zoom, (py - this.root.y) / this.cam.zoom); }
   worldToScreen(x, y) { const [sx, sy] = iso(x, y); return [sx * this.cam.zoom + this.root.x, sy * this.cam.zoom + this.root.y]; }
 
+  light2(x, y, r, color, k) { if (this.useMap && this.nightK > 0.05) this.lights.push(x, y, r, color, k * Math.min(1, this.nightK * 1.4)); }
+  // the light map at half the screen resolution: ambient colour + additive light pools, multiplied over the world layers
+  renderLights() {
+    const S = this.lightS; S.visible = this.useMap; if (!this.useMap) return;
+    const scr = this.app.screen, q = 0.5, w = Math.max(8, Math.ceil(scr.width * q)), h = Math.max(8, Math.ceil(scr.height * q)), z = this.cam.zoom;
+    if (this.lightRT.width !== w || this.lightRT.height !== h) this.lightRT.resize(w, h);
+    const a = this.ambientL; this.lightBg.width = w; this.lightBg.height = h;
+    this.lightBg.tint = (Math.round(Math.min(1, a[0]) * 255) << 16) | (Math.round(Math.min(1, a[1]) * 255) << 8) | Math.round(Math.min(1, a[2]) * 255);
+    const Lt = this.lights, n = Lt.length / 5;
+    for (let i = 0; i < n; i++) {
+      let s = this.lightPool[i];
+      if (!s) { s = new Sprite(this.lightT); s.anchor.set(0.5); s.blendMode = 'add'; this.lightC.addChild(s); this.lightPool.push(s); }
+      const x = (Lt[i * 5] * z + this.root.x) * q, y = (Lt[i * 5 + 1] * z + this.root.y) * q, r = Lt[i * 5 + 2] * z * q;
+      s.visible = x > -r && y > -r && x < w + r && y < h + r; if (!s.visible) continue;
+      s.x = x; s.y = y; s.scale.set(r / 64, r * 0.62 / 64); s.tint = Lt[i * 5 + 3]; s.alpha = Math.min(1, Lt[i * 5 + 4]);   // flattened: pools on iso ground
+    }
+    for (let i = n; i < this.lightPool.length; i++) this.lightPool[i].visible = false;
+    this.app.renderer.render({ container: this.lightC, target: this.lightRT, clear: true });
+    S.x = -this.root.x / z; S.y = -this.root.y / z; S.scale.set(1 / (z * q));
+  }
   // ------------------------------------------------------------ light: day, dusk, night, dawn; weather and season
   // returns [r, g, b] multipliers and `night` (0..1, how dark it is)
   lightNow() {
@@ -349,7 +380,10 @@ export class View {
   sync(alpha, dt, sel, hover) {
     this.t += dt;
     const W = this.W, P = W.players[this.me], A = this.A;
-    const { L, night } = this.lightNow(); this.light = L; this.nightK = night;
+    const { L: amb, night } = this.lightNow(); this.nightK = night;
+    // dark enough for lights to matter: everything is drawn unlit and the light map darkens it afterwards
+    this.useMap = amb[0] + amb[1] + amb[2] < 2.9;
+    const L = this.useMap ? [1, 1, 1] : amb; this.light = L; this.ambientL = amb; this.lights.length = 0;
     const U = this.terrainShader.resources.tu.uniforms;
     U.uTime = this.t; U.uLight[0] = L[0]; U.uLight[1] = L[1]; U.uLight[2] = L[2]; U.uWet += ((raining(W) ? 1 : 0) - U.uWet) * Math.min(1, dt * 0.5);
     this.fogT -= dt; if (this.fogT <= 0) { this.fogT = 0.25; this.updateFog(); this.updateRoads(); }
@@ -421,20 +455,25 @@ export class View {
         // night: lit windows, and a campfire at camps and barracks
         if (fires) {
           const flick = 0.85 + 0.15 * Math.sin(this.t * 9 + e.id) * Math.sin(this.t * 13.7 + e.id * 2);
-          if (e.type !== 'farm' && !BUILDINGS[e.type].wall) this.glows.put(sx, s.y - s.anchor.y * s.texture.height * 0.35, 0.9 + e.w * 0.45, 0xffa040, 0.28 * night * flick, sy + 500);
+          if (e.type !== 'farm' && !BUILDINGS[e.type].wall) { this.glows.put(sx, s.y - s.anchor.y * s.texture.height * 0.35, 0.9 + e.w * 0.45, 0xffa040, 0.28 * night * flick, sy + 500); this.light2(sx, sy - 10, 60 + e.w * 28, 0xffb46a, 0.42 * flick); }
           if (['lumber_camp', 'mining_camp', 'barracks', 'town_center', 'castle'].includes(e.type)) {
             const [fx, fy] = iso(e.x + e.w + 0.6, e.y + e.h * 0.5);
-            this.glows.put(fx, fy - 8, 1.6, 0xff8a28, 0.45 * night * flick, fy + 500);
+            this.glows.put(fx, fy - 8, 1.6, 0xff8a28, 0.45 * night * flick, fy + 500); this.light2(fx, fy - 6, 230, 0xff9a48, 0.95 * flick);
             if (Math.random() < dt * 20) this.parts.emit({ x: fx + (Math.random() - 0.5) * 8, y: fy - 4, vx: (Math.random() - 0.5) * 6, vy: -26, life: 0.55, size: 0.28, grow: 0.08, color: Math.random() < 0.5 ? 0xff7a1a : 0xffc23a, add: true, alpha: 0.9, z: fy + 2 });
           }
         }
       }
       // torches carried at night
-      if (fires && e.kind === 'unit' && us && !us.animal && !us.naval && (visible || mineE) && e.owner >= 0) this.glows.put(sx + 6, sy - 34, 0.7, 0xffb050, 0.32 * night * (0.85 + 0.15 * Math.sin(this.t * 11 + e.id)), sy + 2);
+      if (fires && e.kind === 'unit' && us && !us.animal && (visible || mineE) && e.owner >= 0 && !e.inside) {
+        const fl = 0.85 + 0.15 * Math.sin(this.t * 11 + e.id);
+        if (!us.naval) this.glows.put(sx + 6, sy - 34, 0.7, 0xffb050, 0.32 * night * fl, sy + 2);
+        this.light2(sx + 4, sy - 12, us.naval ? 150 : 125, 0xffc27a, 0.85 * fl);            // the torch lights the path around its bearer
+      }
       // fire on badly damaged (or burning) buildings
       if (e.kind === 'building' && e.built && (e.hp < e.maxHp * 0.5 || (e.burn && e.burn > W.t)) && visible && Math.random() < dt * 30 * Math.max(0.3, 1 - e.hp / e.maxHp) * Math.min(4, e.w)) {
         const [fx, fy] = iso(e.x + Math.random() * e.w, e.y + Math.random() * e.h);
         const hgt = 20 + Math.random() * 45 * Math.min(2, e.w / 2);
+        if (night > 0.15) this.light2(fx, fy - 10, 160 + e.w * 30, 0xff8030, 0.9);
         this.parts.emit({ x: fx, y: fy - hgt, vx: (Math.random() - 0.5) * 8, vy: -30, life: 0.6, size: 0.5, grow: 0.15, color: Math.random() < 0.5 ? 0xff7a1a : 0xffc23a, add: true, alpha: 0.9, z: fy + 50 });
         if (Math.random() < 0.3) this.parts.emit({ x: fx, y: fy - hgt - 10, vx: 6, vy: -22, life: 2.2, size: 0.6, grow: 2.2, color: 0x333333, alpha: 0.45, z: fy + 60 });
       }
@@ -445,6 +484,7 @@ export class View {
     // boulders on the mountain ridges
     for (const r of this.rocks) { const [rx, ry] = [r.s.x, r.s.y]; const on = rx > vx0 && rx < vx1 && ry > vy0 && ry < vy1 && (this.reveal || P.exp[r.k]); r.s.visible = on; if (on) r.s.tint = mulTint(this.reveal || P.vis[r.k] ? r.base : mulTint(r.base, [0.7, 0.7, 0.75]), L); }
     this.glows.end();
+    this.renderLights();
     this.ambient(dt, night);
     this.weather(dt);
     this.parts.update(dt); this.updateFloats(dt);

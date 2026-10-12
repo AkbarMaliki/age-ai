@@ -576,9 +576,14 @@ function dayTick(W) {
     const night = timeOfDay(W) >= 1 - DAY.night;
     if (night !== W.night) {
       W.night = night;
+      W.midnight = false;
       if (night) { W.ev.push({ k: 'dusk' }); if (W.opts.night === 'full') for (const P of W.players) if (P.alive) restVillagers(W, P); }
       else { W.day++; W.ev.push({ k: 'dawn', day: W.day }); for (const P of W.players) if (P.alive) { wakeVillagers(W, P); upkeep(W, P); } }
     }
+  }
+  if (W.night && !W.midnight && timeOfDay(W) >= MIDNIGHT) {       // the late shift ends
+    W.midnight = true;
+    if (W.opts.night === 'full') for (const P of W.players) if (P.alive && worksAtNight(W, P)) restVillagers(W, P);
   }
   // weather: showers come and go (more in autumn); snowfall in winter is purely visual
   if ((W.weatherT -= 1) <= 0) {
@@ -595,14 +600,16 @@ function upkeep(W, P) {
   if (P.res.food >= need) { P.res.food -= need; P.hungry = false; W.ev.push({ k: 'upkeep', owner: P.id, food: need }); }
   else { P.res.food = 0; P.hungry = true; P.stats.hungryDays++; W.ev.push({ k: 'hungry', owner: P.id, food: need }); }
 }
+// torches (tech or card): a late shift — villagers keep working by torchlight until midnight, then go in too
 const worksAtNight = (W, P) => P.mods.nightWork || P.techs.has('torches');
+export const MIDNIGHT = 1 - DAY.night / 2;
 // villagers of P should be indoors right now
-export const restNow = (W, P) => W.night && W.opts.night === 'full' && !worksAtNight(W, P);
+export const restNow = (W, P) => W.night && W.opts.night === 'full' && (!worksAtNight(W, P) || timeOfDay(W) >= MIDNIGHT);
 // dusk: gatherers and idle villagers walk home and go inside for the night (hidden, safe); builders and soldiers carry on.
 // Each house shelters 5, a Town Center 15; when every home is full they squeeze into the nearest one anyway.
 const ROOM = { house: 5, town_center: 15 };
 function restVillagers(W, P) {
-  if (worksAtNight(W, P)) return;
+  if (!restNow(W, P)) return;
   const homes = [...W.dyn.values()].filter(e => e.kind === 'building' && e.owner === P.id && e.built && ROOM[e.type]);
   if (!homes.length) return;
   const used = new Map();

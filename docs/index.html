@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=202610121207">
+<link rel="stylesheet" href="css/style.css?v=202610122045">
 <script type="importmap">{ "imports": { "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs" } }</script>
 </head>
 <body>
@@ -22,8 +22,9 @@
     <div class="res"><i class="ri wood"></i><b id="r_wood">0</b></div>
     <div class="res"><i class="ri gold"></i><b id="r_gold">0</b></div>
     <div class="res"><i class="ri stone"></i><b id="r_stone">0</b></div>
+    <div class="res iron" title="Besi: untuk peningkatan, mesiu dan pasukan khusus"><i class="ri iron"></i><b id="r_iron">0</b></div>
     <div class="res pop"><i class="ri popi"></i><b id="r_pop">0/0</b></div>
-    <div class="age"><span id="ageName">Zaman Kegelapan</span></div>
+    <div class="age"><span id="ageName">Zaman Kegelapan</span><small id="dayInfo">☀ Hari 1</small></div>
     <div id="specBar" class="hidden">
       <span class="spec-tag">👁 Penonton</span>
       <button id="spPov" class="tb" title="Ganti sudut pandang (Tab)">Pemain</button>
@@ -33,9 +34,17 @@
     <div class="clock" id="clock">00:00:00</div>
     <button id="btnCards" class="tb" title="Kiriman Kerajaan (K)">🃏 <span>Kiriman</span><b id="cardN"></b><i class="xpbar"><i id="cardXp"></i></i></button>
     <button id="btnStats" class="tb" title="Statistik perang (I)">📊 <span>Statistik</span></button>
+    <button id="btnChat" class="tb hidden" title="Chat (Enter)">💬</button>
     <button id="btnMenu" class="tb">Menu</button>
   </div>
   <div id="notify"></div>
+  <div id="netStatus" class="hidden"></div>
+  <div id="chatBox" class="hidden"><input id="chatIn" maxlength="140" placeholder="Ketik pesan, Enter untuk kirim, Esc batal" autocomplete="off"></div>
+  <button id="advBtn" class="hidden" title="Penasihat Kerajaan: analisis musuh & saran strategi (J)">!</button>
+  <div id="advPanel" class="hidden">
+    <div class="sp-head"><div><h2>Penasihat Kerajaan</h2><small>Analisis musuh dari pengamatan pasukan dan mata-mata, dengan saran balasan.</small></div><button id="advClose" class="tb" title="Tutup (J / Esc)">✖</button></div>
+    <div id="advBody"></div>
+  </div>
   <!-- touch toolbar (phones / tablets) -->
   <div id="touchBar">
     <button id="tbCancel" title="Batal / lepas pilihan">✖</button>
@@ -75,10 +84,15 @@
     <div class="row"><span>Lawan (AI)</span><div class="seg" data-k="diff"><button data-v="easy">Mudah</button><button data-v="normal">Normal</button><button data-v="hard">Sulit</button></div></div>
     <div class="row"><span>Jumlah pemain</span><div class="seg" data-k="players"><button data-v="2">1 vs 1</button><button data-v="3">1 vs 2</button><button data-v="4">1 vs 3</button></div></div>
     <div class="row"><span>Warna</span><div class="seg colors" data-k="color"><button data-v="blue" class="c-blue">Biru</button><button data-v="red" class="c-red">Merah</button><button data-v="green" class="c-green">Hijau</button><button data-v="yellow" class="c-yellow">Kuning</button></div></div>
-    <div class="row"><span>Tipe peta</span><div class="seg map" data-k="map"><button data-v="random" title="Tipe peta acak setiap permainan">Acak</button><button data-v="padang">Padang</button><button data-v="rimba">Rimba</button><button data-v="danau">Danau</button><button data-v="sungai">Sungai</button><button data-v="tambang">Tambang</button></div></div>
-    <div class="row"><span>Ukuran peta</span><div class="seg" data-k="size"><button data-v="112">Kecil</button><button data-v="144">Sedang</button><button data-v="180">Besar</button><button data-v="220">Raksasa</button></div></div>
+    <div class="row"><span>Tipe peta</span><div class="seg map" data-k="map"><button data-v="random" title="Tipe peta acak setiap permainan">Acak</button><button data-v="padang">Padang</button><button data-v="rimba">Rimba</button><button data-v="danau">Danau</button><button data-v="sungai">Sungai</button><button data-v="tambang">Tambang</button><button data-v="pegunungan" title="Pegunungan: punggung gunung, celah dan bukit">Gunung</button><button data-v="kepulauan" title="Kepulauan: butuh kapal untuk menyerang">Pulau</button></div></div>
+    <div class="row"><span>Musim</span><div class="seg" data-k="season"><button data-v="random">Acak</button><button data-v="semi">Semi</button><button data-v="kemarau">Kemarau</button><button data-v="gugur">Gugur</button><button data-v="salju" title="Salju: sungai & danau membeku">Salju</button></div></div>
+    <div class="row"><span>Siang-malam</span><div class="seg" data-k="night"><button data-v="full" title="Malam: penduduk pulang istirahat, pandangan pendek; fajar: jatah makan">Penuh</button><button data-v="visual" title="Hanya tampilan dan jarak pandang">Visual</button><button data-v="off">Mati</button></div></div>
+    <div class="row"><span>Ukuran peta</span><div class="seg" data-k="size"><button data-v="112">Kecil</button><button data-v="144">Sedang</button><button data-v="180">Besar</button><button data-v="220">Raksasa</button><button data-v="280" title="Peta sangat luas: perjalanan jauh, pos militer di tengah">Kolosal</button></div></div>
     <div class="row vol"><span>Musik</span><input type="range" id="volMusic" min="0" max="1" step="0.05"><span>Efek</span><input type="range" id="volSfx" min="0" max="1" step="0.05"></div>
+    <div class="row two"><button id="btnDeck">🃏 Susun Dek Kartu</button><button id="btnAch">🏆 Prestasi</button></div>
+    <p id="profLine" class="prof"></p>
     <button id="btnPlay" class="big">⚔ Mulai Permainan</button>
+    <button id="btnOnline" class="big online">🌐 Main Online (bersama teman)</button>
     <button id="btnHow" class="link">Cara bermain &amp; kontrol</button>
   </div>
   <div class="credit">Unit, hewan &amp; animasi: 0 A.D. © Wildfire Games (CC-BY-SA 3.0) · Suara: Piper TTS (OpenSLR 83 CC-BY-SA, LibriVox) · Tekstur Poly Haven &amp; ambientCG (CC0)</div>
@@ -92,16 +106,52 @@
     <h3>Harta Karun</h3><p>Peti emas, gerobak makanan, kayu dan batu tersebar di peta, dijaga <b>bandit</b>, serigala atau <b>beruang</b>. Kalahkan penjaganya lalu sentuh harta itu dengan unit mana saja untuk mendapat bonus.</p>
     <h3>Peta &amp; Pengintaian</h3><p>Setiap permainan memakai peta acak: posisi awal, hutan, tambang dan buruan berubah, tapi tiap kerajaan mendapat jatah sumber daya yang adil. Lawan AI juga tertutup kabut perang &mdash; mereka harus mengintai dulu untuk menemukanmu, jadi kirim <b>pengintai</b>mu sendiri!</p>
     <h3>Pasar &amp; Kiriman Kerajaan</h3><p>Di Zaman Feodal bangun <b>Pasar</b> untuk membeli atau menjual makanan, kayu dan batu dengan emas; harganya naik-turun setiap ada transaksi. Mengumpulkan, membangun, meneliti dan bertempur memberi <b>XP</b>; setiap XP penuh kamu boleh memilih satu <b>kartu kiriman</b> (🃏, tombol K): penduduk desa, sumber daya, tentara atau bonus permanen.</p>
+    <h3>Militer: pilih jalurmu</h3><p>Segitiga dasar: <b>Tombak</b> &gt; <b>Kavaleri</b> &gt; <b>Pemanah</b> &gt; <b>Infanteri</b>. Di <b>Pandai Besi</b> tingkatkan senjata &amp; zirah dan pilih satu <b>Doktrin</b> (Legiun, Kavaleri, atau Hujan Panah). Di <b>Akademi</b> pilih doktrin kedua, ubah satu jalur menjadi <b>pasukan khusus</b> (Samurai/Ninja, Pemanah Api/Silang, Katafrak/Lancer), teliti <b>Bubuk Mesiu</b> (butuh <b>besi</b>) dan kirim <b>mata-mata</b>. Pilih <b>formasi</b> untuk pasukan: Tempur menaruh pemanah di belakang perisai.</p>
+    <h3>Dunia yang hidup</h3><p>Malam memendekkan pandangan dan penduduk pulang beristirahat; tiap fajar rakyat makan dari lumbung. Musim mengubah aturan: salju membekukan sungai. Bukit memberi keunggulan tempat tinggi, gunung harus diputari. Jalan menghubungkan bangunan baru ke kota dan mempercepat langkah. Klik kanan bangunan rusak dengan penduduk desa untuk memperbaikinya. Bangun <b>Dermaga</b> untuk kapal nelayan, angkut dan perang.</p>
     <h3>Menang &amp; Kalah</h3><p>Sebuah kerajaan kalah bila tidak punya unit dan bangunan penting lagi (tembok, gerbang, ladang, rumah dan fondasi tidak dihitung), atau bila <b>menyerah</b> (menu jeda). Lawan AI juga menyerah saat sudah tidak berdaya.</p>
+    <h3>Main Online</h3><p>Tekan <b>🌐 Main Online</b> → <b>Buat Room</b>, lalu <b>Salin Link</b> dan kirim ke teman: membuka link langsung masuk ke room (atau masukkan kode room). Tuan rumah bisa menambah AI, mengatur tim, peta, musim dan ukuran, lalu memulai. Tekan <b>Enter</b> (atau 💬) untuk chat. Permainan online tidak bisa dijeda. Kalau koneksi putus, AI menjaga kerajaanmu sampai kamu kembali &mdash; muat ulang halaman untuk menyusul. Kalau tuan rumah keluar, pemain lain otomatis menjadi tuan rumah. Teman yang membuka link saat permainan berjalan bisa menonton.</p>
     <h3>Zaman</h3><p>Di Pusat Kota, naik ke <b>Zaman Feodal</b> (butuh 2 bangunan Zaman Kegelapan) lalu <b>Zaman Kastil</b> untuk membuka unit & bangunan baru.</p></div>
     <div><h3>Kontrol</h3><table>
       <tr><td>Klik kiri / tarik</td><td>Pilih unit</td></tr><tr><td>Klik kanan</td><td>Gerak / serang / kumpulkan / bangun</td></tr>
       <tr><td>Klik ganda</td><td>Pilih semua unit sejenis di layar</td></tr><tr><td>Q W E R T / A S D F G / Z X C V B</td><td>Tombol perintah</td></tr>
-      <tr><td>Ctrl + 1-9, 1-9</td><td>Simpan / pilih grup</td></tr><tr><td>I</td><td>Statistik perang</td></tr><tr><td>K</td><td>Kiriman Kerajaan (kartu)</td></tr><tr><td>H</td><td>Pusat Kota</td></tr><tr><td>.</td><td>Penduduk desa menganggur</td></tr>
+      <tr><td>Ctrl + 1-9, 1-9</td><td>Simpan / pilih grup</td></tr><tr><td>I</td><td>Statistik perang</td></tr><tr><td>K</td><td>Kiriman Kerajaan (kartu)</td></tr><tr><td>J</td><td>Penasihat (analisis musuh)</td></tr><tr><td>H</td><td>Pusat Kota</td></tr><tr><td>.</td><td>Penduduk desa menganggur</td></tr>
       <tr><td>Panah / tepi layar / tombol tengah</td><td>Geser kamera</td></tr><tr><td>Roda mouse</td><td>Zoom</td></tr><tr><td>Shift + klik bangun</td><td>Bangun berulang</td></tr><tr><td>Esc / F3</td><td>Batal / jeda</td></tr>
     </table></div>
   </div>
   <button id="howClose" class="big">Mengerti</button>
+</div></div>
+
+<div id="deckModal" class="screen dim hidden"><div class="panel wide deckp">
+  <h2>Dek Kiriman Kerajaan</h2>
+  <p>Pilih sampai 20 kartu yang boleh kamu minta dari ibu kota selama permainan. Dek menentukan arah strategimu: ekonomi, militer, pertahanan, teknologi atau laut. Lawan AI juga memakai dek (dipilih acak) yang membentuk gaya bermain mereka.</p>
+  <div class="row"><select id="deckPreset"></select><button id="deckClear">Kosongkan</button></div>
+  <p id="deckCount"></p><p id="deckWarn" class="warn"></p>
+  <div id="deckBody"></div>
+  <button id="deckClose" class="big">Simpan Dek</button>
+</div></div>
+<div id="achModal" class="screen dim hidden"><div class="panel wide">
+  <h2>Prestasi &amp; Gelar</h2>
+  <div id="achBody"></div>
+  <button id="achClose" class="big">Tutup</button>
+</div></div>
+
+<div id="lobby" class="screen dim hidden"><div class="panel wide">
+  <h2>🌐 Main Online</h2>
+  <div id="olStart">
+    <p class="hint">Bermain sebagai <b id="olName"></b> (ganti nama di menu utama). Buat room lalu bagikan link-nya — teman yang membuka link langsung masuk ke room. Pengaturan peta diambil dari menu utama dan bisa diubah di room.</p>
+    <button id="olCreate" class="big">＋ Buat Room</button>
+    <div class="row join"><input id="olCode" maxlength="6" placeholder="KODE ROOM" autocomplete="off"><button id="olJoin">Gabung</button></div>
+  </div>
+  <div id="olRoom" class="hidden">
+    <div class="row link"><span>Room <b id="olCodeShow"></b></span><input id="olLink" readonly><button id="olCopy">📋 Salin Link</button></div>
+    <table id="olSeats"></table>
+    <div id="olHostBar" class="row two"><button id="olAddBot">＋ Tambah AI</button><select id="olBotDiff"><option value="easy">AI Mudah</option><option value="normal" selected>AI Normal</option><option value="hard">AI Sulit</option></select></div>
+    <div id="olCfg"></div>
+    <p id="olWait" class="hint"></p>
+    <button id="olStartBtn" class="big">⚔ Mulai Permainan</button>
+  </div>
+  <p id="olNote"></p>
+  <button id="olBack" class="link">Keluar dari room / kembali</button>
 </div></div>
 
 <div id="pauseMenu" class="screen dim hidden"><div class="panel">
@@ -115,6 +165,7 @@
 <div id="endScreen" class="screen dim hidden"><div class="panel wide">
   <h2 id="endTitle">Kemenangan!</h2>
   <table id="endStats"></table>
+  <div id="endAch"></div>
   <button id="endWatch" class="hidden">👁 Tonton sisa pertandingan</button>
   <button id="endFull">📊 Statistik lengkap &amp; linimasa</button>
   <button id="endMenu" class="big">Kembali ke Menu</button>
@@ -124,6 +175,9 @@
 
 <div id="loading" class="screen"><div class="panel"><h2>Memuat…</h2><div class="bar"><i id="loadBar"></i></div><p id="loadText">Menyiapkan dunia</p></div></div>
 
-<script type="module" src="js/main.js?v=202610121207"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script type="module" src="js/main.js?v=202610122045"></script>
 </body>
 </html>

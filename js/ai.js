@@ -390,11 +390,11 @@ export class AI {
   // ---------------------------------------------------------------- water: dock, fishing boats, war fleet, transports
   water(vils, fleet) {
     const W = this.W, P = this.P, S = this.S; if (W.t < (this.watT || 0)) return; this.watT = W.t + 6;
-    const fish = this.res('fish', this.base[0], this.base[1], 34);
     const island = W.map && W.map.water === 'islands';
+    const fish = this.res('fish', this.base[0], this.base[1], island ? 80 : 34);
     if (!this.count('dock') && (fish || island) && vils.length >= (S.navy || island ? 8 : 14) && P.res.wood >= 150) {
-      const near = fish ? [fish.x, fish.y] : this.base;
-      if (!this.build('dock', near, 1, 8) && fish) this.build('dock', this.base, 6, 22);
+      // by the fish if possible, else the nearest shore of our own landmass (on big islands the sea can be 40+ tiles away)
+      if (!(fish && this.build('dock', [fish.x, fish.y], 1, 8))) { const sp = this.dockSpot(); if (sp) this.build('dock', sp, 0, 3); }
     }
     const dock = this.m.bld.find(b => b.type === 'dock' && b.built); if (!dock) return;
     const boats = this.m.units.filter(u => u.type === 'fishing_boat').length;
@@ -404,6 +404,20 @@ export class AI {
     if (fleet.length < Math.min(10, wantFleet) && dock.queue.length < 2 && canAfford(P, UNITS.war_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'war_ship' });
     const trans = this.m.units.filter(u => u.type === 'transport_ship').length;
     if (island && P.age >= 2 && trans < 2 && dock.queue.length < 2 && canAfford(P, UNITS.transport_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'transport_ship' });
+  }
+  // centre of the nearest explored spot where a dock fits and a builder from home can walk up to it
+  dockSpot() {
+    const W = this.W, [bx, by] = this.base, n = BUILDINGS.dock.n;
+    if (this.dockC && W.t < this.dockC.t) return this.dockC.p;
+    let p = null;
+    for (let r = 3; r < Math.min(110, W.size) && !p; r++) for (let k = 0, m = Math.max(16, Math.round(r * 4)); k < m && !p; k++) {
+      const a = k / m * Math.PI * 2, i = Math.round(bx + Math.cos(a) * r - n / 2), j = Math.round(by + Math.sin(a) * r - n / 2);
+      if (!placementOk(W, this.pid, 'dock', i, j)) continue;
+      let ok = false;
+      for (let q = -1; q <= n && !ok; q++) ok = this.walkableBeside(i + q, j - 1) || this.walkableBeside(i + q, j + n) || this.walkableBeside(i - 1, j + q) || this.walkableBeside(i + n, j + q);
+      if (ok) p = [i + n / 2, j + n / 2];
+    }
+    this.dockC = { t: W.t + 20, p }; return p;
   }
   shoreFish(v) { const f = this.res('fish', v.x, v.y, 14); return f && this.W.players[this.pid] && f; }
   // is the target on another landmass (islands): then the army has to sail
@@ -443,10 +457,11 @@ export class AI {
   }
   coast(p) {     // a water tile right next to land near p
     const W = this.W;
-    for (let r = 2; r < 30; r++) for (let k = 0; k < 16; k++) {
-      const a = k / 16 * Math.PI * 2, i = Math.round(p[0] + Math.cos(a) * r), j = Math.round(p[1] + Math.sin(a) * r);
+    const home = regionAt(W, p[0] + 0.5, p[1] + 0.5);
+    for (let r = 2; r < 110; r++) for (let k = 0, m = Math.max(16, r * 3); k < m; k++) {
+      const a = k / m * Math.PI * 2, i = Math.round(p[0] + Math.cos(a) * r), j = Math.round(p[1] + Math.sin(a) * r);
       if (!passable(W, i, j, this.pid, true)) continue;
-      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (passable(W, i + di, j + dj, this.pid)) return [i + 0.5, j + 0.5];
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (passable(W, i + di, j + dj, this.pid) && regionAt(W, i + di + 0.5, j + dj + 0.5) === home) return [i + 0.5, j + 0.5];
     }
     return null;
   }

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 <script type="importmap">{ "imports": { "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs" } }</script>
 </head>
 <body>
@@ -34,9 +34,12 @@
     <div class="clock" id="clock">00:00:00</div>
     <button id="btnCards" class="tb" title="Kiriman Kerajaan (K)">🃏 <span>Kiriman</span><b id="cardN"></b><i class="xpbar"><i id="cardXp"></i></i></button>
     <button id="btnStats" class="tb" title="Statistik perang (I)">📊 <span>Statistik</span></button>
+    <button id="btnChat" class="tb hidden" title="Chat (Enter)">💬</button>
     <button id="btnMenu" class="tb">Menu</button>
   </div>
   <div id="notify"></div>
+  <div id="netStatus" class="hidden"></div>
+  <div id="chatBox" class="hidden"><input id="chatIn" maxlength="140" placeholder="Ketik pesan, Enter untuk kirim, Esc batal" autocomplete="off"></div>
   <button id="advBtn" class="hidden" title="Penasihat Kerajaan: analisis musuh & saran strategi (J)">!</button>
   <div id="advPanel" class="hidden">
     <div class="sp-head"><div><h2>Penasihat Kerajaan</h2><small>Analisis musuh dari pengamatan pasukan dan mata-mata, dengan saran balasan.</small></div><button id="advClose" class="tb" title="Tutup (J / Esc)">✖</button></div>
@@ -89,6 +92,7 @@
     <div class="row two"><button id="btnDeck">🃏 Susun Dek Kartu</button><button id="btnAch">🏆 Prestasi</button></div>
     <p id="profLine" class="prof"></p>
     <button id="btnPlay" class="big">⚔ Mulai Permainan</button>
+    <button id="btnOnline" class="big online">🌐 Main Online (bersama teman)</button>
     <button id="btnHow" class="link">Cara bermain &amp; kontrol</button>
   </div>
   <div class="credit">Unit, hewan &amp; animasi: 0 A.D. © Wildfire Games (CC-BY-SA 3.0) · Suara: Piper TTS (OpenSLR 83 CC-BY-SA, LibriVox) · Tekstur Poly Haven &amp; ambientCG (CC0)</div>
@@ -105,6 +109,7 @@
     <h3>Militer: pilih jalurmu</h3><p>Segitiga dasar: <b>Tombak</b> &gt; <b>Kavaleri</b> &gt; <b>Pemanah</b> &gt; <b>Infanteri</b>. Di <b>Pandai Besi</b> tingkatkan senjata &amp; zirah dan pilih satu <b>Doktrin</b> (Legiun, Kavaleri, atau Hujan Panah). Di <b>Akademi</b> pilih doktrin kedua, ubah satu jalur menjadi <b>pasukan khusus</b> (Samurai/Ninja, Pemanah Api/Silang, Katafrak/Lancer), teliti <b>Bubuk Mesiu</b> (butuh <b>besi</b>) dan kirim <b>mata-mata</b>. Pilih <b>formasi</b> untuk pasukan: Tempur menaruh pemanah di belakang perisai.</p>
     <h3>Dunia yang hidup</h3><p>Malam memendekkan pandangan dan penduduk pulang beristirahat; tiap fajar rakyat makan dari lumbung. Musim mengubah aturan: salju membekukan sungai. Bukit memberi keunggulan tempat tinggi, gunung harus diputari. Jalan menghubungkan bangunan baru ke kota dan mempercepat langkah. Klik kanan bangunan rusak dengan penduduk desa untuk memperbaikinya. Bangun <b>Dermaga</b> untuk kapal nelayan, angkut dan perang.</p>
     <h3>Menang &amp; Kalah</h3><p>Sebuah kerajaan kalah bila tidak punya unit dan bangunan penting lagi (tembok, gerbang, ladang, rumah dan fondasi tidak dihitung), atau bila <b>menyerah</b> (menu jeda). Lawan AI juga menyerah saat sudah tidak berdaya.</p>
+    <h3>Main Online</h3><p>Tekan <b>🌐 Main Online</b> → <b>Buat Room</b>, lalu <b>Salin Link</b> dan kirim ke teman: membuka link langsung masuk ke room (atau masukkan kode room). Tuan rumah bisa menambah AI, mengatur tim, peta, musim dan ukuran, lalu memulai. Tekan <b>Enter</b> (atau 💬) untuk chat. Permainan online tidak bisa dijeda. Kalau koneksi putus, AI menjaga kerajaanmu sampai kamu kembali &mdash; muat ulang halaman untuk menyusul. Kalau tuan rumah keluar, pemain lain otomatis menjadi tuan rumah. Teman yang membuka link saat permainan berjalan bisa menonton.</p>
     <h3>Zaman</h3><p>Di Pusat Kota, naik ke <b>Zaman Feodal</b> (butuh 2 bangunan Zaman Kegelapan) lalu <b>Zaman Kastil</b> untuk membuka unit & bangunan baru.</p></div>
     <div><h3>Kontrol</h3><table>
       <tr><td>Klik kiri / tarik</td><td>Pilih unit</td></tr><tr><td>Klik kanan</td><td>Gerak / serang / kumpulkan / bangun</td></tr>
@@ -130,6 +135,25 @@
   <button id="achClose" class="big">Tutup</button>
 </div></div>
 
+<div id="lobby" class="screen dim hidden"><div class="panel wide">
+  <h2>🌐 Main Online</h2>
+  <div id="olStart">
+    <p class="hint">Bermain sebagai <b id="olName"></b> (ganti nama di menu utama). Buat room lalu bagikan link-nya — teman yang membuka link langsung masuk ke room. Pengaturan peta diambil dari menu utama dan bisa diubah di room.</p>
+    <button id="olCreate" class="big">＋ Buat Room</button>
+    <div class="row join"><input id="olCode" maxlength="6" placeholder="KODE ROOM" autocomplete="off"><button id="olJoin">Gabung</button></div>
+  </div>
+  <div id="olRoom" class="hidden">
+    <div class="row link"><span>Room <b id="olCodeShow"></b></span><input id="olLink" readonly><button id="olCopy">📋 Salin Link</button></div>
+    <table id="olSeats"></table>
+    <div id="olHostBar" class="row two"><button id="olAddBot">＋ Tambah AI</button><select id="olBotDiff"><option value="easy">AI Mudah</option><option value="normal" selected>AI Normal</option><option value="hard">AI Sulit</option></select></div>
+    <div id="olCfg"></div>
+    <p id="olWait" class="hint"></p>
+    <button id="olStartBtn" class="big">⚔ Mulai Permainan</button>
+  </div>
+  <p id="olNote"></p>
+  <button id="olBack" class="link">Keluar dari room / kembali</button>
+</div></div>
+
 <div id="pauseMenu" class="screen dim hidden"><div class="panel">
   <h2>Permainan Dijeda</h2>
   <button id="pResume" class="big">Lanjutkan</button>
@@ -151,6 +175,9 @@
 
 <div id="loading" class="screen"><div class="panel"><h2>Memuat…</h2><div class="bar"><i id="loadBar"></i></div><p id="loadText">Menyiapkan dunia</p></div></div>
 
-<script type="module" src="js/main.js?v=9"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script type="module" src="js/main.js?v=10"></script>
 </body>
 </html>

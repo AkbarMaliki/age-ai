@@ -247,3 +247,31 @@ body.touch #tooltip { pointer-events: none; }
   table.st { font-size: 12px; } table.st td, table.st th { padding: 3px 5px; } table.st .big { font-size: 15px; }
   #statsChart { height: 150px; }
 }
+
+/* ---------------------------------------------------------------- online */
+.panel button.big.online { background: linear-gradient(180deg, #2f6aa5, #173a5e); box-shadow: inset 0 0 0 1px #7fb0e0; margin-top: 6px; }
+#lobby .panel { width: 720px; }
+#lobby .hint { color: #e8dcc0; font-size: 14px; line-height: 1.45; margin: 6px 0; }
+#lobby input, #lobby select { background: #1c140d; color: var(--ink); border: 1px solid #6b5230; border-radius: 4px; padding: 7px 8px; font: inherit; font-size: 15px; }
+#lobby .row.join input { flex: 1; text-transform: uppercase; letter-spacing: 3px; font-weight: 700; text-align: center; }
+#lobby .row.join button { width: auto; padding: 8px 22px; }
+#lobby .row.link span { min-width: 0; white-space: nowrap; } #lobby .row.link b { letter-spacing: 2px; color: #fff; }
+#lobby .row.link input { flex: 1; min-width: 0; font-size: 13px; } #lobby .row.link button { width: auto; white-space: nowrap; }
+#olSeats { width: 100%; border-collapse: collapse; margin: 8px 0; }
+#olSeats td { padding: 5px 6px; border-bottom: 1px solid #ffffff14; vertical-align: middle; }
+#olSeats td small { display: block; color: var(--gold2); font-size: 12px; }
+#olSeats tr.off { opacity: 0.5; } #olSeats tr.empty td { color: #b8a888; font-size: 13px; }
+#olSeats .sw { width: 26px; height: 26px; padding: 0; margin: 0; border-radius: 50%; border: 2px solid #0008; box-shadow: none; cursor: default; }
+#olSeats .sw.can { cursor: pointer; box-shadow: 0 0 0 2px var(--gold2); }
+#olSeats button.x { width: auto; padding: 2px 10px; margin: 0; background: #5e1611; }
+#olSeats select { padding: 3px 6px; font-size: 14px; }
+#olHostBar select { flex: 0 0 auto; }
+#olCfg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+#olCfg label { display: flex; flex-direction: column; gap: 3px; color: var(--gold2); font-size: 13px; }
+#olStartBtn:disabled { filter: grayscale(0.8) brightness(0.7); cursor: not-allowed; }
+#olNote { min-height: 1.2em; color: #e8dcc0; margin: 6px 0 0; } #olNote.warn { color: #ff8070; }
+#netStatus { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 12; background: #000b; color: #ffd27a; padding: 6px 16px; border-radius: 6px; font-weight: 700; pointer-events: none; }
+#chatBox { position: fixed; left: 50%; bottom: 190px; transform: translateX(-50%); z-index: 30; width: min(520px, 90vw); }
+#chatBox input { width: 100%; box-sizing: border-box; padding: 9px 12px; font: inherit; font-size: 16px; background: #000c; color: #fff; border: 1px solid var(--gold2); border-radius: 6px; }
+.note.chat { color: #bfe3ff; }
+@media (max-width: 760px) { #olCfg { grid-template-columns: repeat(2, 1fr); } #lobby .panel { padding: 16px; } }

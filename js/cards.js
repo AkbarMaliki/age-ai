@@ -36,7 +36,7 @@ export class CardPanel {
   send(id) {
     const G = this.g, P = this.P();
     if (G.watch || P.ships < 1 || P.shipment || !cardOk(P, id)) { G.snd.play('nope'); return; }
-    command(G.W, { t: 'card', pid: G.me, card: id }); G.snd.play('click');
+    G.send({ t: 'card', pid: G.me, card: id }); G.snd.play('click');
   }
   render() {
     const G = this.g, P = this.P(), ro = G.watch || !P.alive;

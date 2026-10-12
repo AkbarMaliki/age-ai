@@ -8,9 +8,15 @@ A browser RTS in the style of Age of Empires II. It uses pre-rendered 3D sprites
 ```
 start.bat            (or: node server.cjs 8772)
 http://localhost:8772
-npm test             (map fairness, headless AI-vs-AI game, naval checks)
+npm test             (map fairness, headless AI-vs-AI game, naval checks, online lockstep)
 node tests/stuck.test.js 40 5 144 4   (stuck-unit detector, slower)
 ```
+
+## Online (play with friends)
+Menu → **🌐 Main Online** → *Buat Room* → *Salin Link*. A friend who opens the link (`?room=CODE`) joins the room. The host can add AIs, set teams and the map, then start. Up to 4 kingdoms, plus any number of spectators.
+- Runs on Firebase Realtime Database (`js/firebase-config.js`, the same project as the other games), under `/age/rooms/{CODE}`.
+- Deterministic **lockstep**: only commands travel. The host publishes a turn every 2 ticks and everyone simulates the same thing. Details are in `js/lockstep.js`.
+- A dropped player's kingdom is run by an AI until they come back; reloading the page replays the game and catches up; if the host leaves, the next player takes over.
 
 ## Phone / tablet (touch)
 Play in landscape. Tapping ⛶ or starting a game switches to fullscreen.

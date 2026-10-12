@@ -79,7 +79,7 @@ export const TECHS = {
   castle: { name: 'Maju ke Zaman Kastil', cost: { food: 800, gold: 200 }, time: 160, age: 2, at: 'town_center', toAge: 3, key: 'E', reqCount: 2, reqFrom: ['archery_range', 'stable', 'watch_tower', 'blacksmith', 'market', 'academy'] },
   loom: { name: 'Tenun', cost: { gold: 50 }, time: 25, age: 1, at: 'town_center', key: 'R', desc: 'Penduduk desa +15 HP, +1/+2 zirah.' },
   wheelbarrow: { name: 'Gerobak Dorong', cost: { food: 175, wood: 50 }, time: 75, age: 2, at: 'town_center', key: 'T', desc: 'Penduduk desa +10% kecepatan, +3 muatan.' },
-  torches: { name: 'Obor Kerja', cost: { food: 150, wood: 100 }, time: 45, age: 2, at: 'town_center', key: 'W', desc: 'Penduduk desa tetap bekerja di malam hari (dengan 70% kecepatan).' },
+  torches: { name: 'Obor Kerja', cost: { food: 150, wood: 100 }, time: 45, age: 2, at: 'town_center', key: 'W', desc: 'Lembur: penduduk desa tetap bekerja dengan obor sampai tengah malam (70% kecepatan), lalu pulang tidur.' },
   double_bit_axe: { name: 'Kapak Bermata Dua', cost: { food: 100, wood: 50 }, time: 25, age: 2, at: 'lumber_camp', key: 'Q', desc: 'Menebang kayu +20%.' },
   gold_mining: { name: 'Penambangan Emas', cost: { food: 100, wood: 75 }, time: 30, age: 2, at: 'mining_camp', key: 'Q', desc: 'Menambang emas +15%.' },
   iron_smelting: { name: 'Peleburan Besi', cost: { food: 150, wood: 100 }, time: 35, age: 2, at: 'mining_camp', key: 'W', desc: 'Menambang besi +20%.' },
@@ -175,7 +175,7 @@ export const CARDS = {
   militia4: { name: '4 Milisi', age: 1, tag: 'mil', units: [['militia', 4]], repeat: true, desc: 'Empat milisi untuk serangan dini atau bertahan.' },
   nets: { name: 'Jala Nelayan', age: 1, tag: 'laut', mod: { fish: 0.25 }, glyph: '🎣', desc: 'Menangkap ikan 25% lebih cepat (dari tepi maupun kapal).' },
   fishboats2: { name: '2 Kapal Nelayan', age: 1, tag: 'laut', units: [['fishing_boat', 2]], desc: 'Dua kapal nelayan muncul di dekat dermagamu (atau Pusat Kota bila tak ada).' },
-  torchlight: { name: 'Obor Malam', age: 1, tag: 'eko', mod: { nightWork: 1 }, glyph: '🔥', desc: 'Penduduk desa tetap bekerja di malam hari.' },
+  torchlight: { name: 'Obor Malam', age: 1, tag: 'eko', mod: { nightWork: 1 }, glyph: '🔥', desc: 'Lembur: penduduk desa bekerja dengan obor sampai tengah malam.' },
   granary: { name: 'Lumbung Kerajaan', age: 1, tag: 'eko', mod: { upkeep: -0.5 }, glyph: '🏚', desc: 'Jatah makan harian rakyat berkurang 50%.' },
   builders: { name: 'Bahan Bangunan', age: 1, tag: 'def', mod: { buildSpeed: 0.3 }, glyph: '🔨', desc: 'Penduduk desa membangun 30% lebih cepat.' },
   // Feudal Age
