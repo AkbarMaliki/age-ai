@@ -4,9 +4,9 @@
 //   ticks of turns they have. Every HASH_EVERY turns the host attaches a state hash; a mismatch means a desync.
 //   AIs run on every client (they are deterministic). Meta commands ('_ai' / '_human') hand a dropped player's
 //   kingdom to an AI and back. A client that (re)joins late replays every turn from 0 at full speed.
-import { step, command, TICK } from './sim.js';
-import { GAME_SPEED } from './data.js';
-import { AI } from './ai.js';
+import { step, command, TICK } from './sim.js?v=20261012210204';
+import { GAME_SPEED } from './data.js?v=20261012210204';
+import { AI } from './ai.js?v=20261012210204';
 
 export const TPT = 2, LEAD = 3, HASH_EVERY = 25;
 const MAX_LAG = 40;          // turns the host lets a player fall behind before it waits (~5 s)

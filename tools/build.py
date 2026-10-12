@@ -54,11 +54,21 @@ def main():
     for f in os.listdir(A):
         if f.endswith('.wav'): os.remove(os.path.join(A, f))
     open(os.path.join(DIST, '.nojekyll'), 'w').close()      # serve files as-is on GitHub Pages (no Jekyll processing)
-    # cache-busting version stamp on the entry points
-    ver = time.strftime('%Y%m%d%H%M')
+    # cache-busting: ONE version stamp on everything a deploy changes. GitHub Pages lets browsers cache files for
+    # 10 minutes, and a fresh main.js importing a cached old data.js breaks ("does not provide an export named ...").
+    ver = time.strftime('%Y%m%d%H%M%S')
     p = os.path.join(DIST, 'index.html'); s = open(p, encoding='utf-8').read()
     s = re.sub(r'(css/style\.css|js/main\.js)\?v=[\w]+', lambda m: f'{m.group(1)}?v={ver}', s)
+    s = s.replace('src="js/firebase-config.js"', f'src="js/firebase-config.js?v={ver}"')
+    s = s.replace('<script type="module" src="js/main.js', '<script>window.AK_VER = "' + ver + '";</script>' + chr(10) + '<script type="module" src="js/main.js', 1)
     open(p, 'w', encoding='utf-8').write(s)
+    imp = re.compile(r'''(\b(?:from|import)\s*\(?\s*)(['"])(\.{1,2}/[\w./-]+?\.js)\2''')
+    for js in os.listdir(os.path.join(DIST, 'js')):
+        p = os.path.join(DIST, 'js', js); s = open(p, encoding='utf-8').read()
+        s2 = imp.sub(lambda m: f'{m.group(1)}{m.group(2)}{m.group(3)}?v={ver}{m.group(2)}', s)       # every module import, same stamp
+        s2 = s2.replace('icons.webp', f'icons.webp?v={ver}')
+        if s2 != s: open(p, 'w', encoding='utf-8').write(s2)
+    p = os.path.join(DIST, 'css', 'style.css'); s = open(p, encoding='utf-8').read(); open(p, 'w', encoding='utf-8').write(s.replace('icons.webp', f'icons.webp?v={ver}'))
     # zip for itch.io / any static host (index.html at the root of the archive)
     if os.path.exists(ZIP): os.remove(ZIP)
     with zipfile.ZipFile(ZIP, 'w', zipfile.ZIP_DEFLATED) as z:

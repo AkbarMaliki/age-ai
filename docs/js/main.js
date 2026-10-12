@@ -1,19 +1,19 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree } from './sim.js';
-import { generate } from './map.js';
-import { AI } from './ai.js';
-import { loadAll } from './assets.js';
-import { View, iso, UNIT_BOX } from './render.js';
-import { HUD } from './ui.js';
-import { Sound } from './audio.js';
-import { History, StatsPanel, score } from './stats.js';
-import { CardPanel, DeckBuilder } from './cards.js';
-import { Advisor } from './advisor.js';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js';
-import { Lockstep } from './lockstep.js';
-import { Lobby } from './lobby.js';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261012210204';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree } from './sim.js?v=20261012210204';
+import { generate } from './map.js?v=20261012210204';
+import { AI } from './ai.js?v=20261012210204';
+import { loadAll, vq } from './assets.js?v=20261012210204';
+import { View, iso, UNIT_BOX } from './render.js?v=20261012210204';
+import { HUD } from './ui.js?v=20261012210204';
+import { Sound } from './audio.js?v=20261012210204';
+import { History, StatsPanel, score } from './stats.js?v=20261012210204';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261012210204';
+import { Advisor } from './advisor.js?v=20261012210204';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261012210204';
+import { Lockstep } from './lockstep.js?v=20261012210204';
+import { Lobby } from './lobby.js?v=20261012210204';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -621,8 +621,8 @@ async function boot() {
   $('btnPlay').onclick = () => start(opts);
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp);background-position:-${p[0]}px -${p[1]}px` : ''; };
-  let iconsMeta = null; fetch('assets/icons.json').then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261012210204);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;
   $('btnDeck').onclick = () => { Sound.ui(); deckB.open(); };

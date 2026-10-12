@@ -8,7 +8,7 @@
 //   ack/pid  last turn a player has simulated (the host waits for stragglers)
 //   chat     (push) {name, color, text, t}
 // Commands travel as JSON strings so every client applies byte-identical objects (no RTDB array / undefined quirks).
-import { PLAYER_COLORS } from './data.js';
+import { PLAYER_COLORS } from './data.js?v=20261012210204';
 
 const ROOT = 'age/rooms', INDEX = 'age/index';     // index: {code: created} so abandoned rooms can be found cheaply
 const sanitize = (o) => JSON.parse(JSON.stringify(o, (k, v) => (v === undefined ? null : v)));

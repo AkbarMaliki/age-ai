@@ -4,7 +4,7 @@ import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED,
 import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree } from './sim.js';
 import { generate } from './map.js';
 import { AI } from './ai.js';
-import { loadAll } from './assets.js';
+import { loadAll, vq } from './assets.js';
 import { View, iso, UNIT_BOX } from './render.js';
 import { HUD } from './ui.js';
 import { Sound } from './audio.js';
@@ -622,7 +622,7 @@ async function boot() {
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
   // deck builder + achievements
   const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.png);background-position:-${p[0]}px -${p[1]}px` : ''; };
-  let iconsMeta = null; fetch('assets/icons.json').then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
+  let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;
   $('btnDeck').onclick = () => { Sound.ui(); deckB.open(); };

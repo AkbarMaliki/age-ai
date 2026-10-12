@@ -1,7 +1,7 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining } from './sim.js';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261012210204';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining } from './sim.js?v=20261012210204';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -47,7 +47,7 @@ export class HUD {
     $('idleVil').onclick = () => this.g.selectIdle();
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
-  iconStyle(key) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp);background-position:-${p[0]}px -${p[1]}px` : ''; }
+  iconStyle(key) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261012210204);background-position:-${p[0]}px -${p[1]}px` : ''; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
 
   notify(msg, cls = '') {

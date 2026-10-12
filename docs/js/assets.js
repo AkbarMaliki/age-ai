@@ -1,9 +1,11 @@
 // Atlas loading + per-player colour tinting (done once on a canvas, like AoE2's player-colour palette swap).
 import { Texture, Rectangle, CanvasSource } from 'pixi.js';
-import { PLAYER_RGB } from './data.js';
+import { PLAYER_RGB } from './data.js?v=20261012210204';
 
-const img = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('load ' + src)); i.src = src; });
-const json = (src) => fetch(src).then(r => { if (!r.ok) throw new Error('load ' + src); return r.json(); });
+// build version (set by tools/build.py in index.html): a new deploy never mixes with files cached from the last one
+export const vq = (u) => globalThis.AK_VER ? u + (u.includes('?') ? '&' : '?') + 'v=' + globalThis.AK_VER : u;
+const img = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('load ' + src)); i.src = vq(src); });
+const json = (src) => fetch(vq(src)).then(r => { if (!r.ok) throw new Error('load ' + src); return r.json(); });
 
 function tintCanvas(base, mask, rgb) {
   const w = base.width, h = base.height;
