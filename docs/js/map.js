@@ -2,8 +2,8 @@
 // rotation and a random seat for each player. Fairness: each player's home resources follow one shared, randomly rolled
 // layout (relative to the direction of the map centre), the map-wide features are copied around the centre once per
 // seat (rotational symmetry), and a final pass tops up any player that still ends up short of wood, gold, stone or food.
-import { createWorld, addResource, addBuilding, addUnit, addTreasure, rng, idx, del } from './sim.js?v=20261012210204';
-import { GAIA, TREASURES, RESOURCES, UNITS, TER, SEASONS } from './data.js?v=20261012210204';
+import { createWorld, addResource, addBuilding, addUnit, addTreasure, addRelic, rng, idx, del } from './sim.js?v=20261013073348';
+import { GAIA, TREASURES, RESOURCES, UNITS, TER, SEASONS, CIVS } from './data.js?v=20261013073348';
 
 export const T_GRASS = TER.GRASS, T_DIRT = TER.DIRT, T_FOREST = TER.FOREST, T_WATER = TER.WATER, T_GRASS2 = TER.GRASS2, T_HILL = TER.HILL, T_ROCK = TER.ROCK;
 
@@ -211,7 +211,8 @@ export function generate({ size = 80, players, seed = 7, type = 'random', opts =
   // ---- towns
   starts.forEach(([sx, sy], p) => {
     const tc = addBuilding(W, p, 'town_center', sx - 2, sy - 2, true);
-    for (let k = 0; k < 3; k++) addUnit(W, p, 'villager', sx - 1.5 + k * 1.2, sy + 3.0);
+    const cv = W.players[p].civ && CIVS[W.players[p].civ], nv = 3 + ((cv && cv.start && cv.start.villagers) || 0);
+    for (let k = 0; k < nv; k++) addUnit(W, p, 'villager', sx - 1.5 + (k % 3) * 1.2, sy + 3.0 + Math.floor(k / 3) * 1.1);
     addUnit(W, p, 'scout', sx + 3.2, sy + 1.0);
     W.players[p].start = [sx, sy]; W.players[p].tc = tc.id;
   });
@@ -254,6 +255,17 @@ export function generate({ size = 80, players, seed = 7, type = 'random', opts =
     for (let q = 0; q < np; q++) treasure(...polar(q, rel, d), type, [['bear'], ['bandit', 'bandit', 'bandit'], ['bandit', 'bandit', 'wolf']][pick], amt);
     n++;
   }
+
+  // ---- relics (AoE2): one per player at the same spot relative to each base, plus one in the middle of the map
+  const relicAt = (x, y) => { const s = spot(x, y, 3, 60); if (s) addRelic(W, Math.floor(s[0]), Math.floor(s[1])); return !!s; };
+  for (let k = 0; k < 100; k++) {
+    const rel = r() * step, d = size * U(0.18, 0.34), [x, y] = polar(0, rel, d);
+    if (!farFromBases(x, y, 24) || !inMap(x, y, 6)) continue;
+    if (M.water === 'islands' && !free(Math.floor(x), Math.floor(y))) continue;
+    for (let q = 0; q < np; q++) relicAt(...polar(q, rel, d));
+    break;
+  }
+  if (M.water !== 'islands') relicAt(size / 2, size / 2);
 
   if (M.water !== 'islands') connect(W, starts, terrain);
   else for (const P of W.players) P.res.wood += 200;               // islands: timber for the first dock

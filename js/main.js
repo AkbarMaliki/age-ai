@@ -1,7 +1,9 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
+import { CIVS, RELICS, CIV_KEYS } from './data.js';
+import { Saves } from './saves.js';
 import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree } from './sim.js';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js';
 import { generate } from './map.js';
 import { AI } from './ai.js';
 import { loadAll, vq } from './assets.js';
@@ -21,19 +23,19 @@ const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); ret
 class Game {
   constructor(app, A, opts) {
     this.app = app; this.A = A; this.opts = opts; this.me = 0;
-    const colors = [opts.color, ...PLAYER_COLORS.filter(c => c !== opts.color)].slice(0, opts.players);
-    this.watch = opts.mode === 'watch';
     const on = this.online = opts.online || null;      // { net, seats, me, spectator }
-    if (on) { this.me = on.spectator ? 0 : on.me; this.watch = !!on.spectator; this.seats = on.seats; }
-    const COLOR_NAME = { blue: 'Raja Biru', red: 'Raja Merah', green: 'Adipati Hijau', yellow: 'Baron Kuning' };
-    // every AI gets a random ready-made deck (its personality); the player brings the deck built in the menu
-    const deckKeys = Object.keys(DECKS), rnd = (n) => (Math.random() * n) | 0;
-    // online: everything comes from the host's game record, so every client builds the identical world
-    const players = on ? on.seats.map(s => ({ name: s.name, color: s.color, ai: !!s.bot, team: s.team, deck: !s.bot && s.deck && s.deck.length >= 8 ? [...s.deck] : null, style: s.style || null }))
-      : colors.map((c, i) => { const ai = this.watch || i > 0; return { name: this.watch ? COLOR_NAME[c] : i ? PLAYER_NAMES[i] : (opts.name || PLAYER_NAMES[0]), color: c, ai, team: i, deck: ai ? null : (opts.deck && opts.deck.length >= 8 ? [...opts.deck] : null), style: ai ? deckKeys[rnd(deckKeys.length)] : null }; });
-    this.W = generate({ size: opts.size, seed: opts.seed, type: opts.map, opts: { season: opts.season === 'random' ? null : opts.season, night: opts.night || 'full' }, players });
-    this.ais = on ? on.seats.map((s, i) => s.bot ? new AI(this.W, i, s.diff || 'normal') : null).filter(Boolean)
-      : this.W.players.filter(p => this.watch || p.id > 0).map(p => new AI(this.W, p.id, opts.diff));
+    // setup = every choice that shapes the world (seed, players, civilizations, AI personalities). Built once with all
+    // the randomness resolved, so a saved game / replay rebuilds the identical world and replays the recorded commands.
+    const rp = this.replay = opts.replay || null;      // { rec, mode: 'load' | 'watch' }
+    const setup = this.setup = rp ? rp.rec.setup : on ? Game.onlineSetup(on) : Game.makeSetup(opts);
+    this.me = rp && rp.mode === 'watch' ? setup.me || 0 : on ? (on.spectator ? 0 : on.me) : setup.me;
+    this.watch = (rp && rp.mode === 'watch') || (on ? !!on.spectator : setup.watch);
+    if (on) this.seats = on.seats;
+    this.W = generate({ size: setup.size, seed: setup.seed, type: setup.map, opts: { season: setup.season, night: setup.night, relicWin: setup.relicWin }, players: setup.players });
+    this.ais = setup.ais.map(a => new AI(this.W, a.pid, a.diff));
+    // the command log (save / replay): commands keyed by the tick they were given at
+    this.rec = { v: 2, setup, cmds: rp && rp.mode === 'load' ? [] : rp ? rp.rec.cmds : [] };
+    if (rp) { this.feedI = 0; this.feedEnd = rp.rec.tick || 0; if (rp.mode === 'load') this.ff = this.feedEnd; }
     this.view = new View(app, this.W, A, this.me);
     this.sel = []; this.groups = {}; this.acc = 0; this.speed = 1; this.paused = false; this.placing = null; this.over = false;
     this.snd = new Sound(); this.lastAttackNote = -99; this.lastHoused = -99;
@@ -51,7 +53,10 @@ class Game {
     this.hud.notify(`${AGES[1]} dimulai. Kumpulkan sumber daya dan kalahkan musuhmu!`, 'age');
     this.hud.notify(`Peta: ${this.W.map.name} — ${this.W.map.desc}`);
     const se = SEASONS[this.W.opts.season]; this.hud.notify(`${se.name}: ${se.desc}`);
-    if (this.watch) this.hud.notify('Gaya AI: ' + this.W.players.map(p => p.name + ' — ' + DECKS[p.style].name).join(', '));
+    if (this.watch) this.hud.notify((this.replay ? '🎬 Replay — ' : 'Gaya AI: ') + this.W.players.map(p => p.name + (CIVS[p.civ] ? ' ' + CIVS[p.civ].glyph : '') + ' — ' + (p.style && DECKS[p.style] ? DECKS[p.style].name : 'pemain')).join(', '));
+    const myCiv = !this.watch && this.W.players[this.me].civ && CIVS[this.W.players[this.me].civ];
+    if (myCiv) this.hud.notify(`${myCiv.glyph} ${myCiv.name}: ${myCiv.desc}`, 'age');
+    if (this.W.opts.relicWin) this.hud.notify('📿 Kemenangan Relik aktif: kuasai semua relik selama 5 menit untuk menang.');
     if (!this.watch) this.hud.notify('Lokasi musuh belum diketahui. Kirim pengintai untuk menjelajah! (I = statistik)');
     if (on) {
       this.lock = new Lockstep(this, on.net, !!on.spectator);
@@ -61,6 +66,56 @@ class Game {
       $('btnChat').classList.remove('hidden'); $('btnChat').onclick = () => this.openChat();
     }
     app.ticker.add(this.frame, this);
+  }
+  static makeSetup(opts) {
+    const COLOR_NAME = { blue: 'Raja Biru', red: 'Raja Merah', green: 'Adipati Hijau', yellow: 'Baron Kuning' };
+    const deckKeys = Object.keys(DECKS), rnd = (n) => (Math.random() * n) | 0, watch = opts.mode === 'watch';
+    const colors = [opts.color, ...PLAYER_COLORS.filter(c => c !== opts.color)].slice(0, opts.players);
+    const civOf = (c) => CIVS[c] ? c : CIV_KEYS[rnd(CIV_KEYS.length)];
+    // every AI gets a random ready-made deck (its personality) and civilization; the player brings the deck built in the menu
+    const players = colors.map((c, i) => { const ai = watch || i > 0; return { name: watch ? COLOR_NAME[c] : i ? PLAYER_NAMES[i] : (opts.name || PLAYER_NAMES[0]), color: c, ai, team: i,
+      deck: ai ? null : (opts.deck && opts.deck.length >= 8 ? [...opts.deck] : null), style: ai ? deckKeys[rnd(deckKeys.length)] : null, civ: civOf(ai ? null : opts.civ) }; });
+    return { size: opts.size, seed: opts.seed || ((Math.random() * 1e9) | 0), map: opts.map, season: opts.season === 'random' ? null : opts.season, night: opts.night || 'full',
+      relicWin: opts.relicWin === 'on', players, ais: players.map((p, i) => p.ai ? { pid: i, diff: opts.diff } : null).filter(Boolean), me: 0, watch };
+  }
+  // online: everything comes from the host's game record, so every client builds the identical world
+  static onlineSetup(on) {
+    const g = on.game || {}, cfg = g.cfg || {};
+    const players = on.seats.map(s => ({ name: s.name, color: s.color, ai: !!s.bot, team: s.team, deck: !s.bot && s.deck && s.deck.length >= 8 ? [...s.deck] : null, style: s.style || null, civ: s.civ || null }));
+    return { size: cfg.size, seed: cfg.seed, map: cfg.map, season: cfg.season === 'random' ? null : cfg.season, night: cfg.night || 'full', relicWin: !!cfg.relicWin, players,
+      ais: on.seats.map((s, i) => s.bot ? { pid: i, diff: s.diff || 'normal' } : null).filter(Boolean), me: on.spectator ? 0 : on.me, watch: !!on.spectator, online: true };
+  }
+  // meta commands in a command log (online: a dropped player's AI takes over and hands back)
+  applyMeta(c) {
+    const W = this.W, P = W.players[c.pid]; if (!P) return;
+    if (c.t === '_ai' && !this.ais.some(a => a.pid === c.pid)) { P.ai = true; this.ais.push(new AI(W, c.pid, 'normal')); }
+    if (c.t === '_human') { P.ai = false; this.ais = this.ais.filter(a => a.pid !== c.pid || this.setup.ais.some(s => s.pid === c.pid)); }
+  }
+  // replay / load: hand the sim the recorded commands of this tick (before the AIs think, like when they were given)
+  feed() {
+    const cmds = this.rec.cmds, W = this.W;
+    if (!this.replay) return;
+    const src = this.replay.mode === 'load' ? this.replay.rec.cmds : cmds;
+    while (this.feedI < src.length && src[this.feedI][0] <= W.tick) {
+      const c = JSON.parse(JSON.stringify(src[this.feedI][1])); this.feedI++;
+      if (c.t[0] === '_') this.applyMeta(c); else command(W, c);
+      if (this.replay.mode === 'load') cmds.push([W.tick, c]);
+    }
+  }
+  // one simulation tick (shared by play, fast-forward and replay)
+  tickOnce(events = true) {
+    this.feed();
+    for (const ai of this.ais) ai.tick();
+    step(this.W); this.hist.tick();
+    for (const e of this.W.ev) if (events || e.k === 'victory' || e.k === 'defeated') this.onEvent(e);
+    this.W.ev.length = 0;
+  }
+  // a snapshot to save: setup + every command so far (+ where we are)
+  record() { return { v: 2, setup: this.setup, cmds: this.rec.cmds, tick: this.W.tick }; }
+  saveGame(slot, kind = 'save') {
+    const P = this.W.players[this.me];
+    const meta = { kind, date: Date.now(), map: this.W.map.name, minutes: Math.floor(this.W.t / 60), me: this.watch ? null : P.name, players: this.W.players.map(p => ({ name: p.name, color: p.color, civ: p.civ, ai: p.ai })), online: !!this.online };
+    return Saves.put(slot, meta, this.record());
   }
   sfx(k, x, y) {
     let gain = 1, pan = 0;
@@ -74,7 +129,12 @@ class Game {
   }
   hasBuilt(t) { return hasBuilt(this.W, this.me, t); }
   // a command from the local player: straight into the sim offline, through the lockstep online
-  send(c) { if (this.lock) this.lock.send(c); else if (!this.watch) command(this.W, c); }
+  send(c) {
+    if (this.lock) { this.lock.send(c); return; }
+    if (this.watch || this.ff) return;
+    this.rec.cmds.push([this.W.tick, JSON.parse(JSON.stringify(c))]);      // the log (saves, replays)
+    command(this.W, c);
+  }
   openChat() {
     const box = $('chatBox'), inp = $('chatIn'); box.classList.remove('hidden'); inp.value = ''; inp.focus();
     inp.onkeydown = (e) => {
@@ -88,18 +148,25 @@ class Game {
   // ---------------------------------------------------------------- loop
   frame() {
     const dt = Math.min(0.1, this.app.ticker.deltaMS / 1000);
-    if (this.lock) {
+    if (this.ff) {                       // loading a save: replay every command at full speed
+      const t0 = performance.now();
+      while (this.W.tick < this.ff && performance.now() - t0 < 40) this.tickOnce(false);
+      const k = this.W.tick / Math.max(1, this.ff);
+      $('netStatus').textContent = `Memuat permainan… ${Math.floor(k * 100)}%`; $('netStatus').classList.remove('hidden');
+      if (this.W.tick >= this.ff) { this.ff = null; this.feed(); this.replay = null; $('netStatus').classList.add('hidden'); this.hud.notify('Permainan dimuat. Lanjutkan!', 'age'); }
+    } else if (this.lock) {
       this.lock.update(dt);
       const st = this.lock.status(); if (st !== this.netSt) { this.netSt = st; $('netStatus').textContent = st; $('netStatus').classList.toggle('hidden', !st); }
     } else if (!this.paused && !this.over) {
       this.acc += dt * GAME_SPEED * this.speed;
       let n = 0;
       while (this.acc >= TICK && n++ < 8) {
-        for (const ai of this.ais) ai.tick();
-        step(this.W); this.acc -= TICK; this.hist.tick();
-        for (const e of this.W.ev) this.onEvent(e);
-        this.W.ev.length = 0;
+        if (this.replay && this.replay.mode === 'watch' && this.W.tick >= this.feedEnd && this.feedI >= this.rec.cmds.length) {
+          if (!this.replayDone) { this.replayDone = true; this.hud.notify('🎬 Replay selesai.', 'age'); } this.acc = 0; break;
+        }
+        this.tickOnce(); this.acc -= TICK;
       }
+      if (!this.watch && !this.online && !this.replay && this.W.t - (this.lastAuto || 0) > 120 && this.W.winner < 0) { this.lastAuto = this.W.t; this.saveGame('auto', 'auto'); }
       if (n >= 8) this.acc = 0;
     }
     if (this.watch) this.spectatorCam(dt);
@@ -154,11 +221,22 @@ class Game {
         this.hud.notify(`${W.players[e.owner].name} ${e.resign ? 'menyerah' : 'telah dikalahkan'}.`, e.owner === this.me ? 'bad' : 'age');
         if (e.owner === this.me && !this.lost && W.winner < 0) this.end(false);      // others may still be fighting (1 vs 2 / 1 vs 3)
         break;
-      case 'victory': this.end(e.team === W.players[this.me].team); break;
+      case 'victory': if (e.relic) { this.relicWin = true; this.hud.notify('📿 Kemenangan Relik!', 'age'); } this.end(e.team === W.players[this.me].team); break;
       case 'shipready': if (mine) { this.snd.play('card'); this.hud.notify('Kiriman Kerajaan tersedia! Buka 🃏 Kiriman (K) dan pilih kartu.', 'age'); } break;
       case 'shipsent': if (mine) this.hud.notify(`Kiriman berangkat: ${CARDS[e.card].name} — tiba dalam ${XP.travel} detik.`); break;
       case 'shipment': if (mine) { this.snd.play('ship'); this.hud.notify(`Kiriman tiba di Pusat Kota: ${CARDS[e.card].name}!`, 'age'); this.view.fx({ k: 'age', x: e.x, y: e.y }); } break;
       case 'trade': if (mine) this.snd.play('coin'); break;
+      case 'convert':
+        if (mine) { this.snd.play('tech'); this.hud.notify(`✝ ${UNITS[e.type].name} musuh berhasil dikonversi!`, 'age'); }
+        else if (e.from === this.me) { this.snd.play('alert'); this.hud.notify(`${UNITS[e.type].name} kita dikonversi oleh biarawan ${W.players[e.owner].name}!`, 'bad'); }
+        if (vis || mine || e.from === this.me) this.view.fx(e); break;
+      case 'chant': if (vis) this.view.fx(e); break;
+      case 'relic': if (mine) { this.snd.play('treasure'); this.hud.notify(`📿 Relik disimpan di Biara: +${Math.round(RELICS.gold * 60)} emas per menit.`, 'age'); } else if (vis) this.hud.notify(`${W.players[e.owner].name} menyimpan sebuah relik.`, 'enemy'); break;
+      case 'relicpick': if (mine) this.hud.notify('Biarawan membawa relik — antar ke Biara (klik kanan Biara).'); break;
+      case 'relichold': { const t = W.players.find(p => p.team === e.team); this.hud.notify(t && t.team === P.team ? `📿 Semua relik kita kuasai! Pertahankan ${Math.round(e.secs / 60)} menit untuk menang.` : `📿 ${t ? t.name : 'Musuh'} menguasai semua relik! Rebut atau hancurkan Biaranya dalam ${Math.round(e.secs / 60)} menit!`, t && t.team === P.team ? 'age' : 'bad'); break; }
+      case 'relicbroken': this.hud.notify('Penguasaan relik terputus.'); break;
+      case 'bell': if (mine) this.hud.notify(e.on ? '🔔 Lonceng Kota! Penduduk berlindung dan menembakkan panah dari dalam.' : '🔔 Lonceng dibunyikan lagi — penduduk kembali bekerja.', 'age'); else if (e.on && vis) this.hud.notify(`${W.players[e.owner].name} membunyikan lonceng kota.`, 'enemy'); break;
+      case 'heal': if (vis && Math.random() < 0.3) this.view.fx({ k: 'heal', x: e.x, y: e.y }); break;
     }
   }
   // first sighting of an enemy building (stats History). Players only hear about their own discoveries.
@@ -264,13 +342,25 @@ class Game {
     const ships = this.ownUnits().filter(u => u.cargo && u.cargo.length);
     for (const s of ships) { const f = nearestFree(this.W, s.x, s.y, this.me, 6); if (f) this.send({ t: 'unload', pid: this.me, ids: [s.id], x: f[0] + 0.5, y: f[1] + 0.5 }); }
   }
+  startTarget(kind) { this.targeting = kind; this.placing = null; this.view.setGhost(null); this.hud.notify({ patrol: 'Klik titik tujuan patroli (Esc batal).', follow: 'Klik unit yang ingin dikawal (Esc batal).', ground: 'Klik titik yang ingin dibombardir (Esc batal).' }[kind]); this.snd.play('click'); }
+  useTarget(px, py) {
+    const kind = this.targeting; this.targeting = null; this.app.canvas.style.cursor = '';
+    const [x, y] = this.view.screenToWorld(px, py), t = this.pick(px, py), ids = this.ownUnits().map(u => u.id), q = !!(this.keys && this.keys.Shift) || undefined;
+    if (!ids.length) return;
+    if (kind === 'patrol') this.send({ t: 'patrol', pid: this.me, ids, x, y, q });
+    if (kind === 'ground') this.send({ t: 'ground', pid: this.me, ids, x, y, q });
+    if (kind === 'follow') { if (!t || t.kind !== 'unit') { this.hud.notify('Pilih sebuah unit untuk dikawal.', 'bad'); return; } this.send({ t: 'follow', pid: this.me, ids, target: t.id, q }); }
+    this.view.marker(x, y, kind === 'patrol' ? 0x90d0ff : kind === 'ground' ? 0xff5040 : 0xffffff); this.snd.play('click');
+  }
+  setStance(st) { const ids = this.ownUnits().filter(u => MILITARY(u.type)).map(u => u.id); this.send({ t: 'stance', pid: this.me, ids, s: st }); this.snd.play('click'); }
+  ringBell(on) { this.send({ t: 'bell', pid: this.me, on }); this.snd.play(on ? 'alert' : 'click'); }
   useSpy(b) { this.send({ t: 'ability', pid: this.me, bid: b.id }); this.snd.play('click'); }
   // what the achievements look at
   summary(win) {
     const W = this.W, P = W.players[this.me], s = P.stats;
     return { win, diff: this.opts.diff, players: W.players.length, t: W.t, map: W.map.type, season: W.opts.season, night: W.opts.night !== 'off', age: P.age, score: score(W, P).total,
       feudalAt: this.track.feudalAt, maxVil: this.track.maxVil, built: s.built, killed: s.killed, razed: s.razed, treasures: s.treasures, trades: s.trades, cards: P.cards.length,
-      techs: [...P.techs], spies: this.track.spies, fished: s.fished, shipsSunk: s.shipsSunk, hungryDays: s.hungryDays, repaired: s.repaired, lostTC: this.track.lostTC };
+      techs: [...P.techs], spies: this.track.spies, fished: s.fished, shipsSunk: s.shipsSunk, hungryDays: s.hungryDays, repaired: s.repaired, healed: s.healed || 0, bells: s.bells || 0, converted: s.converted || 0, relicWin: !!this.relicWin, lostTC: this.track.lostTC };
   }
   endTable(P = this.W.players) {
     this.hist.next = 0; this.hist.tick();      // final timeline sample
@@ -343,7 +433,7 @@ class Game {
     if (this.watch) { this.centerOn(x, y); return; }
     const us = this.ownUnits();
     if (us.length) {
-      this.send({ t: 'smart', pid: this.me, ids: us.map(u => u.id), target: tgt ? tgt.id : 0, x, y });
+      this.send({ t: 'smart', pid: this.me, ids: us.map(u => u.id), target: tgt ? tgt.id : 0, x, y, q: !!(this.keys && this.keys.Shift) || undefined });   // shift: queue after the current order
       const lead = us.find(u => this.roleOf(u)) || us[0], role = this.roleOf(lead);
       if (role) {
         const hostile = tgt && (tgt.kind === 'unit' || tgt.kind === 'building') && tgt.owner !== this.me && !(tgt.kind === 'unit' && UNITS[tgt.type].animal && lead.type === 'villager');
@@ -358,7 +448,7 @@ class Game {
   }
   stop() { this.send({ t: 'stop', pid: this.me, ids: this.ownUnits().map(u => u.id) }); }
   deleteSel() { if (this.watch) return; for (const id of this.sel) { const e = this.W.ents.get(id); if (e && e.owner === this.me) this.send({ t: 'delete', pid: this.me, id }); } }
-  train(b, u) { if (!canAfford(this.W.players[this.me], UNITS[u].cost)) { this.snd.play('nope'); return; } this.send({ t: 'train', pid: this.me, bid: b.id, type: u }); }
+  train(b, u) { const P = this.W.players[this.me], t = trainType(P, u); if (!UNITS[t] || !canAfford(P, unitCost(P, t))) { this.snd.play('nope'); return; } this.send({ t: 'train', pid: this.me, bid: b.id, type: u }); }
   research(b, t) { this.send({ t: 'research', pid: this.me, bid: b.id, tech: t }); }
   cancel(b, i) { this.send({ t: 'cancel', pid: this.me, bid: b.id, i }); this.snd.play('click'); }
   selectIdle() {
@@ -470,6 +560,7 @@ class Game {
     this.tap = null;
   }
   handleTap(px, py) {
+    if (this.targeting) { this.useTarget(px, py); return; }
     if (this.placing) { this.mouse = { x: px, y: py, inside: false }; this.updateGhost(); this.place(false); return; }
     const t = this.pick(px, py), [x, y] = this.view.screenToWorld(px, py);
     if (this.watch) { if (t) this.select([t.id]); else this.sel = []; return; }
@@ -522,7 +613,7 @@ class Game {
       const h = this.pick(e.offsetX, e.offsetY); this.hover = h ? h.id : 0;
       const own = this.ownUnits();
       let cur = 'default';
-      if (this.placing) cur = 'crosshair';
+      if (this.placing || this.targeting) cur = 'crosshair';
       else if (h && own.length) {
         const vil = own.some(u => u.type === 'villager');
         if (h.kind === 'unit' && UNITS[h.type].food && vil) cur = 'url(assets/cur_gather.png) 4 4, pointer';
@@ -553,6 +644,7 @@ class Game {
         this.boxSelect(d.x, d.y, e.offsetX, e.offsetY, e.shiftKey);
         return;
       }
+      if (this.targeting) { this.useTarget(e.offsetX, e.offsetY); return; }
       const t = this.pick(e.offsetX, e.offsetY);
       if (!t) { if (!e.shiftKey) this.sel = []; return; }
       this.clickSelect(t, e.shiftKey);
@@ -565,6 +657,7 @@ class Game {
       if (e.key === 'i' || e.key === 'I' || e.key === 'F4') { e.preventDefault(); this.stats.toggle(); return; }
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); this.cards.toggle(); return; }
       if ((e.key === 'j' || e.key === 'J') && !this.watch) { e.preventDefault(); this.advisor.toggle(); return; }
+      if (e.key === 'Escape' && this.targeting) { this.targeting = null; this.app.canvas.style.cursor = ''; return; }
       if (e.key === 'Escape' && this.advisor.open) { this.advisor.toggle(false); return; }
       if (e.key === 'Escape' && this.stats.open) { this.stats.toggle(false); return; }
       if (e.key === 'Escape' && this.cards.open) { this.cards.toggle(false); return; }
@@ -586,6 +679,7 @@ class Game {
       if (e.key === '=' || e.key === '+') { this.zoomAt(this.app.screen.width / 2, this.app.screen.height / 2, 1.15); return; }
       if (e.key === 'Delete') { this.deleteSel(); return; }
       if (e.key === '.') { this.selectIdle(); return; }
+      if ((e.key === 'b' || e.key === 'B') && !this.watch && (!this.sel.length || this.sel.some(id => this.W.ents.get(id)?.type === 'town_center'))) { this.ringBell(!this.W.players[this.me].bell); return; }   // B: town bell (with nothing or a TC selected)
       if (e.key === 'h' || e.key === 'H') { const tc = this.W.ents.get(this.W.players[this.me].tc) || [...this.W.ents.values()].find(x => x.kind === 'building' && x.owner === this.me && x.type === 'town_center'); if (tc) { this.select([tc.id]); this.centerOn(tc.x + 2, tc.y + 2); } return; }
       if (e.key === ' ' ) { e.preventDefault(); const u = this.W.ents.get(this.sel[0]) || (this.attackAt && { x: this.attackAt[0], y: this.attackAt[1] }); if (u) this.centerOn(u.x + (u.w || 0) / 2, u.y + (u.h || 0) / 2); return; }
       if (this.placing && (e.key === 'r' || e.key === 'R') && BUILDINGS[this.placing.type].len) { this.placing.axis = this.placing.axis === 'x' ? 'y' : 'x'; return; }
@@ -614,11 +708,54 @@ async function boot() {
   if (!opts.map) opts.map = 'random';
   if (!opts.season) opts.season = 'random';
   if (!opts.night) opts.night = 'full';
+  if (!opts.civ) opts.civ = 'random';
+  if (!opts.relicWin) opts.relicWin = 'off';
   if (![112, 144, 180, 220, 280].includes(opts.size)) opts.size = 144;
   const segs = document.querySelectorAll('.seg');
   segs.forEach(s => { const k = s.dataset.k; s.querySelectorAll('button').forEach(b => { b.classList.toggle('on', String(opts[k]) === b.dataset.v); b.onclick = () => { opts[k] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); store.set('opts', opts); Sound.ui(); }; }); });
   $('nameIn').value = opts.name || ''; $('nameIn').oninput = () => { opts.name = $('nameIn').value.slice(0, 16); store.set('opts', opts); };
+  // ---- home: few big choices; every detail lives in "Permainan Baru"
+  const MAPN = { random: 'Peta acak', padang: 'Padang', rimba: 'Rimba', danau: 'Danau', sungai: 'Sungai', tambang: 'Tambang', pegunungan: 'Gunung', kepulauan: 'Pulau' };
+  const refresh = () => {
+    const civ = CIVS[opts.civ];
+    $('quickInfo').textContent = opts.mode === 'watch' ? `Tonton ${opts.players} AI · ${MAPN[opts.map] || opts.map}` : `${civ ? civ.glyph + ' ' + civ.name : '🎲 Peradaban acak'} · ${MAPN[opts.map] || opts.map} · 1 vs ${opts.players - 1} · ${{ easy: 'Mudah', normal: 'Normal', hard: 'Sulit' }[opts.diff]}`;
+    $('civDesc').textContent = civ ? civ.desc : 'Peradaban dipilih acak di awal permainan.';
+    const auto = Saves.list().find(x => x.id === 'auto');
+    $('btnContinue').classList.toggle('hidden', !auto);
+    if (auto) $('contInfo').textContent = `${auto.map} · menit ${auto.minutes} · ${new Date(auto.date).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}`;
+  };
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.seg')) setTimeout(refresh, 0); });
   $('btnPlay').onclick = () => start(opts);
+  $('btnNew').onclick = () => { Sound.ui(); $('setup').classList.remove('hidden'); refresh(); };
+  $('setupBack').onclick = () => { Sound.ui(); $('setup').classList.add('hidden'); refresh(); };
+  $('btnStart').onclick = () => { $('setup').classList.add('hidden'); start(opts); };
+  $('btnContinue').onclick = () => { const rec = Saves.get('auto'); if (rec) startSaved(rec, 'load'); };
+  $('btnSettings').onclick = () => { Sound.ui(); $('settingsModal').classList.remove('hidden'); };
+  $('settingsClose').onclick = () => $('settingsModal').classList.add('hidden');
+  $('btnCivs').onclick = () => { Sound.ui(); $('civList').innerHTML = Object.entries(CIVS).map(([k, c]) => `<div class="civ"><b>${c.glyph} ${c.name}</b><p>${c.desc}</p></div>`).join(''); $('civModal').classList.remove('hidden'); };
+  $('civClose').onclick = () => $('civModal').classList.add('hidden');
+  // saves & replays
+  const KIND = { auto: '⏱ Simpanan otomatis', save: '💾 Simpanan', replay: '🎬 Replay' };
+  const renderSaves = () => {
+    const l = Saves.list();
+    $('saveList').innerHTML = l.length ? l.map(m => `<div class="sv" data-id="${m.id}"><div><b>${KIND[m.kind] || '💾'} — ${m.map || '?'}${m.online ? ' (online)' : ''}</b>
+      <small>${new Date(m.date).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })} · menit ${m.minutes ?? '?'} · ${(m.players || []).map(p => (CIVS[p.civ] ? CIVS[p.civ].glyph + ' ' : '') + p.name + (p.ai ? ' (AI)' : '')).join(', ')}</small></div>
+      <div class="acts">${m.kind !== 'replay' && !m.online ? '<button data-a="load">▶ Lanjutkan</button>' : ''}<button data-a="watch">🎬 Tonton</button><button data-a="dl" title="Unduh file">⬇</button><button data-a="del" title="Hapus">🗑</button></div></div>`).join('')
+      : '<div class="empty">Belum ada permainan tersimpan.</div>';
+    $('saveList').querySelectorAll('button[data-a]').forEach(b => b.onclick = () => {
+      const id = b.closest('.sv').dataset.id, a = b.dataset.a;
+      if (a === 'del') { Saves.del(id); renderSaves(); refresh(); return; }
+      if (a === 'dl') { Saves.download(id); return; }
+      const rec = Saves.get(id); if (!rec) return;
+      $('loadModal').classList.add('hidden'); startSaved(rec, a === 'load' ? 'load' : 'watch');
+    });
+  };
+  $('btnLoad').onclick = () => { Sound.ui(); renderSaves(); $('loadModal').classList.remove('hidden'); };
+  $('loadClose').onclick = () => $('loadModal').classList.add('hidden');
+  $('saveFile').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; try { await Saves.upload(f); renderSaves(); } catch (err) { alert(err.message); } e.target.value = ''; };
+  $('pSave').onclick = () => { if (!game) return; const id = game.online || game.watch ? null : game.saveGame(null, 'save'); game.hud.notify(id ? '💾 Permainan disimpan.' : game.online || game.watch ? 'Permainan online / tontonan tidak bisa disimpan untuk dilanjutkan — simpan replay di akhir pertandingan.' : 'Penyimpanan penuh.', id ? 'age' : 'bad'); game.togglePause(); };
+  $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
+  window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
   // deck builder + achievements
   const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.png);background-position:-${p[0]}px -${p[1]}px` : ''; };
@@ -647,7 +784,7 @@ async function boot() {
   $('volMusic').oninput = $('volSfx').oninput = vol; vol();
   $('loading').classList.add('hidden');
   addEventListener('pointerdown', () => { Sound.unlockStatic(); Sound.menuMusic(); }, { once: true });
-  window.__ak = { get game() { return game; }, start, app, lobby };
+  window.__ak = { get game() { return game; }, start, startSaved, app, lobby, Saves };
 }
 export const IS_TOUCH = matchMedia('(pointer: coarse)').matches || ('ontouchstart' in window && navigator.maxTouchPoints > 0);
 if (IS_TOUCH) document.body.classList.add('touch');
@@ -678,18 +815,27 @@ async function start(opts) {
   game = new Game(app, assetsCache, { ...opts, seed, deck: store.get('deck', null) });
   $('loading').classList.add('hidden'); $('hud').classList.remove('hidden');
 }
+// a saved game (load: fast-forward to where it was, then play on) or a replay (watch: spectator view, 1x-8x)
+async function startSaved(rec, mode) {
+  if (game) { game.destroy(); game = null; }
+  Sound.ui();
+  if (!await loadAssets(rec.setup.players.map(p => p.color))) return;
+  game = new Game(app, assetsCache, { replay: { rec, mode } });
+  $('loading').classList.add('hidden'); $('hud').classList.remove('hidden');
+}
 // an online game (fresh start, rejoin after a reload, or watching): world, seats and seed all come from the host
 async function startOnline(g, net, mode, opts) {
   if (game) { game.destroy(); game = null; }
   const seats = g.seats || [], me = seats.findIndex(s => s && s.pid === net.pid);
   if (!await loadAssets(seats.map(s => s.color))) return;
-  game = new Game(app, assetsCache, { ...g.cfg, diff: 'normal', online: { net, seats, me, spectator: mode === 'watch' || me < 0, name: opts.name } });
+  game = new Game(app, assetsCache, { online: { net, seats, me, spectator: mode === 'watch' || me < 0, name: opts.name, game: g } });
   $('loading').classList.add('hidden'); $('hud').classList.remove('hidden');
 }
 function toMenu() {
   if (game && game.online) { game.online.net.leave(); try { history.replaceState(null, '', location.pathname); } catch { } }
   if (game) { game.destroy(); game = null; }
-  window.__akProf && window.__akProf();
+  window.__akProf && window.__akProf(); window.__akRefresh && window.__akRefresh();
+  $('endReplay').textContent = '🎬 Simpan Replay';
   ['pauseMenu', 'endScreen', 'hud'].forEach(id => $(id).classList.add('hidden'));
   $('menu').classList.remove('hidden'); Sound.menuMusic();
 }

@@ -4,9 +4,9 @@
 //   ticks of turns they have. Every HASH_EVERY turns the host attaches a state hash; a mismatch means a desync.
 //   AIs run on every client (they are deterministic). Meta commands ('_ai' / '_human') hand a dropped player's
 //   kingdom to an AI and back. A client that (re)joins late replays every turn from 0 at full speed.
-import { step, command, TICK } from './sim.js?v=20261012210204';
-import { GAME_SPEED } from './data.js?v=20261012210204';
-import { AI } from './ai.js?v=20261012210204';
+import { step, command, TICK } from './sim.js?v=20261013073348';
+import { GAME_SPEED } from './data.js?v=20261013073348';
+import { AI } from './ai.js?v=20261013073348';
 
 export const TPT = 2, LEAD = 3, HASH_EVERY = 25;
 const MAX_LAG = 40;          // turns the host lets a player fall behind before it waits (~5 s)
@@ -102,7 +102,11 @@ export class Lockstep {
     if (!this.host && behind > normal + 2 * TPT) G.acc += (behind - normal) * TICK * Math.min(1, dt * 3);   // drifted behind: ease back
     const t0 = performance.now(); let ran = 0, blocked = false;
     while (G.acc >= TICK || this.catching) {
-      if (W.tick >= (this.ready + 1) * TPT) { blocked = true; break; }                 // waiting for the network
+      if (W.tick >= (this.ready + 1) * TPT) {                                          // out of turns
+        // a host (e.g. one just promoted) that has used up every turn publishes the next ones itself
+        if (this.host && W.tick % TPT === 0 && !(this.grace > 0) && this.lagOk(W.tick / TPT)) { while (this.published < W.tick / TPT + LEAD) this.publishNext(null); continue; }
+        blocked = true; break;                                                          // waiting for the network
+      }
       if (W.tick % TPT === 0 && !this.boundary()) { blocked = true; break; }            // host waiting for a slow player
       this.tickOnce(); G.acc = Math.max(0, G.acc - TICK); ran++;
       if (G.over || performance.now() - t0 > (this.catching ? 35 : 14)) break;
@@ -128,7 +132,7 @@ export class Lockstep {
         G.hud.notify('⚠ Permainan tidak sinkron dengan tuan rumah (desync). Coba muat ulang halaman untuk menyusul.', 'bad');
       }
     }
-    for (const c of tr.c) { if (!c || typeof c.t !== 'string') continue; if (c.t[0] === '_') this.meta(c); else command(W, c); }
+    for (const c of tr.c) { if (!c || typeof c.t !== 'string') continue; if (G.rec) G.rec.cmds.push([W.tick, c]); if (c.t[0] === '_') this.meta(c); else command(W, c); }
     if (!this.host && !this.spectator && !this.catching && n % 5 === 0 && n !== this.lastAck) { this.lastAck = n; this.net.ack(n); }
     return true;
   }

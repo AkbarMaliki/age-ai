@@ -27,6 +27,11 @@ export const ACH = [
   { id: 'island', name: 'Penakluk Samudra', desc: 'Menang di peta Kepulauan.', ok: r => r.win && r.map === 'kepulauan' },
   { id: 'winter', name: 'Musim Dingin Abadi', desc: 'Menang di Musim Dingin.', ok: r => r.win && r.season === 'salju' },
   { id: 'granary', name: 'Lumbung Penuh', desc: 'Menang tanpa pernah kelaparan (dengan siklus siang-malam).', ok: r => r.win && r.night && r.hungryDays === 0 },
+  { id: 'medic', name: 'Tabib Medan', desc: 'Sembuhkan 1500 HP pasukan dengan Tabib.', ok: r => r.healed >= 1500 },
+  { id: 'bell', name: 'Lonceng Bertahan', desc: 'Menang setelah membunyikan Lonceng Kota.', ok: r => r.win && r.bells > 0 },
+  { id: 'rush', name: 'Jalan Pedang', desc: 'Menang dengan naik Feodal lewat Jalan Pedang.', ok: r => r.win && r.techs.includes('feudal_war') },
+  { id: 'convert', name: 'Gembala Jiwa', desc: 'Konversi 10 unit musuh dengan Biarawan.', ok: r => r.converted >= 10 },
+  { id: 'relicwin', name: 'Penjaga Relik', desc: 'Menang lewat Kemenangan Relik.', ok: r => r.win && r.relicWin },
   { id: 'repair', name: 'Tukang Setia', desc: 'Perbaiki 2500 HP bangunan.', ok: r => r.repaired >= 2500 },
 ];
 export function loadProfile() {

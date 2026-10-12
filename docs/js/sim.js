@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS } from './data.js?v=20261012210204';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS } from './data.js?v=20261013073348';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -9,7 +9,7 @@ export function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79
 
 // ---------------------------------------------------------------- world
 const newMods = () => ({ gather: { food: 0, wood: 0, gold: 0, stone: 0, iron: 0 }, fish: 0, vilSpeed: 0, ma: 0, pa: 0, fee: 0, nightWork: 0, upkeep: 0, buildSpeed: 0, bldHp: 0, repair: 0,
-  infHp: 0, cavSpeed: 0, archAtk: 0, trainSpeed: 0, towerAtk: 0, milHp: 0, trickle: 0, wallCost: 0, gunpowderCost: 0 });
+  infHp: 0, cavSpeed: 0, archAtk: 0, trainSpeed: 0, towerAtk: 0, milHp: 0, trickle: 0, wallCost: 0, gunpowderCost: 0, techCost: 0 });
 // opts: night = 'full' (villagers rest at night) | 'visual' | 'off'; season = key of SEASONS
 export function createWorld({ size, terrain, players, seed = 1, opts = {} }) {
   const season = SEASONS[opts.season] ? opts.season : 'semi';
@@ -18,12 +18,18 @@ export function createWorld({ size, terrain, players, seed = 1, opts = {} }) {
     ents: new Map(), dyn: new Map(), ugrid: new Map(), nextId: 1,
     players: players.map((p, i) => ({ id: i, name: p.name, color: p.color, ai: !!p.ai, team: p.team ?? i, res: { ...START_RES }, age: 1, pop: 0, popCap: 0, techs: new Set(), alive: true,
       vis: new Uint8Array(size * size), exp: new Uint8Array(size * size), stats: newStats(), housed: false, deck: p.deck || null, style: p.style || null,
-      xp: 0, nextXp: XP.first, ships: 0, shipsEarned: 0, cards: [], shipment: null, mods: newMods(), sv: 0, spec: {}, hungry: false, spyUntil: 0, spyCd: 0 })),
+      xp: 0, nextXp: XP.first, ships: 0, shipsEarned: 0, cards: [], shipment: null, mods: newMods(), sv: 0, spec: {}, hungry: false, spyUntil: 0, spyCd: 0, civ: CIVS[p.civ] ? p.civ : null })),
     cmds: [], ev: [], rnd: rng(seed), seed, paths: 0, nodes: 0, winner: -1, unreach: new Map(),
     market: { ...MARKET.base },
-    opts: { night: opts.night || 'full', season }, season: SEASONS[season], frozen: !!SEASONS[season].frozen,
+    opts: { night: opts.night || 'full', season, relicWin: !!opts.relicWin }, season: SEASONS[season], frozen: !!SEASONS[season].frozen,
     night: false, day: 1, rainUntil: 0, weatherT: 90,
   };
+  for (const P of W.players) {                 // civilization: lasting bonuses, start, unique unit at the Castle
+    const cv = P.civ && CIVS[P.civ]; if (!cv) continue;
+    if (cv.mods) applyMods(P, cv.mods);
+    for (const r of RES) if (cv.start && cv.start[r]) P.res[r] += cv.start[r];
+    P.spec.unique = cv.unique;
+  }
   W.gaia = { id: GAIA, name: 'Alam', color: 'none', gaia: true, team: -1, res: { ...START_RES }, age: 1, pop: 0, popCap: 0, techs: new Set(), alive: true, stats: newStats(), mods: newMods(), sv: 0, spec: {} };
   return W;
 }
@@ -32,7 +38,7 @@ export function createWorld({ size, terrain, players, seed = 1, opts = {} }) {
 // tr = units trained per type, treasures = chests collected
 export function newStats() {
   return { units: 0, killed: 0, lost: 0, gathered: 0, built: 0, razed: 0, bldLost: 0, vilKilled: 0, killVal: 0, lostVal: 0, treasures: 0,
-    gres: Object.fromEntries(RES.map(r => [r, 0])), tr: {}, trades: 0, repaired: 0, fished: 0, hungryDays: 0, shipsSunk: 0, techs: 0 };
+    gres: Object.fromEntries(RES.map(r => [r, 0])), tr: {}, trades: 0, repaired: 0, fished: 0, hungryDays: 0, shipsSunk: 0, techs: 0, healed: 0, bells: 0, converted: 0, relics: 0 };
 }
 // ---- Home City experience (AoE3): enough XP earns a shipment
 export function addXp(W, P, n) {
@@ -77,12 +83,14 @@ export function stat(W, owner, type) {
   if (c === 'infantry') {
     if (T.has('scale_mail')) { s.ma++; s.pa++; } if (T.has('chain_mail')) { s.ma++; s.pa += 2; }
     s.hp *= 1 + M.infHp;
+    if (T.has('drill')) s.hp *= 1.15;
     if (T.has('doc_legion')) { s.hp *= 1.2; s.ma++; s.time *= 0.75; if (s.bonus.cavalry) s.bonus.cavalry += 5; }
     if (T.has('doc_formation')) s.pa++;
   }
-  if (c === 'cavalry') {
+  if (c === 'cavalry' || d.mounted) {        // horse archers ride with the cavalry upgrades
     if (T.has('scale_barding')) { s.ma++; s.pa++; } if (T.has('chain_barding')) { s.ma++; s.pa += 2; }
     if (T.has('doc_cavalry')) { s.atk += 2; s.hp *= 1.15; s.speed *= 1.1; }
+    if (T.has('husbandry')) s.speed *= 1.1;
     s.speed *= 1 + M.cavSpeed;
   }
   if (c === 'archer') {
@@ -92,6 +100,15 @@ export function stat(W, owner, type) {
     s.atk += M.archAtk;
     if (T.has('doc_archers')) { s.range++; s.acc = Math.min(1, (s.acc || 1) + 0.15); s.bonus.infantry = (s.bonus.infantry || 0) + 1; s.time *= 0.75; }
     if (T.has('doc_formation')) { s.ma++; s.pa++; }
+    if (T.has('thumb_ring') && s.proj !== 'bullet') { s.reload *= 0.85; s.acc = Math.min(1, (s.acc || 1) + 0.05); }
+    if (T.has('parthian') && s.proj !== 'bullet') s.kite = true;            // hit and run
+  }
+  if (s.heal && T.has('medicine')) s.heal *= 1.5;
+  if (type === 'monk') { if (T.has('fervor')) s.speed *= 1.15; if (T.has('sanctity')) s.hp *= 1.5; if (T.has('illumination')) s.faith *= 0.5; }
+  const cv = P.civ && CIVS[P.civ];
+  if (cv) {
+    const cs = cv.stat && cv.stat[c], us = cv.unitStat && cv.unitStat[type];
+    for (const m of [cs, us]) if (m) { if (m.reload) s.reload *= m.reload; if (m.hp) s.hp *= m.hp; if (m.speed) s.speed *= m.speed; }
   }
   if (s.proj && T.has('ballistics')) s.acc = Math.min(1, (s.acc || 1) + 0.12);
   if (c === 'siege' && T.has('doc_blitz')) s.atk *= 1.2;
@@ -137,11 +154,18 @@ export const costOf = (P, type) => {          // building cost after card discou
   return Object.fromEntries(Object.entries(c).map(([r, n]) => [r, Math.round(n * (1 + P.mods.wallCost))]));
 };
 export const techCost = (P, tech) => {
-  const c = TECHS[tech].cost; if (tech !== 'gunpowder' || !P.mods.gunpowderCost) return c;
-  return Object.fromEntries(Object.entries(c).map(([r, n]) => [r, Math.round(n * (1 + P.mods.gunpowderCost))]));
+  const t = TECHS[tech], c = t.cost, f = (tech === 'gunpowder' ? 1 + P.mods.gunpowderCost : 1) * (t.toAge ? 1 : 1 - P.mods.techCost);
+  if (f === 1) return c;
+  return Object.fromEntries(Object.entries(c).map(([r, n]) => [r, Math.round(n * f)]));
 };
-// specialist that replaces a base unit line once researched
+export const techTime = (P, tech) => TECHS[tech].time * (TECHS[tech].toAge ? 1 : 1 - P.mods.techCost);
+// specialist that replaces a base unit line once researched; 'unique' = the civilization's Castle unit
 export const trainType = (P, type) => (P.spec && P.spec[type]) || type;
+// unit price after civilization discounts
+export const unitCost = (P, type) => {
+  const c = UNITS[type].cost, f = P.civ && CIVS[P.civ] && CIVS[P.civ].cost && CIVS[P.civ].cost[type];
+  return f ? Object.fromEntries(Object.entries(c).map(([r, n]) => [r, Math.round(n * f)])) : c;
+};
 
 function add(W, e) { e.id = W.nextId++; W.ents.set(e.id, e); if (e.kind !== 'res' || e.type === 'carcass') W.dyn.set(e.id, e); return e; }
 export function del(W, id) { W.ents.delete(id); W.dyn.delete(id); }
@@ -178,9 +202,12 @@ export function addUnit(W, owner, type, x, y) {
   const u = add(W, { kind: 'unit', type, owner, x, y, px: x, py: y, hp: s.hp, maxHp: s.hp, dir: 90, anim: 'idle', aT: 0, order: null, path: null, cool: 0, carry: null, task: null, scan: 0, stuck: 0, home: [x, y],
     nav: !!d.naval, form: null, lastAtk: -99 });
   if (d.capacity) u.cargo = [];
+  if (d.convert) u.faith = 1;
   if (!d.animal && owner !== GAIA) { P.pop++; P.stats.units++; P.stats.tr[type] = (P.stats.tr[type] || 0) + 1; }
   return u;
 }
+// a relic lying on the ground (x, y = tile of its sprite); carrier = monk id, inBld = monastery id
+export function addRelic(W, i, j) { return add(W, { kind: 'relic', type: 'relic', x: i, y: j, w: 1, h: 1, carrier: 0, inBld: 0 }); }
 export function addTreasure(W, type, i, j, amount) {
   return add(W, { kind: 'treasure', type, x: i, y: j, w: 1, h: 1, amount, guards: [] });
 }
@@ -364,8 +391,8 @@ export function canBuild(W, pid, type) {
   return !(d.needs || []).some(t => !hasBuilt(W, pid, t));
 }
 export function canTrain(W, pid, type) {
-  const d = UNITS[type], P = W.players[pid];
-  return P.age >= d.age && (!d.needsTech || P.techs.has(d.needsTech));
+  const d = UNITS[type], P = W.players[pid]; if (!d) return false;
+  return P.age >= d.age && (!d.needsTech || P.techs.has(d.needsTech) || (P.spec && P.spec.unique === type));   // a civ's unique unit skips its research
 }
 export function placementOk(W, pid, type, i, j, axis = 'x') {
   const d = BUILDINGS[type], P = W.players[pid];
@@ -396,6 +423,10 @@ export function techOk(W, pid, tech, bld) {
 }
 
 function applyCmd(W, c) {
+  CMD = { user: true, q: !!c.q };
+  try { applyCmd0(W, c); } finally { CMD = { user: false, q: false }; }
+}
+function applyCmd0(W, c) {
   const P = W.players[c.pid]; if (!P || !P.alive) return;
   switch (c.t) {
     case 'move': {
@@ -422,6 +453,11 @@ function applyCmd(W, c) {
         if (vil && tgt.kind === 'unit' && UNITS[tgt.type].food) { setOrder(W, u, { t: 'attack', id: tgt.id, hunt: true }); continue; }   // hunt / slaughter
         if (tgt.kind === 'unit' && isAnimal(tgt) && tgt.owner === u.owner) { rest.push(u); continue; }
         if (tgt.kind === 'unit' && tgt.owner === u.owner && tgt.cargo && tgt.nav && !u.nav) { setOrder(W, u, { t: 'board', id: tgt.id }); continue; }   // climb aboard a transport
+        if (s.convert && tgt.kind === 'relic') { setOrder(W, u, { t: 'relic', id: tgt.id }); continue; }
+        if (s.convert && u.relic && tgt.kind === 'building' && tgt.owner === u.owner && BUILDINGS[tgt.type].relics) { setOrder(W, u, { t: 'relic', id: u.relic, to: tgt.id }); continue; }
+        if (s.convert && tgt.kind === 'unit' && enemies(W, tgt.owner, u.owner) && convertible(tgt)) { setOrder(W, u, { t: 'convert', id: tgt.id }); continue; }
+        if (s.heal && tgt.kind === 'unit' && !enemies(W, tgt.owner, u.owner) && !isAnimal(tgt) && tgt.id !== u.id) { setOrder(W, u, { t: 'heal', id: tgt.id }); continue; }
+        if (tgt.kind === 'relic') { setOrder(W, u, { t: 'move', x: tgt.x + 0.5, y: tgt.y + 1.5 }); continue; }
         if (tgt.kind === 'unit' || tgt.kind === 'building') {
           if (enemies(W, tgt.owner, u.owner)) {
             if (!targetable(tgt) || !s.atk || (u.type === 'ram' && tgt.kind !== 'building')) { rest.push(u); continue; }
@@ -467,8 +503,9 @@ function applyCmd(W, c) {
     case 'train': {
       const b = alive(W, c.bid); if (!b || b.owner !== c.pid || !b.built) break;
       const type = trainType(P, c.type), d = UNITS[type], bd = BUILDINGS[b.type];
-      if (!d || !(bd.trains || []).includes(c.type) || !canTrain(W, c.pid, type) || b.queue.length >= 5 || !canAfford(P, d.cost)) break;
-      pay(P, d.cost); b.queue.push({ unit: type, t: 0 });
+      const cost = d && unitCost(P, type);
+      if (!d || !(bd.trains || []).includes(c.type) || !canTrain(W, c.pid, type) || b.queue.length >= 5 || !canAfford(P, cost)) break;
+      pay(P, cost); b.queue.push({ unit: type, t: 0, cost });
       break;
     }
     case 'research': {
@@ -480,7 +517,7 @@ function applyCmd(W, c) {
     case 'cancel': {
       const b = alive(W, c.bid); if (!b || b.owner !== c.pid) break;
       const q = b.queue[c.i]; if (!q) break;
-      refund(P, q.unit ? UNITS[q.unit].cost : q.cost || TECHS[q.tech].cost); b.queue.splice(c.i, 1);
+      refund(P, q.cost || (q.unit ? UNITS[q.unit].cost : TECHS[q.tech].cost)); b.queue.splice(c.i, 1);
       break;
     }
     case 'rally': { const b = alive(W, c.bid); if (b && b.owner === c.pid) b.rally = { x: c.x, y: c.y, id: c.target || 0 }; break; }
@@ -504,7 +541,25 @@ function applyCmd(W, c) {
       break;
     }
     case 'resign': resign(W, c.pid); break;
-    case 'stop': for (const u of own(W, c.pid, c.ids)) setOrder(W, u, null); break;
+    case 'stop': for (const u of own(W, c.pid, c.ids)) { setOrder(W, u, null); u.oq = null; } break;
+    // patrol between where each unit stands and the point; guard (follow) a friendly unit; bombard a spot
+    case 'patrol': for (const u of own(W, c.pid, c.ids)) if (MILITARY(u.type) && stat(W, u.owner, u.type).atk > 0) setOrder(W, u, { t: 'patrol', ax: u.x, ay: u.y, bx: c.x, by: c.y, leg: 1 }); break;
+    case 'follow': { const t = alive(W, c.target); if (!t || t.kind !== 'unit') break; for (const u of own(W, c.pid, c.ids)) if (u !== t && !u.nav) setOrder(W, u, enemies(W, t.owner, u.owner) ? { t: 'attack', id: t.id } : { t: 'follow', id: t.id }); break; }
+    case 'ground': for (const u of own(W, c.pid, c.ids)) if (stat(W, u.owner, u.type).splash) setOrder(W, u, { t: 'ground', x: c.x, y: c.y }); break;
+    // stance: agresif (default: chase what it sees) | bertahan (fight, then return to its post) | diam (stand ground) | pasif (never auto-attack)
+    case 'stance': for (const u of own(W, c.pid, c.ids)) if (MILITARY(u.type) && STANCES.includes(c.s)) { u.stance = c.s === 'agresif' ? undefined : c.s; if (u.order && u.order.auto) setOrder(W, u, null); } break;
+    // town bell: every villager runs into the nearest shelter (Town Center, castle, tower, house) and adds arrows; ring again to go back to work
+    case 'bell': {
+      if (!!P.bell === !!c.on) break;
+      P.bell = !!c.on;
+      if (P.bell) { P.stats.bells++; restVillagers(W, P, true); W.ev.push({ k: 'bell', owner: P.id, on: true }); break; }
+      for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && u.bell) {
+        u.bell = false; if (restNow(W, P)) continue;                       // it is night anyway: they stay in
+        leaveHome(W, u); if (u.order && u.order.t === 'rest') setOrder(W, u, u.saved && u.saved.t !== 'idle' ? u.saved : null); u.saved = null;
+      }
+      W.ev.push({ k: 'bell', owner: P.id, on: false });
+      break;
+    }
     case 'delete': {
       const e = W.ents.get(c.id); if (!e || e.owner !== c.pid) break;
       if (e.kind === 'building' && !e.built) refund(P, costOf(P, e.type), 1 - e.progress);
@@ -537,7 +592,13 @@ function formation(W, us, x, y, fn, force) {
     left.delete(bi); fn(u, slots[bi][0], slots[bi][1], gs);
   }
 }
-export function setOrder(W, u, o) { u.order = o; u.path = null; u.wait = 0; if (o && o.t !== 'gather' && o.t !== 'drop' && u.type === 'villager' && o.t !== 'build' && o.t !== 'repair') u.task = o.t === 'attack' ? null : u.task; }
+export const STANCES = ['agresif', 'bertahan', 'diam', 'pasif'];
+let CMD = { user: false, q: false };          // while a player command is applied: is it shift-queued?
+export function setOrder(W, u, o) {
+  if (CMD.user) {
+    if (CMD.q && o && (u.order || (u.oq && u.oq.length))) { (u.oq ||= []).push(o); return; }
+    u.oq = null;
+  } u.order = o; u.path = null; u.wait = 0; if (o && o.t !== 'gather' && o.t !== 'drop' && u.type === 'villager' && o.t !== 'build' && o.t !== 'repair') u.task = o.t === 'attack' ? null : u.task; }
 
 // ---------------------------------------------------------------- tick
 export function step(W) {
@@ -567,6 +628,7 @@ export function step(W) {
   if (W.tick % 10 === 0) for (const r in W.market) { const b = MARKET.base[r]; W.market[r] += Math.sign(b - W.market[r]) * Math.min(Math.abs(b - W.market[r]), MARKET.drift * 10 * TICK); }
   if (W.tick % 4 === 0) updateVision(W);
   if (W.tick % 10 === 0) checkVictory(W);
+  if (W.tick % 10 === 5) relicTick(W);
 }
 
 // ---------------------------------------------------------------- day / night, food upkeep, weather
@@ -604,21 +666,21 @@ function upkeep(W, P) {
 const worksAtNight = (W, P) => P.mods.nightWork || P.techs.has('torches');
 export const MIDNIGHT = 1 - DAY.night / 2;
 // villagers of P should be indoors right now
-export const restNow = (W, P) => W.night && W.opts.night === 'full' && (!worksAtNight(W, P) || timeOfDay(W) >= MIDNIGHT);
+export const restNow = (W, P) => !!P.bell || (W.night && W.opts.night === 'full' && (!worksAtNight(W, P) || timeOfDay(W) >= MIDNIGHT));
 // dusk: gatherers and idle villagers walk home and go inside for the night (hidden, safe); builders and soldiers carry on.
 // Each house shelters 5, a Town Center 15; when every home is full they squeeze into the nearest one anyway.
-const ROOM = { house: 5, town_center: 15 };
-function restVillagers(W, P) {
+const ROOM = { house: 5, town_center: 15, castle: 20, watch_tower: 5 };      // shelters (night, town bell)
+function restVillagers(W, P, all = false) {
   if (!restNow(W, P)) return;
   const homes = [...W.dyn.values()].filter(e => e.kind === 'building' && e.owner === P.id && e.built && ROOM[e.type]);
   if (!homes.length) return;
   const used = new Map();
   for (const u of W.dyn.values()) {
-    if (u.kind !== 'unit' || u.owner !== P.id || u.type !== 'villager' || u.inside || (u.order && !['gather', 'drop', 'build', 'repair'].includes(u.order.t))) continue;
+    if (u.kind !== 'unit' || u.owner !== P.id || u.type !== 'villager' || u.inside || (u.order && u.order.t === 'rest') || (u.order && !all && !['gather', 'drop', 'build', 'repair'].includes(u.order.t))) continue;
     let h = null, hd = 1e9, any = null, ad = 1e9;
     for (const b of homes) { const dd = distTo(b, u.x, u.y); if (dd < ad) { ad = dd; any = b; } if ((used.get(b.id) || 0) < ROOM[b.type] && dd < hd) { hd = dd; h = b; } }
     h = h || any; used.set(h.id, (used.get(h.id) || 0) + 1);
-    u.saved = u.order || { t: 'idle' }; setOrder(W, u, { t: 'rest', id: h.id });
+    u.saved = u.order && u.order.t !== 'attack' && u.order.t !== 'move' ? u.order : { t: 'idle' }; setOrder(W, u, { t: 'rest', id: h.id }); if (P.bell) u.bell = true;
   }
 }
 function goHome(W, u) {
@@ -632,7 +694,9 @@ function leaveHome(W, u) {
   if (h && h.kind === 'building') { const f = nearestFree(W, h.x + h.w / 2, h.y + h.h + 0.5, u.owner, 4); if (f) { u.x = u.px = f[0] + 0.5; u.y = u.py = f[1] + 0.5; } }   // step out of the door
 }
 function wakeVillagers(W, P) {
+  if (P.bell) return;                                  // the town bell still rings: stay inside
   for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && u.saved) {
+    u.bell = false;
     leaveHome(W, u);
     if (u.order && u.order.t === 'rest') setOrder(W, u, u.saved.t === 'idle' ? null : u.saved);
     u.saved = null;
@@ -666,6 +730,7 @@ function speedOf(W, u) {
   let sp = stat(W, u.owner, u.type).speed;
   const o = u.order; if (o && o.gs) sp = Math.min(sp, o.gs);
   if (u.fb) sp *= u.fb.speed;
+  if (u.relic) sp *= RELICS.speed;
   if (!u.nav) { const k = tileAt(W, u.x, u.y); if (W.terrain[k] === TER.HILL) sp *= 0.72; else if (W.road[k]) sp *= 1.15; if (W.season.speed) sp *= W.season.speed; }
   return sp;
 }
@@ -743,12 +808,23 @@ function unitTick(W, u) {
   if (u.hitAt !== undefined) { u.hitAt -= TICK; if (u.hitAt <= 0) { const t = alive(W, u.hitTgt); if (t && distTo(t, u.x, u.y) <= reachOf(W, u, t) + 0.6) damage(W, t, dmgOf(W, u, t), u); u.hitAt = undefined; } }
   const k = tileAt(W, u.x, u.y);
   if ((W.occ[k] || (u.nav ? W.terrain[k] !== TER.WATER : W.terrain[k] === TER.WATER && !W.frozen)) && !passable(W, Math.floor(u.x), Math.floor(u.y), u.owner, u.nav)) { unstick(W, u); u.path = null; }   // never stay inside a footprint (or in the water)
+  if (!u.order && u.oq && u.oq.length) { u.order = u.oq.shift(); u.path = null; }     // next shift-queued order
   if (u.inside && (!u.order || u.order.t !== 'rest')) leaveHome(W, u);
+  if (s.convert && u.faith < 1) u.faith = Math.min(1, u.faith + TICK / s.faith);
   if (!u.order && u.type === 'villager' && (W.tick + u.id) % 20 === 0 && restNow(W, W.players[u.owner])) goHome(W, u);   // idle or just trained after dusk
+  if (u.hp < u.maxHp && u.owner >= 0 && W.t - (u.hitT ?? -99) > 8 && MILITARY(u.type) && W.players[u.owner].techs.has('medicine')) u.hp = Math.min(u.maxHp, u.hp + 0.4 * TICK);
   const o = u.order;
   if (!o) {
     u.anim = u.anim === 'attack' && u.aT < 0.8 ? 'attack' : 'idle';
-    if (u.type !== 'villager' && !d.animal && u.owner !== GAIA && s.atk > 0) { u.scan -= TICK; if (u.scan <= 0) { u.scan = 0.8; const t = findEnemy(W, u, Math.max(losOf(W, u), s.range || 0)); if (t) setOrder(W, u, { t: 'attack', id: t.id, auto: true }); } }
+    if (s.heal) { u.scan -= TICK; if (u.scan <= 0 && !u.relic) { u.scan = 0.6; const t = woundedNear(W, u, losOf(W, u)); if (t) setOrder(W, u, { t: 'heal', id: t.id, auto: true }); } return; }
+    if (u.type !== 'villager' && !d.animal && u.owner !== GAIA && s.atk > 0 && u.stance !== 'pasif') {
+      u.scan -= TICK;
+      if (u.scan <= 0) {
+        u.scan = 0.8;
+        const t = findEnemy(W, u, u.stance === 'diam' ? Math.max(1.3, s.range || 0) + 0.3 : Math.max(losOf(W, u), s.range || 0));
+        if (t) setOrder(W, u, { t: 'attack', id: t.id, auto: true, gx: u.x, gy: u.y });
+      }
+    }
     return;
   }
   switch (o.t) {
@@ -768,6 +844,16 @@ function unitTick(W, u) {
       o.lx = t.x; o.ly = t.y;
       if (o.auto && distTo(t, u.x, u.y) > losOf(W, u) + 3 + (s.range || 0)) { u.order = o.resume || null; u.path = null; return; }
       const reach = reachOf(W, u, t);
+      if (o.auto && u.stance === 'diam' && distTo(t, u.x, u.y) > reach + 0.2) { u.order = null; u.path = null; return; }          // stand ground
+      if (o.defend && Math.hypot(u.x - o.gx, u.y - o.gy) > 5) { u.order = o.resume || null; u.path = null; return; }        // a villager doesn't chase far
+      if (o.auto && u.stance === 'bertahan' && o.gx !== undefined && Math.hypot(u.x - o.gx, u.y - o.gy) > 6) { setOrder(W, u, { t: 'move', x: o.gx, y: o.gy }); return; }   // back to the post
+      // hit and run: a mounted archer (or any archer with Taktik Parthia) steps away from melee while reloading
+      if (s.kite && (u.kiteT || 0) <= 0 && u.cool > 0.25 && (W.tick + u.id) % 3 === 0) { const th = meleeThreat(W, u, 1.9); if (th) { u.kiteT = 0.6; u.kx = u.x - th.x; u.ky = u.y - th.y; } }
+      if (u.kiteT > 0) {
+        u.kiteT -= TICK; const L = Math.hypot(u.kx, u.ky) || 1, sp = speedOf(W, u) * TICK, nx = u.x + u.kx / L * sp, ny = u.y + u.ky / L * sp;
+        if (passable(W, Math.floor(nx), Math.floor(ny), u.owner, u.nav)) { u.x = nx; u.y = ny; face(u, u.kx, u.ky); u.anim = 'walk'; u.path = null; break; }
+        u.kiteT = 0;
+      }
       if (distTo(t, u.x, u.y) <= reach) {
         u.path = null; faceTo(u, t);
         if (s.minRange && distTo(t, u.x, u.y) < s.minRange) { u.order = o.resume || null; return; }
@@ -786,6 +872,77 @@ function unitTick(W, u) {
         if (moveAlong(W, u, cx, cy, goalNear(W, t, reach))) u.path = null;
         else if (u.path && (u.path.exhausted || u.fails >= 3)) { markUnreachable(W, t.id, u.owner); u.fails = 0; u.order = o.resume || null; u.path = null; }
       }
+      break;
+    }
+    case 'convert': {      // a monk works on an enemy for 4-10 s (needs full faith), then the unit changes sides
+      const t = alive(W, o.id);
+      if (!t || t.kind !== 'unit' || !enemies(W, t.owner, u.owner) || !convertible(t) || u.relic) { u.order = null; u.anim = 'idle'; break; }
+      const d2 = Math.hypot(t.x - u.x, t.y - u.y);
+      if (d2 > s.convert + (o.t0 !== undefined ? 3 : 0.3)) { o.t0 = undefined; moveAlong(W, u, t.x, t.y, (i, j) => Math.hypot(i + 0.5 - t.x, j + 0.5 - t.y) <= s.convert - 0.5); break; }
+      u.path = null; faceTo(u, t);
+      if (u.faith < 1) { u.anim = 'idle'; break; }
+      if (o.t0 === undefined) { o.t0 = W.t; o.dur = 4 + W.rnd() * 6; }
+      u.anim = 'attack';
+      if (u.aT > 1.3) { u.aT = 0; W.ev.push({ k: 'chant', x: t.x, y: t.y, owner: u.owner }); }
+      if (W.t - o.t0 >= o.dur) { const from = t.owner; changeOwner(W, t, u.owner); u.faith = 0; u.order = null; W.players[u.owner].stats.converted++; W.ev.push({ k: 'convert', x: t.x, y: t.y, owner: u.owner, from, type: t.type }); }
+      break;
+    }
+    case 'relic': {        // fetch a relic, then carry it into the nearest monastery of ours
+      const r = W.ents.get(u.relic || o.id);
+      if (!r || r.kind !== 'relic') { u.order = null; u.relic = 0; break; }
+      if (!u.relic) {
+        if (r.carrier || r.inBld) { u.order = null; u.anim = 'idle'; break; }
+        if (Math.hypot(r.x + 0.5 - u.x, r.y + 0.5 - u.y) <= 1.3) { r.carrier = u.id; u.relic = r.id; u.path = null; W.ev.push({ k: 'relicpick', x: u.x, y: u.y, owner: u.owner }); }
+        else moveAlong(W, u, r.x + 0.5, r.y + 0.5, (i, j) => Math.hypot(i - r.x, j - r.y) <= 1.0);
+        break;
+      }
+      let m = o.to ? alive(W, o.to) : null;
+      if (!m || !m.built || m.owner !== u.owner) {
+        m = null; let bd = 1e9;
+        for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === u.owner && e.built && BUILDINGS[e.type].relics) { const dd = distTo(e, u.x, u.y); if (dd < bd) { bd = dd; m = e; } }
+        if (!m) { u.anim = 'idle'; break; }           // no monastery yet: keep holding it
+        o.to = m.id;
+      }
+      if (distTo(m, u.x, u.y) <= NEAR + SLACK + 0.3) {
+        r.carrier = 0; r.inBld = m.id; u.relic = 0; u.order = null; u.anim = 'idle';
+        W.players[u.owner].stats.relics++; W.ev.push({ k: 'relic', x: m.x + m.w / 2, y: m.y + m.h / 2, owner: u.owner });
+      } else moveAlong(W, u, ...center(m), goalNear(W, m, NEAR));
+      break;
+    }
+    case 'patrol': {
+      if (u.scan === undefined || (u.scan -= TICK) <= 0) { u.scan = 0.6; const t = findEnemy(W, u, Math.max(losOf(W, u), s.range || 0)); if (t) { u.order = { t: 'attack', id: t.id, resume: o, auto: true }; u.path = null; return; } }
+      const [px, py] = o.leg ? [o.bx, o.by] : [o.ax, o.ay];
+      if (Math.hypot(u.x - px, u.y - py) < 0.8 || moveAlong(W, u, px, py, (i, j) => Math.abs(i + 0.5 - px) < 0.8 && Math.abs(j + 0.5 - py) < 0.8, true) || (u.path && u.path.exhausted && u.pi >= u.path.pts.length - 1)) { o.leg = 1 - o.leg; u.path = null; }
+      break;
+    }
+    case 'follow': {       // stay close to a friend and fight whatever comes near it
+      const t = alive(W, o.id);
+      if (!t || t.kind !== 'unit' || enemies(W, t.owner, u.owner)) { u.order = null; u.anim = 'idle'; break; }
+      if (s.atk > 0 && (u.scan === undefined || (u.scan -= TICK) <= 0)) { u.scan = 0.6; const e = findEnemy(W, t, 5); if (e && distTo(e, u.x, u.y) < losOf(W, u) + 2) { u.order = { t: 'attack', id: e.id, resume: o, auto: true }; u.path = null; return; } }
+      if (Math.hypot(t.x - u.x, t.y - u.y) > 2.6) { if (!u.path || (u.fT = (u.fT || 0) - TICK) <= 0) { u.fT = 1; u.path = null; } moveAlong(W, u, t.x, t.y, (i, j) => Math.hypot(i + 0.5 - t.x, j + 0.5 - t.y) < 2); }
+      else { u.path = null; u.anim = 'idle'; }
+      break;
+    }
+    case 'ground': {       // siege bombards a spot (splash), e.g. a crowd behind a wall
+      const d2 = Math.hypot(o.x - u.x, o.y - u.y);
+      if (d2 > (s.range || 1)) { moveAlong(W, u, o.x, o.y, (i, j) => Math.hypot(i + 0.5 - o.x, j + 0.5 - o.y) <= (s.range || 1) - 0.5); break; }
+      u.path = null; face(u, o.x - u.x, o.y - u.y);
+      if (u.cool <= 0) {
+        u.cool = s.reload; u.anim = 'attack'; u.aT = 0;
+        W.ev.push({ k: s.proj === 'ball' ? 'cannon' : 'shoot', x: u.x, y: u.y, owner: u.owner, tx: o.x, ty: o.y });
+        const ox = (W.rnd() - 0.5) * 1.2, oy = (W.rnd() - 0.5) * 1.2;
+        setTimeoutTick(W, 0.4, () => { if (alive(W, u.id)) spawnArrow(W, u.owner, u.x, u.y, 1.1, o.x + ox, o.y + oy, 0, s.atk, s.proj || 'ball', s); });
+      } else if (u.anim !== 'attack' || u.aT > 0.9) u.anim = 'idle';
+      break;
+    }
+    case 'heal': {
+      const t = alive(W, o.id);
+      if (!t || t.kind !== 'unit' || t.hp >= t.maxHp || enemies(W, t.owner, u.owner) || (o.auto && distTo(t, u.x, u.y) > losOf(W, u) + 3)) { u.order = null; u.anim = 'idle'; break; }
+      if (Math.hypot(t.x - u.x, t.y - u.y) <= (s.healRange || 4)) {
+        u.path = null; faceTo(u, t); u.anim = 'attack';
+        const h = Math.min(s.heal * TICK, t.maxHp - t.hp); t.hp += h; W.players[u.owner].stats.healed += h;
+        if (u.aT > 1.2) { u.aT = 0; W.ev.push({ k: 'heal', x: t.x, y: t.y, owner: u.owner }); }
+      } else moveAlong(W, u, t.x, t.y, (i, j) => Math.hypot(i + 0.5 - t.x, j + 0.5 - t.y) <= (s.healRange || 4) - 0.5);
       break;
     }
     case 'gather': villagerGather(W, u, o); break;
@@ -855,6 +1012,49 @@ export function hiddenFrom(W, e, pid) {
   for (let j = Math.floor(e.y) - 2; j <= e.y + 2 && !seen; j++) for (let i = Math.floor(e.x) - 2; i <= e.x + 2 && !seen; i++) { if (!inb(W, i, j)) continue; const b = W.ents.get(W.occ[idx(W, i, j)]); if (b && b.kind === 'building' && b.owner === pid) seen = true; }
   return !seen;
 }
+// what a monk can turn: soldiers and villagers (not buildings, siege, ships, monks or animals)
+const convertible = (t) => t.kind === 'unit' && !isAnimal(t) && t.owner >= 0 && t.type !== 'monk' && !UNITS[t.type].naval && UNITS[t.type].cls !== 'siege' && !t.inside;
+// a unit changes sides (conversion): population, hit points scaled to the new owner's upgrades, orders forgotten
+function changeOwner(W, e, pid) {
+  const A = W.players[e.owner], B = W.players[pid];
+  A.pop--; A.stats.lost++; B.pop++;
+  e.owner = pid; e.order = null; e.oq = null; e.path = null; e.stance = undefined; e.form = null; e.fb = null; e.saved = null; e.bell = false;
+  const mx = stat(W, pid, e.type).hp; e.hp = Math.max(1, e.hp / e.maxHp * mx); e.maxHp = mx;
+}
+// villagers struck in melee fight back, and up to three workmates close by pitch in; they don't chase far
+// (5 tiles from where it started) and go back to what they were doing afterwards (order.resume).
+// Not against archers (can't catch them), not when badly hurt, not while running to shelter from the town bell.
+function villagerDefend(W, v, src) {
+  const a = alive(W, src.id);
+  if (!a || a.kind !== 'unit' || !enemies(W, a.owner, v.owner) || stat(W, a.owner, a.type).range || v.inside || UNITS[a.type].naval) return;
+  const P = W.players[v.owner];
+  const join = (u) => {
+    if (u.hp < u.maxHp * 0.25 || u.inside || (u.order && (u.order.t === 'attack' || (u.order.t === 'rest' && P.bell)))) return false;
+    setOrder(W, u, { t: 'attack', id: a.id, auto: true, defend: true, gx: u.x, gy: u.y, resume: u.order || null }); return true;
+  };
+  if (!join(v)) return;
+  let helpers = 0;
+  unitsNear(W, v.x, v.y, 3, (e) => { if (helpers < 3 && e !== v && e.owner === v.owner && e.type === 'villager' && Math.hypot(e.x - v.x, e.y - v.y) <= 3 && join(e)) helpers++; });
+}
+// the nearest hurt friendly soldier (or villager) a healer can see
+function woundedNear(W, u, r) {
+  let best = null, bd = 1e9;
+  unitsNear(W, u.x, u.y, r, (e) => {
+    if (e.id === u.id || e.hp >= e.maxHp || e.hp <= 0 || e.inside || isAnimal(e) || enemies(W, e.owner, u.owner) || e.owner < 0 || UNITS[e.type].naval || UNITS[e.type].cls === 'siege') return;
+    const dd = Math.hypot(e.x - u.x, e.y - u.y) - (1 - e.hp / e.maxHp) * 3; if (dd < bd) { bd = dd; best = e; }
+  });
+  return best;
+}
+// an enemy melee fighter closing in (hit-and-run units back off from it)
+function meleeThreat(W, u, r) {
+  let best = null, bd = r;
+  unitsNear(W, u.x, u.y, r, (e) => {
+    if (e.hp <= 0 || !enemies(W, e.owner, u.owner) || isAnimal(e) || e.inside) return;
+    const es = stat(W, e.owner, e.type); if (es.range || !es.atk) return;
+    const dd = Math.hypot(e.x - u.x, e.y - u.y); if (dd < bd) { bd = dd; best = e; }
+  });
+  return best;
+}
 function findEnemy(W, u, r) {
   let best = null, bd = 1e9; const vis = W.players[u.owner].vis, s = stat(W, u.owner, u.type), bldOnly = u.type === 'ram';
   const consider = (e) => {
@@ -866,7 +1066,9 @@ function findEnemy(W, u, r) {
     if (!s.range && !u.nav && e.kind === 'unit' && e.nav) return;              // melee can't reach ships
     if (u.nav && !s.range) return;
     const bonus = s.bonus && e.kind === 'unit' ? (s.bonus[stat(W, e.owner, e.type).cls] || 0) : 0;
-    const score = dd + (e.kind === 'building' ? (bldOnly ? 0 : 6) : 0) + (e.kind === 'unit' && e.type === 'villager' ? 1 : 0) - Math.min(3, bonus * 0.3);
+    const ec = e.kind === 'unit' ? stat(W, e.owner, e.type).cls : '';
+    const dive = s.cls === 'cavalry' && !s.range && (ec === 'archer' || ec === 'siege' || ec === 'support') ? 2 : 0;
+    const score = dd + (e.kind === 'building' ? (bldOnly ? 0 : 6) : 0) + (e.kind === 'unit' && e.type === 'villager' ? 1 : 0) - Math.min(4, bonus * 0.4) - dive;
     if (score < bd) { bd = score; best = e; }
   };
   unitsNear(W, u.x, u.y, r, consider);
@@ -879,7 +1081,7 @@ function findEnemy(W, u, r) {
   return best;
 }
 // damage of one hit: attack - armour (with formation, high ground, class bonuses, charges)
-function dmgOf(W, a, t) {
+export function dmgOf(W, a, t) {
   const s = stat(W, a.owner, a.type); const rg = s.range || hunting(a, t);
   let atk = s.atk;
   let arm;
@@ -893,9 +1095,14 @@ function dmgOf(W, a, t) {
   if (s.vsBuilding && t.kind === 'building') dmg += s.vsBuilding;      // melee soldiers / siege can actually knock buildings down
   if (t.kind === 'building' && a.type === 'villager') dmg = Math.max(1, dmg * 0.5);
   if (!a.nav && onHill(W, a.x, a.y) && !onHill(W, ...center(t))) dmg *= 1.25;   // high ground
+  if (!rg && t.kind === 'unit' && t.dir !== undefined && !isAnimal(t)) {           // struck from the side or behind
+    const dx = a.x - t.x, dy = a.y - t.y, ang = (Math.atan2((dx + dy) / 2, dx - dy) * 180 / Math.PI + 360) % 360;
+    const off = Math.abs(((ang - t.dir) % 360 + 540) % 360 - 180);
+    if (off > 100) dmg *= s.cls === 'cavalry' && pl(W, a.owner).techs?.has('flank_tactics') ? 1.5 : 1.25;
+  }
   return dmg;
 }
-const PROJ = { arrow: 7, fire: 7, bullet: 22, ball: 6 };
+const PROJ = { arrow: 7, fire: 7, bullet: 22, ball: 6, javelin: 8 };
 function attack(W, u, t) {
   const s = stat(W, u.owner, u.type);
   u.anim = 'attack'; u.aT = 0;
@@ -940,9 +1147,11 @@ function projTick(W, p) {
 }
 export function damage(W, t, dmg, src) {
   if (t.kind === 'res') return;
-  t.hp -= dmg;
+  t.hp -= dmg; t.hitT = W.t;
   if (src && src.owner !== undefined && src.owner !== t.owner) { const [hx, hy] = center(t); W.ev.push({ k: 'hit', x: hx, y: hy, owner: t.owner }); }
-  if (src && t.kind === 'unit' && t.type !== 'villager' && src.id && alive(W, src.id) && stat(W, t.owner, t.type).atk > 0 && (!t.order || (isAnimal(t) && t.order.t !== 'attack'))) setOrder(W, t, { t: 'attack', id: src.id, auto: true });
+  if (src && t.kind === 'unit' && t.type !== 'villager' && src.id && alive(W, src.id) && stat(W, t.owner, t.type).atk > 0 && (!t.order || (isAnimal(t) && t.order.t !== 'attack')) && t.stance !== 'pasif'
+    && (t.stance !== 'diam' || distTo(src, t.x, t.y) <= reachOf(W, t, src) + 0.2)) setOrder(W, t, { t: 'attack', id: src.id, auto: true, gx: t.x, gy: t.y });
+  if (src && src.id && t.kind === 'unit' && t.type === 'villager' && t.hp > 0) villagerDefend(W, t, src);
   if (t.kind === 'unit' && UNITS[t.type].animal === 'flee' && src) t.scan = 0;   // deer bolt immediately
   if (t.hp > 0) return;
   const P = pl(W, t.owner), S = src && src.owner !== undefined && src.owner !== t.owner && W.players[src.owner] ? W.players[src.owner].stats : null;
@@ -964,7 +1173,7 @@ export function damage(W, t, dmg, src) {
     if (t.built && d.pop) P.popCap = Math.max(0, P.popCap - d.pop);
     if (t.type !== 'farm') add(W, { kind: 'rubble', n: Math.min(4, Math.max(t.w, t.h)), x: t.x + t.w / 2, y: t.y + t.h / 2, t: 0 });
     W.ev.push({ k: 'collapse', x: t.x + t.w / 2, y: t.y + t.h / 2, owner: t.owner, type: t.type, n: t.w, hit: !!src });
-    for (const q of t.queue) { const c = q.unit ? UNITS[q.unit].cost : q.cost || TECHS[q.tech].cost; for (const r of RES) P.res[r] += c[r] || 0; }
+    for (const q of t.queue) { const c = q.cost || (q.unit ? UNITS[q.unit].cost : TECHS[q.tech].cost); for (const r of RES) P.res[r] += c[r] || 0; }
   }
 }
 
@@ -1164,7 +1373,7 @@ function buildingTick(W, b) {
       else { P.housed = false; q.t += TICK; if (q.t >= stat(W, b.owner, q.unit).time) { b.queue.shift(); spawn(W, b, q.unit); } }
     } else {
       q.t += TICK;
-      if (q.t >= TECHS[q.tech].time) { b.queue.shift(); finishTech(W, b, q.tech); }
+      if (q.t >= techTime(P, q.tech)) { b.queue.shift(); finishTech(W, b, q.tech); }
     }
   }
   const atk = d.attack && bstat(W, b.owner, b.type).attack;
@@ -1173,7 +1382,8 @@ function buildingTick(W, b) {
     if (t) {
       b.cool = atk.reload;
       const [cx, cy] = center(b), ts = stat(W, t.owner, t.type);
-      for (let k = 0; k < (atk.arrows || 1); k++) {
+      const g = (W.garr && W.garr.get(b.id)) || 0, extra = Math.min(5, Math.floor(g / (P.techs.has('civic_defense') ? 2 : 4)));   // sheltering villagers shoot too (a little)
+      for (let k = 0; k < (atk.arrows || 1) + extra; k++) {
         const arm = ts.pa + (t.fb ? t.fb.pa : 0);
         const hit = W.rnd() < atk.acc * (raining(W) ? 0.85 : 1) * (t.fb && t.fb.miss ? 1 - t.fb.miss : 1);
         spawnArrow(W, b.owner, cx + (k - 1) * 0.4, cy, 3.5, t.x + (W.rnd() - 0.5) * (hit ? 0.3 : 1.6), t.y + (W.rnd() - 0.5) * (hit ? 0.3 : 1.6), hit ? t.id : 0, Math.max(1, atk.atk - arm), 'arrow');
@@ -1220,6 +1430,9 @@ function finishTech(W, b, tech) {
   if (t.toAge) { P.age = t.toAge; W.ev.push({ k: 'age', owner: b.owner, age: P.age }); }
   else W.ev.push({ k: 'tech', owner: b.owner, tech });
   if (tech === 'horse_collar') for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === b.owner && e.type === 'farm') e.food += 75;
+  if (t.mods) applyMods(P, t.mods);
+  for (const r of RES) if (t.give && t.give[r]) P.res[r] += t.give[r];
+  if (t.units) giftUnits(W, P, t.units);
   if (t.spec) {      // the whole line retrains into the specialist (AoE2-style upgrade)
     const [from, to] = t.spec; P.spec[from] = to;
     for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner === P.id && e.type === from) { const f = e.hp / e.maxHp; e.type = to; const s = stat(W, P.id, to); e.maxHp = s.hp; e.hp = Math.max(1, s.hp * f); }
@@ -1231,9 +1444,10 @@ function finishTech(W, b, tech) {
 // ---------------------------------------------------------------- misc
 function separate(W) {
   // light separation so groups don't stack on one point (cheap tile buckets)
-  const buckets = new Map();
+  const buckets = new Map(); W.garr = new Map();
   for (const e of [...W.dyn.values()]) {
     if (e.kind === 'timer') { e.t -= TICK; if (e.t <= 0) { del(W, e.id); e.fn(); } continue; }
+    if (e.kind === 'unit' && e.inside) W.garr.set(e.inside, (W.garr.get(e.inside) || 0) + 1);
     if (e.kind !== 'unit' || e.inside) continue;
     const k = Math.floor(e.x) + Math.floor(e.y) * 4096; let a = buckets.get(k); if (!a) buckets.set(k, a = []); a.push(e);
   }
@@ -1286,6 +1500,32 @@ export function spyReport(W, pid) {
 }
 // conquest: a player is out once no units and no working buildings remain (walls, gates, farms, houses and unfinished
 // foundations don't count), or when they resign
+function relicTick(W) {
+  const held = new Map(); let total = 0;
+  for (const r of W.dyn.values()) {
+    if (r.kind !== 'relic') continue; total++;
+    if (r.carrier) {
+      const m = alive(W, r.carrier);
+      if (!m || m.relic !== r.id) { r.carrier = 0; r.x = Math.floor(r.dx ?? r.x); r.y = Math.floor(r.dy ?? r.y); W.ev.push({ k: 'relicdrop', x: r.x, y: r.y }); }
+      else { r.dx = m.x; r.dy = m.y; }
+    }
+    if (r.inBld) {
+      const b = alive(W, r.inBld);
+      if (!b) { const f = nearestFree(W, r.x, r.y, -1, 4) || [r.x, r.y]; r.inBld = 0; r.x = f[0]; r.y = f[1]; continue; }     // monastery gone: the relic falls out
+      r.x = b.x + b.w / 2 - 0.5; r.y = b.y + b.h / 2 - 0.5;
+      const P = W.players[b.owner]; P.res.gold += RELICS.gold; P.stats.gathered += RELICS.gold; P.stats.gres.gold += RELICS.gold;
+      const tm = P.team; held.set(tm, (held.get(tm) || 0) + 1);
+    }
+  }
+  if (!W.opts.relicWin || !total || W.winner >= 0) return;
+  const owner = [...held.entries()].find(([, n]) => n === total);
+  if (!owner) { if (W.relicHold) W.ev.push({ k: 'relicbroken', team: W.relicHold.team }); W.relicHold = null; return; }
+  if (!W.relicHold || W.relicHold.team !== owner[0]) { W.relicHold = { team: owner[0], since: W.t }; W.ev.push({ k: 'relichold', team: owner[0], secs: RELICS.win }); }
+  else if (W.t - W.relicHold.since >= RELICS.win) {
+    for (const P of W.players) if (P.alive && P.team !== owner[0]) { P.alive = false; W.ev.push({ k: 'defeated', owner: P.id, relic: true }); }
+    W.winner = owner[0]; W.ev.push({ k: 'victory', team: W.winner, relic: true });
+  }
+}
 function checkVictory(W) {
   const live = new Set();
   for (const e of W.dyn.values()) if (keepsAlive(e)) live.add(e.owner);
@@ -1300,20 +1540,25 @@ function checkVictory(W) {
 // a player gives up: everything they own crumbles at the next victory check (AoE2 resign)
 export function resign(W, pid) { const P = W.players[pid]; if (P && P.alive) { P.resigned = true; checkVictory(W); } }
 // a shipment reaches the Town Center: resources, units at the TC (ships at a dock), map knowledge or a lasting bonus
+function applyMods(P, m) {
+  for (const r in m.gather || {}) P.mods.gather[r] += m.gather[r];
+  for (const k in m) if (k !== 'gather') P.mods[k] = (P.mods[k] || 0) + m[k];
+}
 function deliver(W, P) {
   const c = CARDS[P.shipment.card]; P.shipment = null;
   for (const r of RES) if (c.give && c.give[r]) P.res[r] += c.give[r];
-  if (c.mod) {
-    const m = c.mod; for (const r in m.gather || {}) P.mods.gather[r] += m.gather[r];
-    for (const k in m) if (k !== 'gather') P.mods[k] = (P.mods[k] || 0) + m[k];
-    bumpStats(W, P);
-  }
+  if (c.mod) { applyMods(P, c.mod); bumpStats(W, P); }
   if (c.reveal === 'map') P.exp.fill(1);
   if (c.reveal === 'enemy') for (const Q of W.players) if (Q.team !== P.team && Q.start) { const [sx, sy] = Q.start; for (let j = sy - 10; j <= sy + 10; j++) for (let i = sx - 10; i <= sx + 10; i++) if (inb(W, i, j)) P.exp[idx(W, i, j)] = 1; }
+  const [cx, cy] = giftUnits(W, P, c.units || []);
+  W.ev.push({ k: 'shipment', owner: P.id, card: c.id, x: cx, y: cy - 1 });
+}
+// units handed out at the Town Center (cards, age paths); ships appear at a dock
+function giftUnits(W, P, list) {
   let tc = W.ents.get(P.tc); if (!tc || tc.kind !== 'building' || tc.hp <= 0) tc = [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === P.id && e.type === 'town_center' && e.built);
   const dock = [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === P.id && e.type === 'dock' && e.built);
   const [cx, cy] = tc ? [tc.x + tc.w / 2, tc.y + tc.h + 1] : (P.start || [W.size / 2, W.size / 2]);
-  for (const [type0, n] of c.units || []) {
+  for (const [type0, n] of list) {
     const type = trainType(P, type0), nav = !!UNITS[type].naval;
     const [ox, oy] = nav ? (dock ? [dock.x + 1.5, dock.y + 1.5] : [cx, cy]) : [cx, cy];
     for (let k = 0; k < n; k++) {
@@ -1323,7 +1568,7 @@ function deliver(W, P) {
       if (UNITS[type].fisher) { const fr = nearestResource(W, 'fish', u.x, u.y, 14, P.id, null, null, true); if (fr) setOrder(W, u, { t: 'gather', id: fr.id }); }
     }
   }
-  W.ev.push({ k: 'shipment', owner: P.id, card: c.id, x: cx, y: cy - 1 });
+  return [cx, cy];
 }
 
 // ---------------------------------------------------------------- nature: animals, bandits, treasures

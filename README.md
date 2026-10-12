@@ -12,6 +12,9 @@ npm test             (map fairness, headless AI-vs-AI game, naval checks, online
 node tests/stuck.test.js 40 5 144 4   (stuck-unit detector, slower)
 ```
 
+## Highlights
+6 civilizations with unique units, monks (conversion, relics, relic victory), age paths, stances, formations, town bell, shift-queued orders, patrol / guard, autosave + saved games + replays, online multiplayer.
+
 ## Online (play with friends)
 Menu → **🌐 Main Online** → *Buat Room* → *Salin Link*. A friend who opens the link (`?room=CODE`) joins the room. The host can add AIs, set teams and the map, then start. Up to 4 kingdoms, plus any number of spectators.
 - Runs on Firebase Realtime Database (`js/firebase-config.js`, the same project as the other games), under `/age/rooms/{CODE}`.

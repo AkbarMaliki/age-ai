@@ -104,6 +104,43 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
 - **Units atlas** now also holds fishing_boat, transport_ship, war_ship, ram and cannon (`pack.PLAYER_UNITS += [...]`).
 - Tests: `npm test` = map + sim + `tests/naval.test.js` (dock, fishing, board/sail/unload, warship fire). Slower ones: `tests/stuck.test.js [min] [seed] [size] [players] [map]` (stuck-unit detector). Browser: `tests/browser/world.cjs` (seasons, day/night, formations, advisor, deck, achievements), `tests/browser/vehicles.cjs` (ship / siege sprites).
 
+### Strategy layer v5 (data.js / sim.js / ai.js)
+- **Age paths:** each age-up is one of three exclusive techs (`group: 'age2' | 'age3'`): feudal (Kemakmuran: +10% gather), feudal_war (Pedang: 4 free militia, +15% train speed), feudal_wall (Benteng: +250 stone, +15% building HP, +1 tower attack), castle (Akademi Agung: `mods.techCost` 25% cheaper/faster research via `techCost` / `techTime`), castle_war (Panji Perang: 3 knights, +10% HP), castle_trade (Jalur Sutra: gold trickle, -10% market fee). Techs may carry `mods` / `give` / `units` (applied in `finishTech`, `giftUnits` shared with card shipments). The AI picks from `STYLE.ages` (25% chance to improvise).
+- **New units** (own 0 A.D.-based renders): skirmisher (anti-archer, `proj: 'javelin'`), horse_archer (`mounted`, `kite`), pikeman (`pikes` tech converts spearmen), healer (`heal`, `healRange`; auto-heals, smart right-click heals). Specialists no longer reuse tinted base sprites.
+- **New techs:** drill, pikes, thumb_ring, parthian (all archers kite), husbandry, flank_tactics, medicine (healers +50%, soldiers regenerate after 8 s unhurt, via `u.hitT`), civic_defense.
+- **Tactics:**
+  - Stances: `{ t: 'stance', s }` with `u.stance` = undefined (agresif) | bertahan (returns to `o.gx/gy` beyond 6 tiles) | diam (never moves for auto targets) | pasif (no auto attacks, no retaliation).
+  - Town bell: `{ t: 'bell', on }` sets `P.bell`. `restNow` is true while it rings, so villagers shelter in `ROOM` buildings. `W.garr` counts who is inside, and buildings with an attack fire extra arrows: 1 per 4 sheltered villagers, 1 per 2 with civic_defense, at most +5 (more made weak players unkillable).
+  - Flank: melee hits from more than 100° off the target's facing do x1.25 (x1.5 cavalry with flank_tactics).
+  - `findEnemy` prefers targets the unit has a bonus against, and melee cavalry dives for archers, siege and healers.
+  - Kiting: units with `s.kite` step away from melee while reloading (`meleeThreat`).
+  - The AI rings the bell when 4 or more enemies are at its TC and outnumber the defenders.
+- UI: academy has two pages (`PAGES` in ui.js, slot 14 flips). TC row 2 holds the three age paths, slot 10 the bell (hotkey B). Soldiers get formations in row 1 and stances in row 2.
+- Art: `zad/resolve.py` recipes for the 11 units (`ELITE` frame counts, `prop_tex`, `force_props`, per-recipe rider states). Custom textures live in `downloads/0ad/textures/skins/custom/` (samurai red lacquer, ninja black). `zad/make_arquebus.py` builds the gunner's matchlock prop. `bl/common.py` renders on the GPU with `AK_GPU=1` (OptiX).
+- **Villager self-defence** (`villagerDefend` in sim.js, called from `damage`): a villager hit in melee fights back (`order.defend`, `order.resume` = its old order) and up to 3 villagers within 3 tiles join. They give up 5 tiles from where they started, and ignore archers, ships, sheltering and badly hurt villagers.
+- Lockstep: a host that has used up every turn (e.g. just promoted) publishes the next turns itself; this used to deadlock host migration.
+- Tests: `tests/tactics.test.js`. Art: `_art/render_new_units.sh` renders the v5 units one after another (`AK_GPU=1`, `AK_SAMPLES=12`; parallel Blenders crawl), then `pack._pack_set('units', pack.PLAYER_UNITS, True); pack.icons()` with `pack.OUTD` set to this repo.
+
+### v6: civilizations, monks & relics, command queue, saves / replays, new menu
+- **Civilizations** (`CIVS` in data.js; `P.civ`):
+  - Bonuses come from `mods`, `start` (resources, extra villagers spawned in map.js), `stat` (per class) / `unitStat` (per unit) multipliers in `stat()`, and `cost` discounts via `unitCost(P, type)`. Use `unitCost` everywhere instead of `UNITS[t].cost`.
+  - The unique unit is `P.spec.unique`; the castle's `'unique'` train slot resolves it via `trainType`, and `canTrain` lets it skip its research.
+- **Monks** (Biara/monastery; `UNITS.monk` with `convert`, `faith`, `heal`):
+  - `convert` order: needs full `u.faith`, then channels 4–10 s (`W.rnd`) before `changeOwner`. Monks, siege, ships and animals can't be converted.
+  - Relics: `addRelic` places them in map.js (one per player, symmetric, plus the centre). The `relic` order picks one up (`u.relic` / `r.carrier`) and carries it into a monastery (`r.inBld`).
+  - `relicTick` (every second) drops relics whose carrier died or whose monastery fell, pays `RELICS.gold`/s per kept relic, and runs the optional relic victory (`W.opts.relicWin`, hold every relic `RELICS.win` s).
+- **Command queue / extra orders:**
+  - A command with `q: true` is queued. `CMD` is set while `applyCmd` runs, so `setOrder` pushes to `u.oq` for queued player orders and clears the queue for normal ones; internal setOrders are untouched. The next queued order is popped when idle.
+  - New orders `patrol` (`ax/ay/bx/by/leg`), `follow` (guard a friendly unit; an enemy target means attack) and `ground` (splash siege bombards a point).
+  - UI: row 3 of the soldier grid opens a targeting mode (`Game.startTarget`); Shift + right click queues. Selected units draw their queued path.
+- **Saves / replays** (js/saves.js, `Game.makeSetup` / `record` / `feed` / `tickOnce`):
+  - A save is `{ setup, cmds: [[tick, cmd]], tick }`. `setup` holds every random choice (seed, civs, AI styles); every player command is logged in `Game.send`, and online commands in `Lockstep.boundary`.
+  - Load = rebuild from setup and fast-forward to `tick` (`Game.ff`) feeding commands before the AIs think, then play on. Replay = same in spectator mode at normal speed.
+  - Autosave slot `auto` every 2 game-minutes offline. `tests/browser/saves.cjs` checks that load and replay reach the same state hash.
+  - **UI must never change sim state directly**, or saves and online diverge.
+- **Menu:** home has 5 big buttons plus an icon row. Every setting lives in `#setup` (the generic `.seg[data-k]` binding still drives `opts`); there are also `#settingsModal`, `#civModal` and `#loadModal`. Tests still start a game with `#btnPlay` (Main Cepat = last settings).
+- Art: `structures.py` `monastery`, `relic`; monk recipe in `zad/resolve.py` (Celtic healer, brown habit, hood).
+
 ### Online multiplayer (js/net.js, js/lockstep.js, js/lobby.js)
 - **Firebase RTDB** (config `js/firebase-config.js`, project vuez-63625 like the other games). Room `/age/rooms/{CODE}`: `meta` (host, status, lobby cfg), `players` (seats incl. bots), `watchers`, `game` (seed, cfg, seats; written at start), `turns/n`, `in/pid`, `ack/pid`, `chat`. `/age/index/{code}` = created, used to sweep rooms older than 24 h. Link `?room=CODE` auto-joins (lobby) / rejoins (running game, same `sessionStorage` pid) / watches.
 - **Lockstep:** the sim and AI are fully deterministic (seeded rng, no Math.random / time). The host publishes turn n+LEAD (TPT=2 ticks, LEAD=3) at the start of turn n with all queued commands. Commands are JSON strings and the host overrides `pid` with the sender's seat. Clients only simulate turns they have. Host waits for players more than 40 turns behind. Every 25 turns a state hash (`stateHash`) is compared, and a mismatch shows a desync warning.

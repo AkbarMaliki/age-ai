@@ -132,6 +132,7 @@ export class StatsPanel {
         + row('Transaksi pasar', P => P.stats.trades || '—')
         + row('Pekerjaan penduduk', (P, s) => this.jobBar(s))
         + row('Bangunan', (P, s) => Object.entries(s.bld).filter(([t]) => !BUILDINGS[t].wall).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<span class="chip">${BUILDINGS[t].name} ×${n}</span>`).join('') + (s.bld.stone_wall ? `<span class="chip">Tembok ×${s.bld.stone_wall}</span>` : '') || '—')
+        + row('Jalur Zaman', P => [...P.techs].filter(t => TECHS[t].toAge).map(t => `<span class="chip">${TECHS[t].glyph || ''} ${TECHS[t].name}</span>`).join('') || '—')
         + row('Teknologi', P => [...P.techs].filter(t => !TECHS[t].toAge).map(t => `<span class="chip">${TECHS[t].name}</span>`).join('') || '—')
         + '</table>' + `<div class="legend">${JOBS.map(([, n, c]) => `<span><i style="background:${c}"></i>${n}</span>`).join('')}</div>`;
     } else if (this.tab === 'mil') {

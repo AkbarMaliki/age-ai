@@ -7,9 +7,9 @@ const $ = (id) => document.getElementById(id);
 const CLS = (t) => { const c = UNITS[t] && UNITS[t].cls; return c === 'cavalry' ? 'cav' : c === 'archer' ? 'arch' : c === 'infantry' ? 'inf' : c === 'siege' ? 'siege' : c === 'ship' ? 'ship' : null; };
 const NAME = { inf: 'INFANTERI', arch: 'PEMANAH', cav: 'KAVALERI', siege: 'MESIN PERANG', ship: 'ARMADA' };
 const COUNTER = {
-  cav: { units: 'Prajurit Tombak (+15 vs kavaleri), Katafrak', doc: 'Doktrin: Legiun Baja', form: 'Kotak (+3 vs kavaleri)' },
-  arch: { units: 'Kavaleri / Ksatria, Ninja, Lancer', doc: 'Doktrin: Kavaleri Bangsawan', form: 'Menyebar (panah lebih sering meleset)' },
-  inf: { units: 'Pemanah, Pemanah Silang, Penembak Mesiu, Samurai', doc: 'Doktrin: Hujan Panah', form: 'Tempur (pemanah di belakang perisai)' },
+  cav: { units: 'Prajurit Tombak (+15 vs kavaleri) lalu riset Tombak Panjang (+22), Katafrak; sikap Diam di Tempat', doc: 'Doktrin: Legiun Baja', form: 'Kotak (+3 vs kavaleri)' },
+  arch: { units: 'Pelempar Lembing (murah, tahan panah), Kavaleri / Ksatria, Ninja, Lancer', doc: 'Doktrin: Kavaleri Bangsawan', form: 'Menyebar (panah lebih sering meleset)' },
+  inf: { units: 'Pemanah, Pemanah Berkuda (lari-tembak), Pemanah Silang, Penembak Mesiu, Samurai', doc: 'Doktrin: Hujan Panah', form: 'Tempur (pemanah di belakang perisai)' },
   siege: { units: 'Kavaleri cepat atau Ninja untuk memburu mesin perang', doc: 'Doktrin: Serangan Kilat', form: 'Menyebar (melawan meriam)' },
   ship: { units: 'Kapal Perang sendiri, Pemanah Api di pantai, Menara di tepi air', doc: '—', form: '—' },
 };
@@ -86,7 +86,7 @@ export class Advisor {
     if (threats.length) h += `<p class="warn">⚠ Pasukanmu (${NAME[myMain]}) <b>lemah</b> melawan ${threats.map(t => t.name).join(', ')} (${NAME[threats[0].main]}). Ubah komposisi!</p>`;
     if (!P.techs.has('doc_legion') && !P.techs.has('doc_cavalry') && !P.techs.has('doc_archers') && P.age >= 2) h += '<p>Belum memilih <b>Doktrin</b> di Pandai Besi — pilih jalur militer utamamu.</p>';
     if (P.age >= 2 && !W.dyn.size) h += '';
-    h += '<p class="hint">Segitiga dasar: <b>Tombak</b> mengalahkan <b>Kavaleri</b>, <b>Kavaleri</b> mengalahkan <b>Pemanah</b>, <b>Pemanah</b> mengalahkan <b>Infanteri</b>. Doktrin dan pasukan khusus memperkuat satu sisi — pilih sesuai musuhmu.</p></div>';
+    h += '<p class="hint">Segitiga dasar: <b>Tombak</b> mengalahkan <b>Kavaleri</b>, <b>Kavaleri</b> mengalahkan <b>Pemanah</b>, <b>Pemanah</b> mengalahkan <b>Infanteri</b>. Doktrin dan pasukan khusus memperkuat satu sisi — pilih sesuai musuhmu. Pelempar Lembing menangkal pemanah; Tabib menjaga pasukan tetap hidup; serangan dari samping/belakang +25%; Lonceng Kota (B) melindungi penduduk saat diserbu.</p></div>';
     $('advBody').innerHTML = h;
   }
 }

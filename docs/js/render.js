@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261012210204';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261012210204';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261013073348';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261013073348';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -345,6 +345,7 @@ export class View {
       return [atlas.get(`${set}/${anim}/${dir}/${f}`, atlas === A.units ? col : 'none'), mir];
     }
     if (e.kind === 'treasure') return [A.nature.get('treasure_' + e.type), false];
+    if (e.kind === 'relic') return [A.nature.get('relic'), false];
     if (e.kind === 'building') return [A.buildings.get(this.buildingKey(e), col), false];
     if (e.kind === 'res') {
       if (e.type === 'fish') return [{ tex: this.fishT[Math.floor(this.t * 0.8 + e.id) % 2], ax: 0.5, ay: 0.5 }, false];
@@ -398,6 +399,11 @@ export class View {
       let x, y;
       if (e.kind === 'unit' || e.kind === 'proj') { x = e.px + (e.x - e.px) * alpha; y = e.py + (e.y - e.py) * alpha; if (e.kind === 'proj' && e.px === undefined) { x = e.x; y = e.y; } }
       else if (e.kind === 'building' || e.kind === 'res' || e.kind === 'treasure') { x = e.x + e.w / 2; y = e.y + e.h / 2; }
+      else if (e.kind === 'relic') {
+        const m = e.carrier && W.ents.get(e.carrier);
+        if (e.inBld || (e.carrier && !m)) { const v = this.views.get(e.id); if (v) v.spr.visible = false; seen.add(e.id); continue; }
+        if (m) { x = m.px + (m.x - m.px) * alpha + 0.15; y = m.py + (m.y - m.py) * alpha + 0.15; } else { x = e.x + 0.5; y = e.y + 0.5; }
+      }
       else { x = e.x; y = e.y; }
       const [sx, sy] = iso(x, y);
       if (sx < vx0 || sx > vx1 || sy < vy0 || sy > vy1) { const v = this.views.get(e.id); if (v) { v.spr.visible = false; if (v.extra) v.extra.visible = false; if (v.sail) v.sail.visible = false; } seen.add(e.id); continue; }
@@ -416,6 +422,7 @@ export class View {
         const s = v.spr; s.anchor.set(0.5); s.visible = true;
         const pt = e.ptype || 'arrow';
         s.texture = pt === 'bullet' ? this.bullet : pt === 'ball' ? this.ball : this.arrow;
+        if (pt === 'javelin') { s.scale.set(1.35, 1.1); s.tint = 0xb89a6a; }
         if (e.spear) { s.scale.set(1.35, 1.2); s.tint = 0x8a6a48; } else if (pt === 'fire') { s.tint = 0xffb060; if (Math.random() < 0.6) this.parts.emit({ x: sx, y: sy - e.z * 30, vy: -10, life: 0.35, size: 0.18, grow: 0.05, color: Math.random() < 0.5 ? 0xff7a1a : 0xffd040, add: true, alpha: 0.9, z: sy + 1001 }); }
         const z2 = e.z * 30; s.x = sx; s.y = sy - z2;
         const [nx, ny] = iso(e.tx, e.ty); const k2 = Math.min(1, e.t / e.T);
@@ -431,6 +438,7 @@ export class View {
       const us = e.kind === 'unit' && UNITS[e.type] ? UNITS[e.type] : null, sc = us && us.scale || 1;
       s.scale.set((mir ? -1 : 1) * sc, sc);
       s.x = sx; s.y = sy;
+      if (e.kind === 'relic' && e.carrier) { s.scale.set(0.45); s.y = sy - 46; }        // carried high by its monk
       s.zIndex = e.kind === 'building' ? sy - (e.w + e.h) * 6 : sy;
       if (e.kind === 'building' && e.type !== 'farm' && BUILDINGS[e.type].n > 1) s.zIndex = iso(e.x + e.w * 0.75, e.y + e.h * 0.75)[1] - 2;
       s.alpha = e.kind === 'corpse' ? Math.min(1, (15 - e.t) / 3) : e.kind === 'rubble' ? Math.min(1, (40 - e.t) / 5) : e.kind === 'res' && e.type === 'fish' ? 0.75 + 0.2 * Math.sin(this.t * 2 + e.id) : (e.kind === 'building' && !e.built && !A.buildings.has(e.type + '_c0') ? 0.6 : 1);
@@ -537,6 +545,17 @@ export class View {
         const x = e.px + (e.x - e.px) * alpha, y = e.py + (e.y - e.py) * alpha; const [sx, sy] = iso(x, y);
         const [r, hh] = UNIT_BOX[e.type] || [15, 66];
         g.ellipse(sx, sy, r, r * 0.5).stroke({ width: 1.6, color: e.owner < 0 ? 0xffe070 : col, alpha: 0.9 });
+        if (e.owner === this.me && ((e.oq && e.oq.length) || (e.order && e.order.t === 'patrol'))) {
+          const W = this.W, pt = (o) => o.t === 'patrol' ? [o.bx, o.by] : o.x !== undefined ? [o.x, o.y] : (o.id && W.ents.get(o.id)) ? [W.ents.get(o.id).x + (W.ents.get(o.id).w || 0) / 2, W.ents.get(o.id).y + (W.ents.get(o.id).h || 0) / 2] : null;
+          let [lx, ly] = [sx, sy];
+          for (const o of [e.order, ...(e.oq || [])]) {
+            const q = o && pt(o); if (!q) continue; const [qx, qy] = iso(q[0], q[1]);
+            g.moveTo(lx, ly).lineTo(qx, qy).stroke({ width: 1.2, color: o.t === 'patrol' ? 0x90d0ff : 0xffffff, alpha: 0.45 }); g.circle(qx, qy, 3).fill({ color: 0xffffff, alpha: 0.6 });
+            if (o.t === 'patrol') { const [ax, ay] = iso(o.ax, o.ay); g.moveTo(qx, qy).lineTo(ax, ay).stroke({ width: 1.2, color: 0x90d0ff, alpha: 0.3 }); }
+            [lx, ly] = [qx, qy];
+          }
+        }
+        if (e.faith !== undefined && e.owner === this.me) { g.rect(sx - 15, sy - hh + 5, 30, 3).fill({ color: 0x202040, alpha: 0.8 }); g.rect(sx - 15, sy - hh + 5, 30 * e.faith, 3).fill({ color: 0x8fb0ff, alpha: 0.95 }); }   // monk's faith
         this.hpBar(sx, sy - hh, 30, e.hp / e.maxHp);
         // gold pips: blacksmith upgrades this soldier carries
         const owner = this.W.players[e.owner];
@@ -596,6 +615,10 @@ export class View {
       case 'chop': for (let i = 0; i < 3; i++) P.emit({ x: sx + (Math.random() - 0.5) * 20, y: sy - 30, vx: (Math.random() - 0.5) * 60, vy: -40, g: 160, life: 0.5, size: 0.12, grow: 0.08, color: 0xc89a60, alpha: 1, z: sy + 5 }); break;
       case 'mine': for (let i = 0; i < 3; i++) P.emit({ x: sx + (Math.random() - 0.5) * 16, y: sy - 18, vx: (Math.random() - 0.5) * 70, vy: -50, g: 200, life: 0.4, size: 0.1, grow: 0.06, color: e.res === 'iron' ? 0xb08068 : 0xd8d2c0, alpha: 1, z: sy + 5 }); break;
       case 'hammer': P.emit({ x: sx + (Math.random() - 0.5) * 14, y: sy - 8, vx: (Math.random() - 0.5) * 30, vy: -20, life: 0.8, size: 0.35, grow: 1.1, color: 0xb0a080, alpha: 0.5, z: sy + 3 }); break;
+      case 'chant': for (let i = 0; i < 3; i++) P.emit({ x: sx + (Math.random() - 0.5) * 18, y: sy - 30 - Math.random() * 16, vx: 0, vy: -16, life: 0.8, size: 0.13, grow: 0.06, color: 0xcfe0ff, add: true, alpha: 0.85, z: sy + 60 }); break;
+      case 'convert': for (let i = 0; i < 18; i++) P.emit({ x: sx + (Math.random() - 0.5) * 30, y: sy - 10 - Math.random() * 50, vx: (Math.random() - 0.5) * 20, vy: -30, life: 1.1, size: 0.18, grow: 0.1, color: 0xfff2a0, add: true, alpha: 0.95, z: sy + 80 }); break;
+      case 'relic': for (let i = 0; i < 14; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy - 40 - Math.random() * 40, vx: 0, vy: -20, life: 1.4, size: 0.16, grow: 0.08, color: 0xffd060, add: true, alpha: 0.9, z: sy + 80 }); break;
+      case 'heal': for (let i = 0; i < 4; i++) P.emit({ x: sx + (Math.random() - 0.5) * 22, y: sy - 20 - Math.random() * 20, vx: (Math.random() - 0.5) * 8, vy: -22, life: 0.9, size: 0.14, grow: 0.05, color: 0x7dff9a, add: true, alpha: 0.9, z: sy + 60 }); break;   // healing sparkles
       case 'fish': {        // a net thrown into the water: splash and spreading ring
         const [tx, ty] = iso(e.tx ?? e.x, e.ty ?? e.y);
         for (let i = 0; i < 10; i++) { const a = i / 10 * 6.28; P.emit({ x: tx + Math.cos(a) * 14, y: ty + Math.sin(a) * 7, vx: Math.cos(a) * 25, vy: Math.sin(a) * 12 - 10, g: 60, life: 0.6, size: 0.1, grow: 0.04, color: 0xe8f4ff, alpha: 0.9, z: ty + 2 }); }

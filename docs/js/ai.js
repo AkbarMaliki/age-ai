@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261012210204';
-import { DAY } from './data.js?v=20261012210204';
-import { timeOfDay, unreachable, restNow } from './sim.js?v=20261012210204';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center } from './sim.js?v=20261012210204';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261013073348';
+import { DAY, RELICS } from './data.js?v=20261013073348';
+import { timeOfDay, unreachable, restNow } from './sim.js?v=20261013073348';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost } from './sim.js?v=20261013073348';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const segDist = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); };
@@ -18,11 +18,11 @@ const DIFF = {
 };
 // personality: tweaks on top of the difficulty
 const STYLE = {
-  eko:     { vil: 4, attack: 1.2, wave: 1, towers: 1, mix: { inf: 1, arch: 1, cav: 1.2 }, doc1: 'doc_cavalry', doc2: 'doc_formation', iron: 0.08 },
-  serbu:   { vil: -4, attack: 0.72, wave: -2, towers: 0, mix: { inf: 1.2, arch: 0.8, cav: 1.3 }, doc1: 'doc_cavalry', doc2: 'doc_blitz', iron: 0.06, early: true },
-  benteng: { vil: 0, attack: 1.35, wave: 2, towers: 4, walls: true, mix: { inf: 1.2, arch: 1.4, cav: 0.6 }, doc1: 'doc_legion', doc2: 'doc_fortress', iron: 0.08 },
-  ilmu:    { vil: 2, attack: 1.1, wave: 0, towers: 1, mix: { inf: 0.9, arch: 1.5, cav: 0.8 }, doc1: 'doc_archers', doc2: 'doc_formation', iron: 0.14, scholar: true },
-  laut:    { vil: 2, attack: 1.05, wave: 0, towers: 1, mix: { inf: 1, arch: 1.4, cav: 0.8 }, doc1: 'doc_archers', doc2: 'doc_blitz', iron: 0.06, navy: true },
+  eko:     { vil: 4, attack: 1.2, wave: 1, towers: 1, mix: { inf: 1, arch: 1, cav: 1.2 }, doc1: 'doc_cavalry', doc2: 'doc_formation', iron: 0.08, ages: ['feudal', 'castle_trade'] },
+  serbu:   { vil: -4, attack: 0.72, wave: -2, towers: 0, mix: { inf: 1.2, arch: 0.8, cav: 1.3 }, doc1: 'doc_cavalry', doc2: 'doc_blitz', iron: 0.06, early: true, ages: ['feudal_war', 'castle_war'], horseArchers: true },
+  benteng: { vil: 0, attack: 1.35, wave: 2, towers: 4, walls: true, mix: { inf: 1.2, arch: 1.4, cav: 0.6 }, doc1: 'doc_legion', doc2: 'doc_fortress', iron: 0.08, ages: ['feudal_wall', 'castle_war'], healers: true },
+  ilmu:    { vil: 2, attack: 1.1, wave: 0, towers: 1, mix: { inf: 0.9, arch: 1.5, cav: 0.8 }, doc1: 'doc_archers', doc2: 'doc_formation', iron: 0.14, scholar: true, ages: ['feudal', 'castle'], healers: true },
+  laut:    { vil: 2, attack: 1.05, wave: 0, towers: 1, mix: { inf: 1, arch: 1.4, cav: 0.8 }, doc1: 'doc_archers', doc2: 'doc_blitz', iron: 0.06, navy: true, ages: ['feudal', 'castle_trade'] },
 };
 const CLS = (t) => { const c = UNITS[t] && UNITS[t].cls; return c === 'cavalry' ? 'cav' : c === 'archer' ? 'arch' : c === 'infantry' ? 'inf' : c; };
 
@@ -35,6 +35,9 @@ export class AI {
     this.deckKey = deckKey; this.style = DECKS[deckKey].style; this.S = STYLE[this.style];
     if (!P.deck) P.deck = [...DECKS[deckKey].cards];
     P.style = deckKey;
+    // age paths: the personality's choice, sometimes an improvised one (games play out differently)
+    const alt = { 2: ['feudal', 'feudal_war', 'feudal_wall'], 3: ['castle', 'castle_war', 'castle_trade'] };
+    this.agePath = { 2: this.rnd() < 0.25 ? alt[2][(this.rnd() * 3) | 0] : this.S.ages[0], 3: this.rnd() < 0.25 ? alt[3][(this.rnd() * 3) | 0] : this.S.ages[1] };
     this.known = new Map();      // enemy buildings seen: id -> { x, y, owner, type }
     this.seen = new Map();       // gaia units seen: id -> { t, x, y, danger } (last sighting)
     this.tries = new Map();      // enemy building id -> [attacks sent, retry after]
@@ -101,9 +104,12 @@ export class AI {
     if (P.age >= 3 && !count('castle') && P.res.stone >= 650 && vils.length > 25) this.build('castle', this.base, 7, 14);
     if (!tc && vils.length && canAfford(P, BUILDINGS.town_center.cost)) this.build('town_center', this.base, 0, 10);     // rebuild a lost Town Center
     if (P.age >= 2 && !count('market') && vils.length >= 24 && P.res.wood >= 260) this.build('market', this.base, 8, 15);
+    if (P.age >= 2 && !count('monastery') && count('barracks', false) && vils.length >= 22 && P.res.wood >= 200 && (this.relicsSeen() || S.healers || P.age >= 3)) this.build('monastery', this.base, 7, 14);
     // floating resources: more production so the army can actually be rebuilt
     if (P.age >= 2 && P.res.wood > 900 && P.res.food + P.res.gold > 1500) for (const t of P.age >= 3 ? ['stable', 'archery_range', 'barracks'] : ['archery_range', 'barracks', 'stable']) if (count(t) < 3 && !building(t)) { this.build(t, this.base, 7, 15); break; }
     this.water(vils, fleet);
+    this.townBell(army);
+    this.monks();
     this.defense(vils, army);
     this.forwardBase(army);
     // ---- give up when the kingdom can't come back (AoE2 AIs resign too)
@@ -121,7 +127,8 @@ export class AI {
     if (count('mill', false) && (!berriesLeft || vilsOn('berry') >= 6) && !idleFarm && farms < Math.min(18, wantFood) && P.res.wood >= 60 + (this.needCamp ? 100 : 0) && mine.bld.filter(b => b.type === 'farm' && !b.built).length < (P.res.wood >= 180 ? 2 : 1)) this.build('farm', this.base, 4, 11);
     // ---- age up + techs
     if (tc && tc.built && !ageing) {
-      for (const t of ['feudal', 'castle']) if (techOk(W, this.pid, t, tc) && canAfford(P, TECHS[t].cost) && P.res.food - (TECHS[t].cost.food || 0) >= this.foodKeep && vils.length >= target - 2) command(W, { t: 'research', pid: this.pid, bid: tc.id, tech: t });
+      const ageT = this.agePath[P.age + 1];
+      if (ageT) for (const t of [ageT]) if (techOk(W, this.pid, t, tc) && canAfford(P, TECHS[t].cost) && P.res.food - (TECHS[t].cost.food || 0) >= this.foodKeep && vils.length >= target - 2) command(W, { t: 'research', pid: this.pid, bid: tc.id, tech: t });
       if (vils.length > 14 && !P.techs.has('loom') && techOk(W, this.pid, 'loom', tc) && P.res.gold >= 50 && tc.queue.length < 2) command(W, { t: 'research', pid: this.pid, bid: tc.id, tech: 'loom' });
     }
     this.research();
@@ -238,7 +245,7 @@ export class AI {
   // desired class weights: counter what we've seen (spear > cav > archer > infantry), lean on our own doctrine
   mixWeights() {
     const e = this.enemyMix(), w = { ...this.S.mix }, P = this.P;
-    if (e.n >= 4) { w.inf += 3 * e.cav / e.n; w.cav += 3 * e.arch / e.n; w.arch += 3 * e.inf / e.n; }
+    if (e.n >= 4) { w.inf += 3 * e.cav / e.n; w.cav += 3 * e.arch / e.n; w.arch += 3 * e.inf / e.n + 1.5 * e.arch / e.n; }
     if (P.techs.has('doc_legion')) w.inf += 1.2; if (P.techs.has('doc_cavalry')) w.cav += 1.2; if (P.techs.has('doc_archers')) w.arch += 1.2;
     return w;
   }
@@ -262,6 +269,9 @@ export class AI {
       for (const t of [...lines[main], ...lines.arch, ...lines.inf, ...lines.cav]) if (go(t, 'blacksmith', 200)) break;
       go('spy_network', 'academy', 150);
       if (S.walls || S.towers > 2) go('masonry', 'academy', 150);
+      if (main === 'inf' || P.techs.has('doc_legion')) go('drill', 'barracks', 200);
+      if (main === 'cav' || S.horseArchers) go('husbandry', 'stable', 200);
+      if (S.walls || this.attacked >= 2) go('civic_defense', 'town_center', 200);
     }
     if (P.age >= 3) {
       const et = this.enemyTechs(), e = this.enemyMix();
@@ -272,6 +282,11 @@ export class AI {
       go(this.known.size > 8 || S.scholar ? 'spec_fire' : 'spec_crossbow', 'academy', 200);
       if (S.scholar || P.res.iron >= 200 || P.res.gold > 800) go('gunpowder', 'academy', 200);
       go('ballistics', 'academy', 300); go('conscription', 'castle', 300);
+      if (e.n >= 4 && e.cav / e.n > 0.3) go('pikes', 'barracks', 250);                       // heavy horse seen: long spears
+      const myArch = this.m.units.filter(u => CLS(u.type) === 'arch').length, myCav = this.m.units.filter(u => CLS(u.type) === 'cav').length;
+      if (myArch >= 6) { go('thumb_ring', 'archery_range', 250); go('parthian', 'archery_range', 300); }
+      if (myCav >= 6) go('flank_tactics', 'stable', 300);
+      if (this.m.units.some(u => u.type === 'healer')) go('medicine', 'academy', 300);
     }
   }
 
@@ -290,17 +305,25 @@ export class AI {
         const spear = e.n >= 3 && e.cav / e.n > 0.3 || P.techs.has('doc_legion') && this.rnd() < 0.5;
         options.push([b, P.age >= 2 && spear ? 'spearman' : 'militia', deficit('inf')]);
         if (P.age >= 3 && this.siegeWanted(army)) options.push([b, 'ram', 0.3]);
-      } else if (b.type === 'archery_range') options.push([b, P.techs.has('gunpowder') && (P.res.iron >= 25 && this.rnd() < 0.4) ? 'gunner' : 'archer', deficit('arch')]);
+      } else if (b.type === 'archery_range') {
+        // skirmishers when the enemy leans on archers, horse archers for raiders, gunners once gunpowder is in
+        const skirm = e.n >= 4 && e.arch / e.n > 0.35 && this.rnd() < 0.6;
+        const ha = P.age >= 3 && (this.S.horseArchers || (e.n >= 4 && e.inf / e.n > 0.5)) && this.rnd() < 0.45;
+        options.push([b, skirm ? 'skirmisher' : ha ? 'horse_archer' : P.techs.has('gunpowder') && (P.res.iron >= 25 && this.rnd() < 0.4) ? 'gunner' : 'archer', deficit('arch')]);
+      }
       else if (b.type === 'stable') options.push([b, P.age >= 3 ? 'knight' : 'scout', deficit('cav')]);
       else if (b.type === 'academy' && P.techs.has('gunpowder') && this.siegeWanted(army)) options.push([b, 'cannon', 0.25]);
+      if (b.type === 'castle' && P.spec.unique) options.push([b, 'unique', 0.15 + Math.max(0, deficit(CLS(P.spec.unique)) || 0)]);     // our civilization's unique unit
+      if (b.type === 'academy' && army.length >= 10 && army.filter(u => u.type === 'healer').length < Math.floor(army.length / (this.S.healers ? 8 : 14))) options.push([b, 'healer', 0.2]);
     }
     options.sort((a, b) => b[2] - a[2]);
     const reserve = ageing ? 0 : (P.age < 3 && vils.length >= target - 3 ? 500 : 0);    // saving up for the next age
     for (const [b, type0] of options.slice(0, 3)) {
       const type = trainType(P, type0), d = UNITS[type];
-      if (!canTrain(W, this.pid, type) || !canAfford(P, d.cost)) continue;
-      if (P.res.food - (d.cost.food || 0) < this.foodKeep) continue;                          // tomorrow's upkeep comes first
-      if (reserve && P.res.food - (d.cost.food || 0) < reserve * (1 - this.D.mil)) continue;
+      const cost = unitCost(P, type);
+      if (!canTrain(W, this.pid, type) || !canAfford(P, cost)) continue;
+      if (P.res.food - (cost.food || 0) < this.foodKeep) continue;                          // tomorrow's upkeep comes first
+      if (reserve && P.res.food - (cost.food || 0) < reserve * (1 - this.D.mil)) continue;
       command(W, { t: 'train', pid: this.pid, bid: b.id, type: type0 });
     }
   }
@@ -558,7 +581,7 @@ export class AI {
     const party = this.m.units.filter(u => u.type === 'militia').length;
     const type = P.age >= 2 ? 'scout' : !this.known.size && W.t > 420 && party < 3 ? 'militia' : null; if (!type) return;
     const b = this.m.bld.find(x => x.type === UNITS[type].from && x.built && x.queue.length < 2);
-    if (b && canAfford(P, UNITS[type].cost) && P.res.food - (UNITS[type].cost.food || 0) >= (this.foodKeep || 0)) { command(W, { t: 'train', pid: this.pid, bid: b.id, type }); this.rsT = W.t + (type === 'scout' ? 90 : 10); }
+    if (b && canAfford(P, unitCost(P, type)) && P.res.food - (unitCost(P, type).food || 0) >= (this.foodKeep || 0)) { command(W, { t: 'train', pid: this.pid, bid: b.id, type }); this.rsT = W.t + (type === 'scout' ? 90 : 10); }
   }
   homeExplored() {
     const W = this.W, S = W.size, [bx, by] = this.base; let un = 0, all = 0;
@@ -600,6 +623,41 @@ export class AI {
     const guards = near.guards.filter(id => alive(W, id)).length;      // only with enough soldiers for the guards
     if (idle.length >= 4 + 2 * guards && !this.threat()) command(W, { t: 'move', pid: this.pid, ids: idle.map(u => u.id), x: near.x + 0.5, y: near.y + 0.5, amove: true });
   }
+  relicsSeen() { const W = this.W; for (const e of W.dyn.values()) if (e.kind === 'relic' && !e.inBld && this.P.exp[idx(W, Math.floor(e.x), Math.floor(e.y))]) return true; return false; }
+  // monks: fetch the relics we have seen, bring carried ones home, convert valuable enemies near them
+  monks() {
+    const W = this.W, P = this.P; if (W.t < (this.monkT || 0)) return; this.monkT = W.t + 2;
+    const mon = this.m.bld.find(b => b.type === 'monastery' && b.built); if (!mon) return;
+    const monks = this.m.units.filter(u => u.type === 'monk');
+    const free = [...W.dyn.values()].filter(e => e.kind === 'relic' && !e.carrier && !e.inBld && P.exp[idx(W, Math.floor(e.x), Math.floor(e.y))]);
+    const want = Math.min(6, Math.min(3, free.length) + (P.age >= 3 ? 2 : 1));
+    if (monks.length < want && !mon.queue.length && canAfford(P, unitCost(P, 'monk')) && P.res.gold >= 160) command(W, { t: 'train', pid: this.pid, bid: mon.id, type: 'monk' });
+    const taken = new Set(monks.filter(m => m.order && m.order.t === 'relic').map(m => m.order.id));
+    for (const m of monks) {
+      if (m.relic) { if (!m.order || m.order.t !== 'relic') command(W, { t: 'smart', pid: this.pid, ids: [m.id], target: mon.id }); continue; }
+      if (m.order && m.order.t !== 'heal') continue;
+      const r = free.filter(e => !taken.has(e.id) && !this.threatNear(e.x, e.y, 8)).sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y))[0];
+      if (r) { taken.add(r.id); command(W, { t: 'smart', pid: this.pid, ids: [m.id], target: r.id }); continue; }
+      if (m.faith >= 1) {      // conversion: the priciest enemy soldier in sight close to the monk
+        let best = null, bv = 99;
+        for (const e of W.dyn.values()) {
+          if (e.kind !== 'unit' || e.owner < 0 || pl(W, e.owner).team === P.team || !MILITARY(e.type) || e.type === 'monk' || UNITS[e.type].naval || UNITS[e.type].cls === 'siege') continue;
+          if (Math.hypot(e.x - m.x, e.y - m.y) > 12 || !P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
+          const v = Object.values(UNITS[e.type].cost).reduce((a, b) => a + b, 0); if (v > bv) { bv = v; best = e; }
+        }
+        if (best) command(W, { t: 'smart', pid: this.pid, ids: [m.id], target: best.id });
+      }
+    }
+  }
+  // town bell: an enemy army at the gates and too few defenders -> villagers into the shelters (they shoot from there)
+  townBell(army) {
+    const W = this.W, P = this.P; if (W.t < (this.bellT || 0)) return; this.bellT = W.t + 2;
+    const [bx, by] = this.base; let foes = 0;
+    for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner >= 0 && pl(W, e.owner).team !== P.team && MILITARY(e.type) && !UNITS[e.type].naval && Math.hypot(e.x - bx, e.y - by) < 14 && P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) foes++;
+    const def = army.filter(u => Math.hypot(u.x - bx, u.y - by) < 18).length;
+    if (!P.bell && foes >= 5 && foes > def * 1.5 && W.t - (this.bellOff ?? -999) > 120) { command(W, { t: 'bell', pid: this.pid, on: true }); this.bellOn = W.t; }
+    else if (P.bell && ((foes === 0 && W.t - this.bellOn > 10) || W.t - this.bellOn > 60)) { command(W, { t: 'bell', pid: this.pid, on: false }); this.bellOff = W.t; }   // short: the economy must go on
+  }
   planFeudal() { return this.P.techs.has('loom') === false && this.m.units.length > 14; }
   threatNear(x, y, r) {
     const W = this.W;
@@ -626,7 +684,8 @@ export class AI {
     const [ox, oy] = this.fwd || this.base;
     for (const [id, k] of this.known) {
       if (k.type === 'farm' || (this.tries.get(id) || [0])[0] >= 3 && W.t < this.tries.get(id)[1]) continue;
-      const d = Math.hypot(k.x - ox, k.y - oy) - (k.type === 'town_center' ? 12 : BUILDINGS[k.type].trains || BUILDINGS[k.type].attack ? 6 : k.type === 'house' ? -4 : 0);
+      const relicRush = W.relicHold && W.relicHold.team !== this.P.team && k.type === 'monastery' ? 40 : 0;
+      const d = Math.hypot(k.x - ox, k.y - oy) - relicRush - (k.type === 'town_center' ? 12 : BUILDINGS[k.type].trains || BUILDINGS[k.type].attack ? 6 : k.type === 'house' ? -4 : 0);
       if (d < bd) { bd = d; best = [k.x, k.y, id]; }
     }
     if (!best) { let t = -1; for (const f of this.foes.values()) if (!f.nav && f.t > t && Math.hypot(f.x - this.base[0], f.y - this.base[1]) > 12) { t = f.t; best = [f.x, f.y]; } }

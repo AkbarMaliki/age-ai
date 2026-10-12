@@ -51,7 +51,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   await p.screenshot({ path: `${SP}/eg_defeat.png` });
   await p.click('#endWatch'); await p.waitForTimeout(1500);
   console.log('watching: over', await G(() => __ak.game.over), 'reveal', await G(() => __ak.game.view.reveal));
-  await ff(40);
+  await ff(90);       // the rest of the match (civilizations make the length vary)
   await p.waitForTimeout(800);
   console.log('final: winner', await G(() => __ak.game.W.winner), 'title', await p.$eval('#endTitle', e => e.textContent), 'end visible', await p.$eval('#endScreen', e => !e.classList.contains('hidden')));
   await p.screenshot({ path: `${SP}/eg_final.png` });

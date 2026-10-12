@@ -1,17 +1,18 @@
 // Online lobby: create a room, share its link, seat players and AIs, pick teams and the map, start.
-import { Net, MAX_SEATS, BOT_NAME } from './net.js?v=20261012210204';
-import { PLAYER_COLORS, PLAYER_RGB, DECKS } from './data.js?v=20261012210204';
-import { Sound } from './audio.js?v=20261012210204';
+import { Net, MAX_SEATS, BOT_NAME } from './net.js?v=20261013073348';
+import { PLAYER_COLORS, PLAYER_RGB, DECKS, CIVS, CIV_KEYS } from './data.js?v=20261013073348';
+import { Sound } from './audio.js?v=20261013073348';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const CFG = {
+  relicWin: [['', 'Mati'], ['1', 'Aktif']],
   map: [['random', 'Acak'], ['padang', 'Padang'], ['rimba', 'Rimba'], ['danau', 'Danau'], ['sungai', 'Sungai'], ['tambang', 'Tambang'], ['pegunungan', 'Gunung'], ['kepulauan', 'Pulau']],
   size: [[112, 'Kecil'], [144, 'Sedang'], [180, 'Besar'], [220, 'Raksasa'], [280, 'Kolosal']],
   season: [['random', 'Acak'], ['semi', 'Semi'], ['kemarau', 'Kemarau'], ['gugur', 'Gugur'], ['salju', 'Salju']],
   night: [['full', 'Penuh'], ['visual', 'Visual'], ['off', 'Mati']],
 };
-const CFG_NAME = { map: 'Peta', size: 'Ukuran', season: 'Musim', night: 'Siang-malam' };
+const CFG_NAME = { map: 'Peta', size: 'Ukuran', season: 'Musim', night: 'Siang-malam', relicWin: 'Menang Relik' };
 const DIFFS = [['easy', 'Mudah'], ['normal', 'Normal'], ['hard', 'Sulit']];
 
 export class Lobby {
@@ -96,6 +97,7 @@ export class Lobby {
       return `<tr data-id="${esc(id)}" class="${!p.bot && !p.online ? 'off' : ''}">
         <td><button class="sw ${can ? 'can' : ''}" data-act="color" style="background:rgb(${PLAYER_RGB[p.color]})" title="${can ? 'Ganti warna' : ''}"></button></td>
         <td><b>${esc(p.name)}</b><small>${tag}</small></td>
+        <td><select data-act="civ" ${can ? '' : 'disabled'} title="Peradaban"><option value="random">🎲 Acak</option>${Object.entries(CIVS).map(([k, c]) => `<option value="${k}" ${p.civ === k ? 'selected' : ''}>${c.glyph} ${c.name}</option>`).join('')}</select></td>
         <td>${p.bot ? (host ? `<select data-act="diff">${DIFFS.map(([v, n]) => `<option value="${v}" ${p.diff === v ? 'selected' : ''}>${n}</option>`).join('')}</select>` : DIFFS.find(d => d[0] === p.diff)?.[1] || '') : ''}</td>
         <td>Tim <select data-act="team" ${can || host ? '' : 'disabled'}>${[1, 2, 3, 4].map(t => `<option ${p.team === t ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
         <td>${host && p.bot ? '<button data-act="kick" class="x" title="Hapus">✕</button>' : ''}</td></tr>`;
@@ -106,6 +108,7 @@ export class Lobby {
       if (act === 'color') el.onclick = () => { if (!(id === net.pid || (host && p.bot))) return; const i = PLAYER_COLORS.indexOf(p.color); const nx = [1, 2, 3, 4].map(k => PLAYER_COLORS[(i + k) % PLAYER_COLORS.length]).find(c => !used.has(c)); if (nx) net.setPlayer(id, p.bot ? { color: nx, name: BOT_NAME[nx] } : { color: nx }); Sound.ui(); };
       if (act === 'team') el.onchange = () => net.setPlayer(id, { team: +el.value });
       if (act === 'diff') el.onchange = () => net.setPlayer(id, { diff: el.value });
+      if (act === 'civ') el.onchange = () => net.setPlayer(id, { civ: el.value });
       if (act === 'kick') el.onclick = () => net.removePlayer(id);
     });
     // game settings: the host edits, everyone sees
@@ -123,8 +126,9 @@ export class Lobby {
     const net = this.net; if (!net || !net.isHost() || $('olStartBtn').disabled) return;
     Sound.ui(); $('olStartBtn').disabled = true;
     const deckKeys = Object.keys(DECKS), cfg = net.meta.cfg || {};
-    const seats = net.seated().map(([pid, p]) => ({ pid, name: p.name, color: p.color, team: p.team, deck: p.bot ? null : (p.deck || null), bot: !!p.bot, diff: p.diff || 'normal', style: p.bot ? deckKeys[(Math.random() * deckKeys.length) | 0] : null }));
-    const game = { cfg: { seed: (Math.random() * 1e9) | 0, map: cfg.map || 'random', size: cfg.size || 144, season: cfg.season || 'random', night: cfg.night || 'full' }, seats, run: Date.now() };
+    const seats = net.seated().map(([pid, p]) => ({ pid, name: p.name, color: p.color, team: p.team, deck: p.bot ? null : (p.deck || null), bot: !!p.bot, diff: p.diff || 'normal', style: p.bot ? deckKeys[(Math.random() * deckKeys.length) | 0] : null,
+      civ: CIVS[p.civ] ? p.civ : CIV_KEYS[(Math.random() * CIV_KEYS.length) | 0] }));      // 'random' is settled here, once, by the host
+    const game = { cfg: { seed: (Math.random() * 1e9) | 0, map: cfg.map || 'random', size: cfg.size || 144, season: cfg.season || 'random', night: cfg.night || 'full', relicWin: !!cfg.relicWin }, seats, run: Date.now() };
     try { await net.startGame(game); } catch (e) { this.note('Gagal memulai: ' + e.message, true); $('olStartBtn').disabled = false; }
   }
 }

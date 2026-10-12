@@ -9,7 +9,7 @@ export const TER = { GRASS: 0, DIRT: 1, FOREST: 2, WATER: 3, GRASS2: 4, HILL: 5,
 
 // ma / pa = melee / pierce armour, speed in tiles/s, range in tiles, los in tiles.
 // cls drives the counter system: spear/infantry > cavalry > archer > infantry (bonus = extra damage vs a class).
-// sprite / tint: specialists reuse a base sprite with a tint (and effects) until they get their own renders.
+// sprite: atlas set (defaults to the unit id). kite = ranged unit that backs off from melee; heal = HP/s to nearby friends.
 export const UNITS = {
   villager: { name: 'Penduduk Desa', hp: 25, atk: 3, ma: 0, pa: 0, speed: 0.8, range: 0, reload: 2.0, los: 4, cost: { food: 50 }, time: 25, age: 1, from: 'town_center', key: 'Q', desc: 'Mengumpulkan sumber daya, membangun dan memperbaiki.' },
   militia: { name: 'Milisi', hp: 40, atk: 4, ma: 0, pa: 1, speed: 0.9, range: 0, reload: 2.0, los: 4, cost: { food: 60, gold: 20 }, vsBuilding: 4, time: 21, age: 1, from: 'barracks', key: 'Q', line: 'sword', desc: 'Infanteri pedang serbaguna, kuat merobohkan bangunan.' },
@@ -18,20 +18,26 @@ export const UNITS = {
   scout: { name: 'Kavaleri Pengintai', hp: 45, atk: 3, ma: 0, pa: 2, speed: 1.55, range: 0, reload: 2.0, los: 6, cost: { food: 80 }, time: 30, age: 2, from: 'stable', key: 'Q', cls: 'cavalry', bonus: { archer: 2 }, desc: 'Cepat, penglihatan luas.' },
   knight: { name: 'Ksatria', hp: 100, atk: 10, ma: 2, pa: 2, speed: 1.35, range: 0, reload: 1.8, los: 4, cost: { food: 60, gold: 75 }, vsBuilding: 3, time: 30, age: 3, from: 'stable', key: 'W', cls: 'cavalry', bonus: { archer: 4 }, line: 'heavycav', desc: 'Kavaleri berat, penghancur pemanah.' },
   // gunpowder + siege
-  gunner: { name: 'Penembak Mesiu', hp: 35, atk: 14, ma: 0, pa: 1, speed: 0.9, range: 5, reload: 3.5, los: 6, acc: 0.6, cost: { food: 50, gold: 50, iron: 25 }, time: 34, age: 3, from: 'archery_range', key: 'W', proj: 'bullet', bonus: { infantry: 6, cavalry: 3 }, needsTech: 'gunpowder', sprite: 'archer', tint: 0x8c8a86, cls: 'archer', desc: 'Senapan api: tembakan berat, menembus zirah.' },
+  gunner: { name: 'Penembak Mesiu', hp: 35, atk: 14, ma: 0, pa: 1, speed: 0.9, range: 5, reload: 3.5, los: 6, acc: 0.6, cost: { food: 50, gold: 50, iron: 25 }, time: 34, age: 3, from: 'archery_range', key: 'W', proj: 'bullet', bonus: { infantry: 6, cavalry: 3 }, needsTech: 'gunpowder', cls: 'archer', desc: 'Senapan api: tembakan berat, menembus zirah.' },
   ram: { name: 'Pendobrak', hp: 175, atk: 2, ma: 0, pa: 40, speed: 0.6, range: 0, reload: 4.0, los: 3, cost: { wood: 160, gold: 75 }, time: 40, age: 3, from: 'barracks', key: 'E', cls: 'siege', vsBuilding: 45, desc: 'Mesin pendobrak gerbang dan bangunan. Kebal panah.' },
   cannon: { name: 'Meriam', hp: 90, atk: 30, ma: 2, pa: 6, speed: 0.55, range: 9, reload: 6.5, los: 9, acc: 0.85, cost: { wood: 200, gold: 150, iron: 80 }, time: 50, age: 3, from: 'academy', key: 'Q', cls: 'siege', proj: 'ball', vsBuilding: 45, splash: 0.9, needsTech: 'gunpowder', desc: 'Meriam mesiu: jangkauan jauh, menghancurkan bangunan.' },
+  // more lines: anti-archer skirmishers, mounted archers, field healers (pikemen come from the Tombak Panjang upgrade)
+  skirmisher: { name: 'Pelempar Lembing', hp: 30, atk: 2, ma: 0, pa: 3, speed: 1.0, range: 4, reload: 3.0, los: 6, acc: 0.9, cost: { food: 25, wood: 35 }, time: 22, age: 2, from: 'archery_range', key: 'W', proj: 'javelin', bonus: { archer: 4 }, line: 'skirm', desc: 'Murah tanpa emas, tahan panah (+3 zirah panah), penangkal pemanah. Lemah melawan kavaleri dan infanteri.' },
+  horse_archer: { name: 'Pemanah Berkuda', hp: 55, atk: 5, ma: 0, pa: 1, speed: 1.4, range: 4, reload: 2.0, los: 6, acc: 0.75, cost: { wood: 40, gold: 70 }, time: 34, age: 3, from: 'archery_range', key: 'R', proj: 'arrow', bonus: { infantry: 2 }, mounted: true, kite: true, desc: 'Cepat, menembak sambil mundur dari jarak dekat (hit and run). Lemah melawan Pelempar Lembing.' },
+  pikeman: { name: 'Pasukan Tombak Panjang', hp: 60, atk: 4, ma: 1, pa: 1, speed: 0.95, range: 0, reload: 3.0, los: 4, cost: { food: 35, wood: 25 }, time: 22, age: 3, from: 'barracks', key: 'W', bonus: { cavalry: 22 }, vsBuilding: 2, line: 'spear', desc: 'Tombak panjang: tembok hidup melawan kavaleri berat.' },
+  monk: { name: 'Biarawan', hp: 30, atk: 0, ma: 0, pa: 0, speed: 0.75, range: 0, reload: 1, los: 11, cost: { gold: 100 }, time: 40, age: 2, from: 'monastery', key: 'Q', cls: 'support', heal: 0.8, healRange: 4, convert: 9, faith: 50, desc: 'Mengonversi unit musuh menjadi milikmu (klik kanan musuh; perlu iman penuh), menyembuhkan pasukan, dan membawa Relik ke Biara.' },
+  healer: { name: 'Tabib', hp: 30, atk: 0, ma: 0, pa: 0, speed: 0.85, range: 0, reload: 1, los: 7, cost: { food: 60, gold: 80 }, time: 30, age: 2, from: 'academy', key: 'E', cls: 'support', heal: 1.6, healRange: 4, desc: 'Menyembuhkan pasukan di dekatnya secara otomatis (klik kanan unit terluka untuk memilih).' },
   // ships (move on water only)
   fishing_boat: { name: 'Kapal Nelayan', hp: 60, atk: 0, ma: 0, pa: 4, speed: 1.2, range: 0, reload: 2, los: 5, cost: { wood: 75 }, time: 30, age: 1, from: 'dock', key: 'Q', cls: 'ship', naval: true, fisher: true, desc: 'Menjala ikan di laut dan sungai; setor di Dermaga.' },
   transport_ship: { name: 'Kapal Angkut', hp: 150, atk: 0, ma: 0, pa: 6, speed: 1.4, range: 0, reload: 2, los: 6, cost: { wood: 125 }, time: 35, age: 2, from: 'dock', key: 'W', cls: 'ship', naval: true, capacity: 10, desc: 'Mengangkut 10 unit menyeberangi air.' },
   war_ship: { name: 'Kapal Perang', hp: 160, atk: 6, ma: 1, pa: 5, speed: 1.3, range: 6, reload: 2.5, los: 8, acc: 0.85, cost: { wood: 160, gold: 60 }, time: 40, age: 2, from: 'dock', key: 'E', cls: 'ship', naval: true, capacity: 3, proj: 'arrow', vsBuilding: 4, bonus: { ship: 4 }, desc: 'Kapal tempur pemanah; hanya bisa mengangkut 3 unit.' },
   // specialists (Akademi): replace a whole unit line once researched
-  samurai: { name: 'Samurai', hp: 70, atk: 10, ma: 2, pa: 2, speed: 0.95, range: 0, reload: 1.8, los: 5, cost: { food: 60, gold: 45, iron: 20 }, time: 22, age: 3, from: 'barracks', key: 'Q', vsBuilding: 5, bonus: { infantry: 5 }, line: 'sword', sprite: 'militia', tint: 0xff8a80, scale: 1.08, desc: 'Pendekar elit: penghancur infanteri.' },
-  ninja: { name: 'Ninja', hp: 45, atk: 8, ma: 0, pa: 2, speed: 1.3, range: 0, reload: 1.4, los: 6, cost: { food: 50, gold: 60, iron: 10 }, time: 22, age: 3, from: 'barracks', key: 'Q', bonus: { villager: 6, archer: 6, siege: 10 }, stealth: true, line: 'sword', sprite: 'militia', tint: 0x55555f, desc: 'Tak terlihat musuh kecuali sangat dekat. Pemburu pemanah, penduduk dan mesin perang.' },
-  fire_archer: { name: 'Pemanah Api', hp: 32, atk: 5, ma: 0, pa: 0, speed: 0.96, range: 4, reload: 2.0, los: 6, acc: 0.8, cost: { wood: 30, gold: 50, iron: 10 }, time: 35, age: 3, from: 'archery_range', key: 'Q', proj: 'fire', bonus: { infantry: 2, ship: 6 }, vsBuilding: 8, fire: true, line: 'bow', sprite: 'archer', tint: 0xffb070, desc: 'Panah api: membakar bangunan dan kapal.' },
-  crossbow: { name: 'Pemanah Silang', hp: 35, atk: 6, ma: 0, pa: 1, speed: 0.96, range: 5, reload: 2.0, los: 7, acc: 0.92, cost: { wood: 30, gold: 50, iron: 10 }, time: 30, age: 3, from: 'archery_range', key: 'Q', proj: 'arrow', bonus: { infantry: 3 }, line: 'bow', sprite: 'archer', tint: 0xc2d2e6, desc: 'Busur silang: jangkauan dan ketepatan tinggi.' },
-  cataphract: { name: 'Katafrak', hp: 130, atk: 10, ma: 4, pa: 4, speed: 1.2, range: 0, reload: 1.8, los: 4, cost: { food: 70, gold: 80, iron: 30 }, time: 32, age: 3, from: 'stable', key: 'W', vsBuilding: 3, cls: 'cavalry', bonus: { archer: 4, infantry: 3 }, line: 'heavycav', sprite: 'knight', tint: 0x9aa6b8, desc: 'Kavaleri berzirah tebal, sulit ditombak.' },
-  lancer: { name: 'Lancer', hp: 100, atk: 14, ma: 2, pa: 2, speed: 1.45, range: 0, reload: 1.8, los: 4, cost: { food: 70, gold: 80, iron: 15 }, time: 30, age: 3, from: 'stable', key: 'W', vsBuilding: 3, cls: 'cavalry', bonus: { archer: 5 }, charge: 12, line: 'heavycav', sprite: 'knight', tint: 0xffe4a0, desc: 'Tombak berkuda: serangan pertama sangat keras.' },
+  samurai: { name: 'Samurai', hp: 70, atk: 10, ma: 2, pa: 2, speed: 0.95, range: 0, reload: 1.8, los: 5, cost: { food: 60, gold: 45, iron: 20 }, time: 22, age: 3, from: 'barracks', key: 'Q', vsBuilding: 5, bonus: { infantry: 5 }, line: 'sword', desc: 'Pendekar elit: penghancur infanteri.' },
+  ninja: { name: 'Ninja', hp: 45, atk: 8, ma: 0, pa: 2, speed: 1.3, range: 0, reload: 1.4, los: 6, cost: { food: 50, gold: 60, iron: 10 }, time: 22, age: 3, from: 'barracks', key: 'Q', bonus: { villager: 6, archer: 6, siege: 10 }, stealth: true, line: 'sword', desc: 'Tak terlihat musuh kecuali sangat dekat. Pemburu pemanah, penduduk dan mesin perang.' },
+  fire_archer: { name: 'Pemanah Api', hp: 32, atk: 5, ma: 0, pa: 0, speed: 0.96, range: 4, reload: 2.0, los: 6, acc: 0.8, cost: { wood: 30, gold: 50, iron: 10 }, time: 35, age: 3, from: 'archery_range', key: 'Q', proj: 'fire', bonus: { infantry: 2, ship: 6 }, vsBuilding: 8, fire: true, line: 'bow', desc: 'Panah api: membakar bangunan dan kapal.' },
+  crossbow: { name: 'Pemanah Silang', hp: 35, atk: 6, ma: 0, pa: 1, speed: 0.96, range: 5, reload: 2.0, los: 7, acc: 0.92, cost: { wood: 30, gold: 50, iron: 10 }, time: 30, age: 3, from: 'archery_range', key: 'Q', proj: 'arrow', bonus: { infantry: 3 }, line: 'bow', desc: 'Busur silang: jangkauan dan ketepatan tinggi.' },
+  cataphract: { name: 'Katafrak', hp: 130, atk: 10, ma: 4, pa: 4, speed: 1.2, range: 0, reload: 1.8, los: 4, cost: { food: 70, gold: 80, iron: 30 }, time: 32, age: 3, from: 'stable', key: 'W', vsBuilding: 3, cls: 'cavalry', bonus: { archer: 4, infantry: 3 }, line: 'heavycav', desc: 'Kavaleri berzirah tebal, sulit ditombak.' },
+  lancer: { name: 'Lancer', hp: 100, atk: 14, ma: 2, pa: 2, speed: 1.45, range: 0, reload: 1.8, los: 4, cost: { food: 70, gold: 80, iron: 15 }, time: 30, age: 3, from: 'stable', key: 'W', vsBuilding: 3, cls: 'cavalry', bonus: { archer: 5 }, charge: 12, line: 'heavycav', desc: 'Tombak berkuda: serangan pertama sangat keras.' },
 };
 // Gaia (nature): animals and bandits. animal: herd = sheep (convertible), flee = deer, fight = boar (strikes back),
 // predator = wolf (hunts villagers), guard = bear/bandit (protects a treasure). food = meat left on the carcass.
@@ -53,30 +59,36 @@ export const TREASURES = {
 
 // n = footprint (tiles). drop = resources accepted. block=false lets units walk over it (farms). water = built on water.
 export const BUILDINGS = {
-  town_center: { name: 'Pusat Kota', n: 4, hp: 2400, ma: 3, pa: 5, cost: { wood: 275, stone: 100 }, time: 150, age: 1, pop: 5, los: 8, drop: ['food', 'wood', 'gold', 'stone', 'iron'], trains: ['villager'], techs: ['loom', 'wheelbarrow', 'torches', 'feudal', 'castle'], attack: { atk: 5, range: 6, reload: 2.0 }, key: 'Q', page: 0 },
+  town_center: { name: 'Pusat Kota', n: 4, hp: 2400, ma: 3, pa: 5, cost: { wood: 275, stone: 100 }, time: 150, age: 1, pop: 5, los: 8, drop: ['food', 'wood', 'gold', 'stone', 'iron'], trains: ['villager'], techs: ['loom', 'wheelbarrow', 'torches', 'civic_defense', 'feudal', 'feudal_war', 'feudal_wall', 'castle', 'castle_war', 'castle_trade'], ability: 'bell', attack: { atk: 5, range: 6, reload: 2.0 }, key: 'Q', page: 0 },
   house: { name: 'Rumah', n: 2, hp: 550, ma: 0, pa: 7, cost: { wood: 25 }, time: 25, age: 1, pop: 5, los: 2 },
   mill: { name: 'Penggilingan', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['food'], techs: ['horse_collar', 'granary'] },
   lumber_camp: { name: 'Kamp Penebang', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['wood'], techs: ['double_bit_axe'] },
   mining_camp: { name: 'Kamp Tambang', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['gold', 'stone', 'iron'], techs: ['gold_mining', 'iron_smelting'] },
   farm: { name: 'Ladang', n: 3, hp: 480, ma: 0, pa: 0, cost: { wood: 60 }, time: 15, age: 1, los: 1, block: false, food: 175, needs: ['mill'] },
   dock: { name: 'Dermaga', n: 3, hp: 1800, ma: 0, pa: 7, cost: { wood: 150 }, time: 35, age: 1, los: 7, water: true, drop: ['food'], trains: ['fishing_boat', 'transport_ship', 'war_ship'], techs: ['gillnets', 'careening'] },
-  barracks: { name: 'Barak', n: 3, hp: 1200, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 1, los: 6, trains: ['militia', 'spearman', 'ram'] },
-  archery_range: { name: 'Lapangan Panahan', n: 3, hp: 1500, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 6, trains: ['archer', 'gunner'], needs: ['barracks'] },
-  stable: { name: 'Istal', n: 3, hp: 1500, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 6, trains: ['scout', 'knight'], needs: ['barracks'] },
+  barracks: { name: 'Barak', n: 3, hp: 1200, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 1, los: 6, trains: ['militia', 'spearman', 'ram'], techs: ['drill', 'pikes'] },
+  archery_range: { name: 'Lapangan Panahan', n: 3, hp: 1500, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 6, trains: ['archer', 'skirmisher', 'horse_archer', 'gunner'], needs: ['barracks'], techs: ['thumb_ring', 'parthian'] },
+  stable: { name: 'Istal', n: 3, hp: 1500, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 6, trains: ['scout', 'knight'], needs: ['barracks'], techs: ['husbandry', 'flank_tactics'] },
   blacksmith: { name: 'Pandai Besi', n: 3, hp: 1800, ma: 1, pa: 7, cost: { wood: 150 }, time: 40, age: 2, los: 6, needs: ['barracks'], techs: ['forging', 'iron_casting', 'scale_mail', 'chain_mail', 'scale_barding', 'chain_barding', 'fletching', 'bodkin', 'padded_archer', 'doc_legion', 'doc_cavalry', 'doc_archers'] },
-  academy: { name: 'Akademi', n: 4, hp: 2100, ma: 1, pa: 8, cost: { wood: 225, stone: 75 }, time: 60, age: 2, los: 7, needs: ['blacksmith'], trains: ['cannon'], techs: ['spy_network', 'masonry', 'ballistics', 'gunpowder', 'spec_samurai', 'spec_ninja', 'spec_fire', 'spec_crossbow', 'spec_cataphract', 'spec_lancer', 'doc_fortress', 'doc_blitz', 'doc_formation'], ability: 'spy' },
+  academy: { name: 'Akademi', n: 4, hp: 2100, ma: 1, pa: 8, cost: { wood: 225, stone: 75 }, time: 60, age: 2, los: 7, needs: ['blacksmith'], trains: ['cannon', 'healer'], techs: ['medicine', 'spy_network', 'masonry', 'ballistics', 'gunpowder', 'spec_samurai', 'spec_ninja', 'spec_fire', 'spec_crossbow', 'spec_cataphract', 'spec_lancer', 'doc_fortress', 'doc_blitz', 'doc_formation'], ability: 'spy' },
+  monastery: { name: 'Biara', n: 3, hp: 2100, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 7, needs: ['barracks'], trains: ['monk'], techs: ['fervor', 'sanctity', 'illumination'], relics: true },
   market: { name: 'Pasar', n: 4, hp: 2100, ma: 0, pa: 7, cost: { wood: 175 }, time: 60, age: 2, los: 6, needs: ['mill'], market: true, techs: ['guilds', 'trade_route'] },
   watch_tower: { name: 'Menara Jaga', n: 1, hp: 1020, ma: 1, pa: 7, cost: { wood: 25, stone: 125 }, time: 80, age: 2, los: 10, attack: { atk: 5, range: 8, reload: 2.0 } },
   stone_wall: { name: 'Tembok Batu', n: 1, hp: 1800, ma: 8, pa: 10, cost: { stone: 5 }, time: 8, age: 2, los: 2, wall: true },
   gate: { name: 'Gerbang', n: 1, len: 3, hp: 2750, ma: 6, pa: 6, cost: { stone: 30 }, time: 70, age: 2, los: 4, gate: true },
-  castle: { name: 'Kastil', n: 4, hp: 4800, ma: 8, pa: 11, cost: { stone: 650 }, time: 200, age: 3, pop: 20, los: 11, trains: ['knight'], techs: ['conscription'], attack: { atk: 11, range: 8, reload: 2.0, arrows: 3 } },
+  castle: { name: 'Kastil', n: 4, hp: 4800, ma: 8, pa: 11, cost: { stone: 650 }, time: 200, age: 3, pop: 20, los: 11, trains: ['knight', 'unique'], techs: ['conscription'], attack: { atk: 11, range: 8, reload: 2.0, arrows: 3 } },
 };
 for (const [k, b] of Object.entries(BUILDINGS)) { b.id = k; if (b.block === undefined) b.block = true; }
 
 // group = mutually exclusive choice (only one of the group per player). spec = turns a unit line into a specialist.
 export const TECHS = {
-  feudal: { name: 'Maju ke Zaman Feodal', cost: { food: 500 }, time: 130, age: 1, at: 'town_center', toAge: 2, key: 'E', reqCount: 2, reqFrom: ['mill', 'lumber_camp', 'mining_camp', 'barracks', 'dock'] },
-  castle: { name: 'Maju ke Zaman Kastil', cost: { food: 800, gold: 200 }, time: 160, age: 2, at: 'town_center', toAge: 3, key: 'E', reqCount: 2, reqFrom: ['archery_range', 'stable', 'watch_tower', 'blacksmith', 'market', 'academy'] },
+  // ---- age-ups: every age is reached by one of three paths (exclusive); each path is a lasting kingdom bonus
+  feudal: { name: 'Feodal: Jalan Kemakmuran', cost: { food: 500 }, time: 130, age: 1, at: 'town_center', toAge: 2, key: 'A', group: 'age2', glyph: '🌾', mods: { gather: { food: 0.1, wood: 0.1, gold: 0.1, stone: 0.1, iron: 0.1 } }, reqCount: 2, reqFrom: ['mill', 'lumber_camp', 'mining_camp', 'barracks', 'dock'], desc: 'Naik ke Zaman Feodal lewat DEWAN SAUDAGAR: semua pengumpulan sumber daya +10% selamanya. Jalur ekonomi (boom).' },
+  feudal_war: { name: 'Feodal: Jalan Pedang', cost: { food: 500 }, time: 130, age: 1, at: 'town_center', toAge: 2, key: 'S', group: 'age2', glyph: '⚔', mods: { trainSpeed: 0.15 }, units: [['militia', 4]], reqCount: 2, reqFrom: ['mill', 'lumber_camp', 'mining_camp', 'barracks', 'dock'], desc: 'Naik ke Zaman Feodal lewat DEWAN PANGLIMA: 4 Milisi gratis dan semua tentara dilatih 15% lebih cepat. Jalur serangan awal (rush).' },
+  feudal_wall: { name: 'Feodal: Jalan Benteng', cost: { food: 500 }, time: 130, age: 1, at: 'town_center', toAge: 2, key: 'D', group: 'age2', glyph: '🧱', mods: { bldHp: 0.15, towerAtk: 1 }, give: { stone: 250 }, reqCount: 2, reqFrom: ['mill', 'lumber_camp', 'mining_camp', 'barracks', 'dock'], desc: 'Naik ke Zaman Feodal lewat DEWAN PEMBANGUN: +250 batu, bangunan +15% HP, menara dan Pusat Kota +1 serangan. Jalur bertahan.' },
+  castle: { name: 'Kastil: Akademi Agung', cost: { food: 800, gold: 200 }, time: 160, age: 2, at: 'town_center', toAge: 3, key: 'A', group: 'age3', glyph: '📚', mods: { techCost: 0.25 }, reqCount: 2, reqFrom: ['archery_range', 'stable', 'watch_tower', 'blacksmith', 'market', 'academy'], desc: 'Naik ke Zaman Kastil lewat AKADEMI AGUNG: semua riset 25% lebih murah dan lebih cepat. Jalur teknologi.' },
+  castle_war: { name: 'Kastil: Panji Perang', cost: { food: 800, gold: 200 }, time: 160, age: 2, at: 'town_center', toAge: 3, key: 'S', group: 'age3', glyph: '🚩', mods: { milHp: 0.1 }, units: [['knight', 3]], reqCount: 2, reqFrom: ['archery_range', 'stable', 'watch_tower', 'blacksmith', 'market', 'academy'], desc: 'Naik ke Zaman Kastil lewat PANJI PERANG: 3 Ksatria gratis dan semua tentara +10% HP. Jalur militer.' },
+  castle_trade: { name: 'Kastil: Jalur Sutra', cost: { food: 800, gold: 200 }, time: 160, age: 2, at: 'town_center', toAge: 3, key: 'D', group: 'age3', glyph: '🐫', mods: { trickle: 0.7, fee: -0.1 }, reqCount: 2, reqFrom: ['archery_range', 'stable', 'watch_tower', 'blacksmith', 'market', 'academy'], desc: 'Naik ke Zaman Kastil lewat JALUR SUTRA: +42 emas per menit selamanya dan komisi Pasar -10%. Jalur perdagangan.' },
   loom: { name: 'Tenun', cost: { gold: 50 }, time: 25, age: 1, at: 'town_center', key: 'R', desc: 'Penduduk desa +15 HP, +1/+2 zirah.' },
   wheelbarrow: { name: 'Gerobak Dorong', cost: { food: 175, wood: 50 }, time: 75, age: 2, at: 'town_center', key: 'T', desc: 'Penduduk desa +10% kecepatan, +3 muatan.' },
   torches: { name: 'Obor Kerja', cost: { food: 150, wood: 100 }, time: 45, age: 2, at: 'town_center', key: 'W', desc: 'Lembur: penduduk desa tetap bekerja dengan obor sampai tengah malam (70% kecepatan), lalu pulang tidur.' },
@@ -89,6 +101,17 @@ export const TECHS = {
   careening: { name: 'Lambung Kapal', cost: { food: 200, gold: 100 }, time: 40, age: 2, at: 'dock', key: 'T', desc: 'Kapal +1 zirah panah; Kapal Angkut memuat +5 unit.' },
   guilds: { name: 'Serikat Dagang', cost: { food: 300, gold: 100 }, time: 50, age: 2, at: 'market', key: 'R', desc: 'Komisi jual-beli di Pasar turun dari 30% menjadi 15%.' },
   trade_route: { name: 'Rute Dagang', cost: { food: 200, wood: 200 }, time: 60, age: 3, at: 'market', key: 'T', desc: 'Pedagang singgah: setiap Pasar menghasilkan 24 emas per menit.' },
+  civic_defense: { name: 'Pertahanan Rakyat', cost: { food: 100, wood: 100 }, time: 35, age: 2, at: 'town_center', key: 'E', glyph: '🔔', desc: 'Penduduk yang berlindung (Lonceng Kota atau malam) di Pusat Kota, Kastil atau menara menambah 1 anak panah per 2 penduduk (tanpa riset: 1 per 4), maksimal +5.' },
+  drill: { name: 'Latihan Keras', cost: { food: 150, gold: 50 }, time: 40, age: 2, at: 'barracks', key: 'R', glyph: '🏋', desc: 'Infanteri +15% HP.' },
+  pikes: { name: 'Tombak Panjang', cost: { food: 250, gold: 150 }, time: 50, age: 3, at: 'barracks', key: 'T', glyph: '🔱', spec: ['spearman', 'pikeman'], desc: 'Prajurit Tombak menjadi Pasukan Tombak Panjang: +15 HP, +22 vs kavaleri.' },
+  thumb_ring: { name: 'Cincin Jempol', cost: { food: 200, wood: 100 }, time: 45, age: 3, at: 'archery_range', key: 'T', glyph: '💍', desc: 'Pemanah menembak 15% lebih cepat dan +5% ketepatan.' },
+  parthian: { name: 'Taktik Parthia', cost: { food: 200, gold: 150 }, time: 50, age: 3, at: 'archery_range', key: 'A', glyph: '↩', desc: 'Pemanah dan Pelempar Lembing otomatis mundur dari musuh jarak dekat sambil menembak (lari-tembak).' },
+  husbandry: { name: 'Peternakan Kuda', cost: { food: 150 }, time: 40, age: 2, at: 'stable', key: 'E', glyph: '🐎', desc: 'Kavaleri dan Pemanah Berkuda +10% kecepatan.' },
+  flank_tactics: { name: 'Taktik Sayap', cost: { food: 250, gold: 150 }, time: 50, age: 3, at: 'stable', key: 'R', glyph: '🌀', desc: 'Serangan kavaleri dari samping atau belakang +50% (biasanya +25%).' },
+  medicine: { name: 'Ilmu Pengobatan', cost: { food: 200, gold: 200 }, time: 50, age: 3, at: 'academy', key: 'V', glyph: '⚕', desc: 'Tabib menyembuhkan 50% lebih cepat; semua tentara memulihkan HP sendiri bila tidak diserang 8 detik.' },
+  fervor: { name: 'Semangat', cost: { gold: 140 }, time: 35, age: 2, at: 'monastery', key: 'W', glyph: '🏃', desc: 'Biarawan +15% kecepatan.' },
+  sanctity: { name: 'Kesucian', cost: { gold: 120 }, time: 35, age: 2, at: 'monastery', key: 'E', glyph: '✨', desc: 'Biarawan +50% HP.' },
+  illumination: { name: 'Pencerahan', cost: { gold: 120 }, time: 45, age: 3, at: 'monastery', key: 'R', glyph: '🕯', desc: 'Iman Biarawan pulih 50% lebih cepat (konversi lebih sering).' },
   conscription: { name: 'Wajib Militer', cost: { food: 400, gold: 200 }, time: 60, age: 3, at: 'castle', key: 'E', desc: 'Semua tentara dilatih 33% lebih cepat.' },
   // ---- Blacksmith: three upgrade lines + the first, exclusive doctrine
   forging: { name: 'Tempa Besi', cost: { food: 150 }, time: 40, age: 2, at: 'blacksmith', key: 'Q', desc: 'Infanteri dan kavaleri +1 serangan.' },
@@ -121,6 +144,28 @@ export const TECHS = {
 for (const [k, t] of Object.entries(TECHS)) t.id = k;
 // line -> specialist tech group (for UI / AI)
 export const SPEC_OF = Object.fromEntries(Object.values(TECHS).filter(t => t.spec).map(t => [t.id, t.spec]));
+
+// relics (AoE2): only monks carry them; each relic kept in a monastery yields gold. Relic victory (optional rule):
+// hold every relic on the map for `win` game-seconds.
+export const RELICS = { gold: 0.5, speed: 0.8, win: 300 };
+
+// civilizations: lasting bonuses (mods / per-class stat multipliers / unit discounts / start) and a unique unit
+// trained at the Castle (the 'unique' slot). AIs pick at random unless set.
+export const CIVS = {
+  jepang: { name: 'Kekaisaran Jepang', glyph: '⛩', unique: 'samurai', desc: 'Infanteri menyerang 20% lebih cepat. Penangkapan ikan +20%. Unit unik: Samurai.',
+    mods: { fish: 0.2 }, stat: { infantry: { reload: 0.8 } } },
+  han: { name: 'Dinasti Han', glyph: '🐉', unique: 'crossbow', desc: 'Mulai dengan +2 penduduk desa (makanan -150). Semua riset 10% lebih murah dan cepat. Unit unik: Pemanah Silang.',
+    mods: { techCost: 0.1 }, start: { villagers: 2, food: -150 } },
+  persia: { name: 'Kekaisaran Persia', glyph: '🏺', unique: 'fire_archer', desc: 'Mulai +100 makanan dan +100 kayu. Kavaleri +15% HP. Unit unik: Pemanah Api.',
+    start: { food: 100, wood: 100 }, stat: { cavalry: { hp: 1.15 } } },
+  bizantium: { name: 'Bizantium', glyph: '☦', unique: 'cataphract', desc: 'Bangunan +15% HP. Tombak, Tombak Panjang dan Pelempar Lembing 25% lebih murah. Unit unik: Katafrak.',
+    mods: { bldHp: 0.15 }, cost: { spearman: 0.75, pikeman: 0.75, skirmisher: 0.75 } },
+  mongol: { name: 'Kekaisaran Mongol', glyph: '🏹', unique: 'lancer', desc: 'Kavaleri +10% kecepatan. Pemanah Berkuda menembak 20% lebih cepat. Unit unik: Lancer.',
+    mods: { cavSpeed: 0.1 }, unitStat: { horse_archer: { reload: 0.8 } } },
+  majapahit: { name: 'Majapahit', glyph: '🌴', unique: 'gunner', desc: 'Menjala ikan +25%. Kapal 20% lebih murah dan +15% HP. Unit unik: Prajurit Bedil (Penembak Mesiu tanpa riset Bubuk Mesiu).',
+    mods: { fish: 0.25 }, stat: { ship: { hp: 1.15 } }, cost: { fishing_boat: 0.8, transport_ship: 0.8, war_ship: 0.8 } },
+};
+export const CIV_KEYS = Object.keys(CIVS);
 
 // formations: how a group lines up and what it gains
 export const FORMATIONS = {
