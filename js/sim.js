@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES } from './data.js';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS } from './data.js';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -12,12 +12,37 @@ export function createWorld({ size, terrain, players, seed = 1 }) {
   const W = {
     t: 0, tick: 0, size, terrain, occ: new Int32Array(size * size), ents: new Map(), dyn: new Map(), ugrid: new Map(), nextId: 1,
     players: players.map((p, i) => ({ id: i, name: p.name, color: p.color, ai: !!p.ai, team: p.team ?? i, res: { ...START_RES }, age: 1, pop: 0, popCap: 0, techs: new Set(), alive: true,
-      vis: new Uint8Array(size * size), exp: new Uint8Array(size * size), stats: { units: 0, killed: 0, lost: 0, gathered: 0, built: 0 }, housed: false })),
-    cmds: [], ev: [], rnd: rng(seed), paths: 0, nodes: 0, winner: -1, unreach: new Map(),
+      vis: new Uint8Array(size * size), exp: new Uint8Array(size * size), stats: newStats(), housed: false,
+      xp: 0, nextXp: XP.first, ships: 0, shipsEarned: 0, cards: [], shipment: null, mods: { gather: { food: 0, wood: 0, gold: 0, stone: 0 }, vilSpeed: 0, ma: 0, pa: 0, fee: 0 } })),
+    cmds: [], ev: [], rnd: rng(seed), seed, paths: 0, nodes: 0, winner: -1, unreach: new Map(),
+    market: { ...MARKET.base },
   };
-  W.gaia = { id: GAIA, name: 'Alam', color: 'none', gaia: true, team: -1, res: { ...START_RES }, age: 1, pop: 0, popCap: 0, techs: new Set(), alive: true, stats: { units: 0, killed: 0, lost: 0, gathered: 0, built: 0 } };
+  W.gaia = { id: GAIA, name: 'Alam', color: 'none', gaia: true, team: -1, res: { ...START_RES }, age: 1, pop: 0, popCap: 0, techs: new Set(), alive: true, stats: newStats() };
   return W;
 }
+// per-player war statistics (stats panel + end screen). killed / lost = units, razed / bldLost = buildings,
+// vilKilled = enemy villagers slain, killVal / lostVal = resource value destroyed / lost, gres = gathered per resource,
+// tr = units trained per type, treasures = chests collected
+export function newStats() {
+  return { units: 0, killed: 0, lost: 0, gathered: 0, built: 0, razed: 0, bldLost: 0, vilKilled: 0, killVal: 0, lostVal: 0, treasures: 0,
+    gres: { food: 0, wood: 0, gold: 0, stone: 0 }, tr: {}, trades: 0 };
+}
+// ---- Home City experience (AoE3): enough XP earns a shipment
+export function addXp(W, P, n) {
+  if (!P || P.gaia || !(n > 0)) return;
+  P.xp += n;
+  while (P.xp >= P.nextXp) { P.ships++; P.shipsEarned++; P.nextXp += XP.first + XP.step * P.shipsEarned; W.ev.push({ k: 'shipready', owner: P.id }); }
+}
+export function cardOk(P, id) {
+  const c = CARDS[id]; return !!c && P.age >= c.age && (c.repeat || !P.cards.includes(id));
+}
+// ---- market prices (shared by all players, like AoE2)
+export const marketFee = (P) => Math.max(0.05, (P.techs.has('guilds') ? MARKET.feeGuilds : MARKET.fee) + P.mods.fee);
+export const buyPrice = (W, P, r) => Math.round(W.market[r] * (1 + marketFee(P)));
+export const sellPrice = (W, P, r) => Math.round(W.market[r] * (1 - marketFee(P)));
+// buildings that keep a player in the game (walls, gates, farms, houses and foundations alone don't)
+export const keepsAlive = (e) => e.hp > 0 && (e.kind === 'unit' ? !UNITS[e.type].animal : e.kind === 'building' && e.built && !BUILDINGS[e.type].wall && !BUILDINGS[e.type].gate && !['farm', 'house'].includes(e.type));
+const costVal = (c) => RES.reduce((s, r) => s + ((c && c[r]) || 0), 0);
 export const idx = (W, i, j) => j * W.size + i;
 export const pl = (W, owner) => owner === GAIA ? W.gaia : W.players[owner];
 export const isAnimal = (e) => e && e.kind === 'unit' && !!UNITS[e.type].animal;
@@ -53,7 +78,7 @@ export function addUnit(W, owner, type, x, y) {
   const d = UNITS[type], P = pl(W, owner);
   const u = add(W, { kind: 'unit', type, owner, x, y, px: x, py: y, hp: d.hp, maxHp: d.hp, dir: 90, anim: 'idle', aT: 0, order: null, path: null, cool: 0, carry: null, task: null, scan: 0, stuck: 0, home: [x, y] });
   if (type === 'villager' && P.techs.has('loom')) { u.hp += 15; u.maxHp += 15; }
-  if (!d.animal && owner !== GAIA) { P.pop++; P.stats.units++; }
+  if (!d.animal && owner !== GAIA) { P.pop++; P.stats.units++; P.stats.tr[type] = (P.stats.tr[type] || 0) + 1; }
   return u;
 }
 export function addTreasure(W, type, i, j, amount) {
@@ -63,7 +88,7 @@ function onBuilt(W, b, silent) {
   const d = BUILDINGS[b.type], P = W.players[b.owner];
   b.built = true; b.progress = 1; b.hp = Math.max(b.hp, 1); if (silent) b.hp = d.hp;
   if (d.pop) P.popCap = Math.min(POP_LIMIT, P.popCap + d.pop);
-  if (!silent) { P.stats.built++; W.ev.push({ k: 'built', x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }
+  if (!silent) { P.stats.built++; addXp(W, P, costVal(d.cost) * XP.build); W.ev.push({ k: 'built', x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }
 }
 
 // ---------------------------------------------------------------- passability / geometry
@@ -293,6 +318,20 @@ function applyCmd(W, c) {
       break;
     }
     case 'rally': { const b = alive(W, c.bid); if (b && b.owner === c.pid) b.rally = { x: c.x, y: c.y, id: c.target || 0 }; break; }
+    case 'trade': {      // market: buy or sell one lot (100) of food / wood / stone for gold
+      const b = alive(W, c.bid); if (!b || b.owner !== c.pid || !b.built || !BUILDINGS[b.type].market || !MARKET.base[c.res]) break;
+      if (c.buy) { const g = buyPrice(W, P, c.res); if (P.res.gold < g) break; P.res.gold -= g; P.res[c.res] += MARKET.lot; W.market[c.res] = Math.min(MARKET.max, W.market[c.res] + MARKET.step); }
+      else { if (P.res[c.res] < MARKET.lot) break; P.res[c.res] -= MARKET.lot; P.res.gold += sellPrice(W, P, c.res); W.market[c.res] = Math.max(MARKET.min, W.market[c.res] - MARKET.step); }
+      P.stats.trades++; W.ev.push({ k: 'trade', owner: c.pid, x: b.x + b.w / 2, y: b.y + b.h / 2, res: c.res, buy: !!c.buy });
+      break;
+    }
+    case 'card': {       // send a Home City shipment (one at a time)
+      if (P.ships < 1 || P.shipment || !cardOk(P, c.card)) break;
+      P.ships--; P.cards.push(c.card); P.shipment = { card: c.card, t: XP.travel };
+      W.ev.push({ k: 'shipsent', owner: c.pid, card: c.card });
+      break;
+    }
+    case 'resign': resign(W, c.pid); break;
     case 'stop': for (const u of own(W, c.pid, c.ids)) setOrder(W, u, null); break;
     case 'delete': {
       const e = W.ents.get(c.id); if (!e || e.owner !== c.pid) break;
@@ -338,11 +377,13 @@ export function step(W) {
     else if (e.kind === 'treasure' && W.tick % 5 === 0) treasureTick(W, e);
   }
   separate(W);
+  for (const P of W.players) if (P.shipment && P.alive && (P.shipment.t -= TICK) <= 0) deliver(W, P);
+  if (W.tick % 10 === 0) for (const r in W.market) { const b = MARKET.base[r]; W.market[r] += Math.sign(b - W.market[r]) * Math.min(Math.abs(b - W.market[r]), MARKET.drift * 10 * TICK); }
   if (W.tick % 4 === 0) updateVision(W);
   if (W.tick % 10 === 0) checkVictory(W);
 }
 
-const speedOf = (W, u) => UNITS[u.type].speed * (u.type === 'villager' && W.players[u.owner].techs.has('wheelbarrow') ? 1.1 : 1);
+const speedOf = (W, u) => UNITS[u.type].speed * (u.type === 'villager' && W.players[u.owner] ? (W.players[u.owner].techs.has('wheelbarrow') ? 1.1 : 1) * (1 + W.players[u.owner].mods.vilSpeed) : 1);
 const capOf = (W, u) => CARRY + (W.players[u.owner].techs.has('wheelbarrow') ? 3 : 0);
 export const NEAR = 0.8;   // standing on any of the 8 tiles around a footprint counts as 'at' it
 const hunting = (u, t) => u.type === 'villager' && isAnimal(t);
@@ -468,9 +509,11 @@ function findEnemy(W, u, r) {
 }
 function dmgOf(W, a, t) {
   const d = UNITS[a.type]; let atk = d.atk; const rg = d.range || hunting(a, t);
-  const arm = t.kind === 'unit' ? (rg ? UNITS[t.type].pa : UNITS[t.type].ma) + (t.type === 'villager' && pl(W, t.owner).techs.has('loom') ? (rg ? 2 : 1) : 0) : (rg ? BUILDINGS[t.type].pa : BUILDINGS[t.type].ma);
+  const TP = pl(W, t.owner), soldier = t.kind === 'unit' && t.type !== 'villager' && t.owner !== GAIA && !UNITS[t.type].animal;
+  const arm = t.kind === 'unit' ? (rg ? UNITS[t.type].pa : UNITS[t.type].ma) + (t.type === 'villager' && TP.techs.has('loom') ? (rg ? 2 : 1) : 0) + (soldier ? (rg ? TP.mods.pa : TP.mods.ma) : 0) : (rg ? BUILDINGS[t.type].pa : BUILDINGS[t.type].ma);
   let dmg = Math.max(1, atk - arm);
   if (d.bonus && t.kind === 'unit' && d.bonus[UNITS[t.type].cls]) dmg += d.bonus[UNITS[t.type].cls];
+  if (d.vsBuilding && t.kind === 'building') dmg += d.vsBuilding;      // melee soldiers can actually knock buildings down (AoE2 bonus vs buildings)
   if (t.kind === 'building' && a.type === 'villager') dmg = Math.max(1, dmg * 0.5);
   return dmg;
 }
@@ -513,9 +556,10 @@ export function damage(W, t, dmg, src) {
   if (t.kind === 'unit' && UNITS[t.type].animal === 'flee' && src) t.scan = 0;   // deer bolt immediately
   if (t.kind === 'unit' && t.type === 'villager' && src && src.id && t.order && t.order.t !== 'attack' && W.rnd() < 0.02) { /* villagers keep working */ }
   if (t.hp > 0) return;
-  const P = pl(W, t.owner);
-  if (src && src.owner !== undefined && W.players[src.owner] && !isAnimal(t)) W.players[src.owner].stats.killed++;
-  P.stats.lost++;
+  const P = pl(W, t.owner), S = src && src.owner !== undefined && src.owner !== t.owner && W.players[src.owner] ? W.players[src.owner].stats : null;
+  const bld = t.kind === 'building', val = costVal(bld ? BUILDINGS[t.type].cost : UNITS[t.type].cost);
+  if (S && !isAnimal(t)) { if (bld) S.razed++; else { S.killed++; if (t.type === 'villager') S.vilKilled++; } S.killVal += val; addXp(W, W.players[src.owner], val * XP.kill); }
+  if (!(bld && t.type === 'farm' && !src)) { if (bld) P.stats.bldLost++; else P.stats.lost++; P.stats.lostVal += val; }   // exhausted farms aren't losses
   del(W, t.id);
   if (t.kind === 'unit') {
     if (!UNITS[t.type].animal && t.owner !== GAIA) P.pop--;
@@ -529,7 +573,7 @@ export function damage(W, t, dmg, src) {
     W.regionDirty = true;
     if (t.built && d.pop) P.popCap = Math.max(0, P.popCap - d.pop);
     if (t.type !== 'farm') add(W, { kind: 'rubble', n: Math.min(4, Math.max(t.w, t.h)), x: t.x + t.w / 2, y: t.y + t.h / 2, t: 0 });
-    W.ev.push({ k: 'collapse', x: t.x + t.w / 2, y: t.y + t.h / 2, owner: t.owner, type: t.type, n: t.w });
+    W.ev.push({ k: 'collapse', x: t.x + t.w / 2, y: t.y + t.h / 2, owner: t.owner, type: t.type, n: t.w, hit: !!src });
     for (const q of t.queue) { const c = q.unit ? UNITS[q.unit].cost : TECHS[q.tech].cost; for (const r of RES) P.res[r] += c[r] || 0; }
   }
 }
@@ -548,17 +592,19 @@ function rateOf(W, u, kind, src) {
   if (kind === 'carcass' && src && src.animal === 'sheep') r = 0.33;   // shepherding is slower than hunting
   if (kind === 'tree' && P.techs.has('double_bit_axe')) r *= 1.2;
   if (kind === 'gold' && P.techs.has('gold_mining')) r *= 1.15;
-  return r;
+  return r * (1 + P.mods.gather[RES_TYPE[kind]]);
 }
 export function openSide(W, e) {
   if (e.type === 'carcass') return true;
   for (let j = e.y - 1; j <= e.y + e.h; j++) for (let i = e.x - 1; i <= e.x + e.w; i++) if (passable(W, i, j)) return true;
   return false;
 }
-export function nearestResource(W, kind, x, y, r = 10, owner = -1, skip = null) {
+// known: optional explored-tiles mask (the AI only goes for resources it has actually seen)
+export function nearestResource(W, kind, x, y, r = 10, owner = -1, skip = null, known = null) {
   let best = null, bd = 1e9;
   for (const e of W.ents.values()) {
     if (skip && skip.has(e.id)) continue;
+    if (known && !known[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
     const k = e.kind === 'res' ? e.type : (e.kind === 'building' && e.type === 'farm' && e.built && e.owner === owner ? 'farm' : null);
     if (k !== kind || (e.kind === 'res' && e.amount <= 0)) continue;
     if (k === 'farm' && e.farmer && alive(W, e.farmer) && alive(W, e.farmer).order?.id === e.id) continue;
@@ -614,7 +660,7 @@ function villagerGather(W, u, o) {
       if (u.aT > (kind === 'tree' ? 0.9 : 1.0)) { u.aT = 0; W.ev.push({ k: kind === 'tree' ? 'chop' : kind === 'berry' ? 'forage' : kind === 'carcass' ? 'hunt' : 'mine', res: kind, x: u.x, y: u.y, owner: u.owner }); }
       if (r.amount <= 0) { del(W, r.id); if (kind !== 'carcass') { W.occ[idx(W, r.x, r.y)] = 0; W.regionDirty = true; } if (kind === 'tree') add(W, { kind: 'corpse', type: 'stump', owner: -1, x: r.x + 0.5, y: r.y + 0.5, t: 0 }); }
     }
-    W.players[u.owner].stats.gathered += amt;
+    const st = W.players[u.owner].stats; st.gathered += amt; st.gres[res] += amt; addXp(W, W.players[u.owner], amt * XP.gather);
   } else {
     const [cx, cy] = center(r);
     const goal = kind === 'farm' ? ((i, j) => i >= r.x && i < r.x + r.w && j >= r.y && j < r.y + r.h) : goalNear(W, r, reach);
@@ -680,6 +726,7 @@ function buildingTick(W, b) {
   const d = BUILDINGS[b.type], P = W.players[b.owner];
   b.nb = b.builders || 0; b.builders = 0;
   if (!b.built) return;
+  if (d.market && P.techs.has('trade_route')) { P.res.gold += MARKET.tradeGold * TICK; P.stats.gathered += MARKET.tradeGold * TICK; P.stats.gres.gold += MARKET.tradeGold * TICK; }
   if (b.cool > 0) b.cool -= TICK;
   const q = b.queue[0];
   if (q) {
@@ -697,7 +744,7 @@ function buildingTick(W, b) {
       b.cool = d.attack.reload;
       const [cx, cy] = center(b);
       for (let k = 0; k < (d.attack.arrows || 1); k++) {
-        const arm = t.kind === 'unit' ? UNITS[t.type].pa : BUILDINGS[t.type].pa;
+        const arm = t.kind === 'unit' ? UNITS[t.type].pa + (t.type !== 'villager' && W.players[t.owner] && !UNITS[t.type].animal ? W.players[t.owner].mods.pa : 0) : BUILDINGS[t.type].pa;
         spawnArrow(W, b.owner, cx + (k - 1) * 0.4, cy, 3.5, t.x + (W.rnd() - 0.5) * 0.3, t.y + (W.rnd() - 0.5) * 0.3, t.id, Math.max(1, d.attack.atk - arm));
       }
       W.ev.push({ k: 'shoot', x: cx, y: cy, owner: b.owner });
@@ -735,7 +782,7 @@ function spawn(W, b, type) {
 }
 function finishTech(W, b, tech) {
   const P = W.players[b.owner], t = TECHS[tech];
-  P.techs.add(tech);
+  P.techs.add(tech); addXp(W, P, costVal(t.cost) * XP.tech);
   if (t.toAge) { P.age = t.toAge; W.ev.push({ k: 'age', owner: b.owner, age: P.age }); }
   else W.ev.push({ k: 'tech', owner: b.owner, tech });
   if (tech === 'loom') for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner === b.owner && e.type === 'villager') { e.hp += 15; e.maxHp += 15; }
@@ -781,12 +828,36 @@ function updateVision(W) {
   // allies share vision
   for (const P of W.players) for (const Q of W.players) if (P !== Q && P.team === Q.team) for (let k = 0; k < S * S; k++) if (Q.vis[k]) { P.vis[k] = 1; P.exp[k] = 1; }
 }
+// conquest: a player is out once no units and no working buildings remain (walls, gates, farms, houses and unfinished
+// foundations don't count), or when they resign
 function checkVictory(W) {
   const live = new Set();
-  for (const e of W.dyn.values()) if (((e.kind === 'unit' && !UNITS[e.type].animal) || (e.kind === 'building' && !BUILDINGS[e.type].wall && !BUILDINGS[e.type].gate)) && e.hp > 0) live.add(e.owner);
-  for (const P of W.players) if (P.alive && !live.has(P.id)) { P.alive = false; W.ev.push({ k: 'defeated', owner: P.id }); }
+  for (const e of W.dyn.values()) if (keepsAlive(e)) live.add(e.owner);
+  for (const P of W.players) if (P.alive && (!live.has(P.id) || P.resigned)) {
+    P.alive = false; P.shipment = null; W.ev.push({ k: 'defeated', owner: P.id, resign: !!P.resigned });
+    for (const e of [...W.dyn.values()]) if (e.owner === P.id && (e.kind === 'unit' || e.kind === 'building')) damage(W, e, 1e9, null);   // leftovers crumble
+  }
   const teams = new Set(W.players.filter(p => p.alive).map(p => p.team));
   if (teams.size === 1 && W.winner < 0) { W.winner = [...teams][0]; W.ev.push({ k: 'victory', team: W.winner }); }
+}
+
+// a player gives up: everything they own crumbles at the next victory check (AoE2 resign)
+export function resign(W, pid) { const P = W.players[pid]; if (P && P.alive) { P.resigned = true; checkVictory(W); } }
+// a shipment reaches the Town Center: resources, units at the TC, or a lasting bonus
+function deliver(W, P) {
+  const c = CARDS[P.shipment.card]; P.shipment = null;
+  for (const r of RES) if (c.give && c.give[r]) P.res[r] += c.give[r];
+  if (c.mod) {
+    const m = c.mod; for (const r in m.gather || {}) P.mods.gather[r] += m.gather[r];
+    for (const k of ['vilSpeed', 'ma', 'pa', 'fee']) if (m[k]) P.mods[k] += m[k];
+  }
+  let tc = W.ents.get(P.tc); if (!tc || tc.kind !== 'building' || tc.hp <= 0) tc = [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === P.id && e.type === 'town_center' && e.built);
+  const [cx, cy] = tc ? [tc.x + tc.w / 2, tc.y + tc.h + 1] : (P.start || [W.size / 2, W.size / 2]);
+  for (const [type, n] of c.units || []) for (let k = 0; k < n; k++) {
+    const f = nearestFree(W, cx + (k % 4) - 1.5, cy + Math.floor(k / 4), P.id, 6); if (!f) break;
+    face(addUnit(W, P.id, type, f[0] + 0.5, f[1] + 0.5), 0.3, 1);
+  }
+  W.ev.push({ k: 'shipment', owner: P.id, card: c.id, x: cx, y: cy - 1 });
 }
 
 // ---------------------------------------------------------------- nature: animals, bandits, treasures
@@ -862,7 +933,7 @@ function treasureTick(W, tr) {
   unitsNear(W, cx, cy, 1.4, (e) => { if (!taker && e.owner !== GAIA && !isAnimal(e) && e.hp > 0 && Math.hypot(e.x - cx, e.y - cy) <= 1.4) taker = e; });
   if (taker) {
     const P = W.players[taker.owner], T = TREASURES[tr.type];
-    P.res[T.res] += tr.amount; P.stats.gathered += tr.amount;
+    P.res[T.res] += tr.amount; P.stats.gathered += tr.amount; P.stats.gres[T.res] += tr.amount; P.stats.treasures++; addXp(W, P, tr.amount * XP.treasure);
     W.ev.push({ k: 'treasure', owner: taker.owner, x: cx, y: cy, type: tr.type, amount: tr.amount });
     del(W, tr.id);
   }

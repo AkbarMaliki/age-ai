@@ -8,11 +8,11 @@ export const POP_LIMIT = 100;
 // ma / pa = melee / pierce armour, speed in tiles/s, range in tiles, los in tiles
 export const UNITS = {
   villager: { name: 'Penduduk Desa', hp: 25, atk: 3, ma: 0, pa: 0, speed: 0.8, range: 0, reload: 2.0, los: 4, cost: { food: 50 }, time: 25, age: 1, from: 'town_center', key: 'Q', desc: 'Mengumpulkan sumber daya dan membangun.' },
-  militia: { name: 'Milisi', hp: 40, atk: 4, ma: 0, pa: 1, speed: 0.9, range: 0, reload: 2.0, los: 4, cost: { food: 60, gold: 20 }, time: 21, age: 1, from: 'barracks', key: 'Q', desc: 'Infanteri pedang dasar.' },
-  spearman: { name: 'Prajurit Tombak', hp: 45, atk: 3, ma: 0, pa: 0, speed: 1.0, range: 0, reload: 3.0, los: 4, cost: { food: 35, wood: 25 }, time: 22, age: 2, from: 'barracks', key: 'W', bonus: { cavalry: 15 }, desc: 'Murah, kuat melawan kavaleri.' },
+  militia: { name: 'Milisi', hp: 40, atk: 4, ma: 0, pa: 1, speed: 0.9, range: 0, reload: 2.0, los: 4, cost: { food: 60, gold: 20 }, vsBuilding: 4, time: 21, age: 1, from: 'barracks', key: 'Q', desc: 'Infanteri pedang dasar.' },
+  spearman: { name: 'Prajurit Tombak', hp: 45, atk: 3, ma: 0, pa: 0, speed: 1.0, range: 0, reload: 3.0, los: 4, cost: { food: 35, wood: 25 }, time: 22, age: 2, from: 'barracks', key: 'W', bonus: { cavalry: 15 }, vsBuilding: 2, desc: 'Murah, kuat melawan kavaleri.' },
   archer: { name: 'Pemanah', hp: 30, atk: 4, ma: 0, pa: 0, speed: 0.96, range: 4, reload: 2.0, los: 6, acc: 0.8, cost: { wood: 25, gold: 45 }, time: 35, age: 2, from: 'archery_range', key: 'Q', proj: 'arrow', desc: 'Menyerang dari jarak jauh.' },
   scout: { name: 'Kavaleri Pengintai', hp: 45, atk: 3, ma: 0, pa: 2, speed: 1.55, range: 0, reload: 2.0, los: 6, cost: { food: 80 }, time: 30, age: 2, from: 'stable', key: 'Q', cls: 'cavalry', desc: 'Cepat, penglihatan luas.' },
-  knight: { name: 'Ksatria', hp: 100, atk: 10, ma: 2, pa: 2, speed: 1.35, range: 0, reload: 1.8, los: 4, cost: { food: 60, gold: 75 }, time: 30, age: 3, from: 'stable', key: 'W', cls: 'cavalry', desc: 'Kavaleri berat yang tangguh.' },
+  knight: { name: 'Ksatria', hp: 100, atk: 10, ma: 2, pa: 2, speed: 1.35, range: 0, reload: 1.8, los: 4, cost: { food: 60, gold: 75 }, vsBuilding: 3, time: 30, age: 3, from: 'stable', key: 'W', cls: 'cavalry', desc: 'Kavaleri berat yang tangguh.' },
 };
 // Gaia (nature): animals and bandits. animal: herd = sheep (convertible), flee = deer, fight = boar (strikes back),
 // predator = wolf (hunts villagers), guard = bear/bandit (protects a treasure). food = meat left on the carcass.
@@ -45,6 +45,7 @@ export const BUILDINGS = {
   watch_tower: { name: 'Menara Jaga', n: 1, hp: 1020, ma: 1, pa: 7, cost: { wood: 25, stone: 125 }, time: 80, age: 2, los: 10, attack: { atk: 5, range: 8, reload: 2.0 }, key: 'Z', page: 1 },
   stone_wall: { name: 'Tembok Batu', n: 1, hp: 1800, ma: 8, pa: 10, cost: { stone: 5 }, time: 8, age: 2, los: 2, wall: true, key: 'X', page: 1 },
   gate: { name: 'Gerbang', n: 1, len: 3, hp: 2750, ma: 6, pa: 6, cost: { stone: 30 }, time: 70, age: 2, los: 4, gate: true, key: 'C', page: 1 },
+  market: { name: 'Pasar', n: 4, hp: 2100, ma: 0, pa: 7, cost: { wood: 175 }, time: 60, age: 2, los: 6, needs: ['mill'], market: true, techs: ['guilds', 'trade_route'], key: 'F', page: 1 },
   castle: { name: 'Kastil', n: 4, hp: 4800, ma: 8, pa: 11, cost: { stone: 650 }, time: 200, age: 3, pop: 20, los: 11, trains: ['knight'], attack: { atk: 11, range: 8, reload: 2.0, arrows: 3 }, key: 'V', page: 1 },
 };
 for (const [k, b] of Object.entries(BUILDINGS)) { b.id = k; if (b.block === undefined) b.block = true; }
@@ -57,6 +58,8 @@ export const TECHS = {
   double_bit_axe: { name: 'Kapak Bermata Dua', cost: { food: 100, wood: 50 }, time: 25, age: 2, at: 'lumber_camp', key: 'Q', desc: 'Menebang kayu +20%.' },
   gold_mining: { name: 'Penambangan Emas', cost: { food: 100, wood: 75 }, time: 30, age: 2, at: 'mining_camp', key: 'Q', desc: 'Menambang emas +15%.' },
   horse_collar: { name: 'Kalung Kuda', cost: { food: 75, wood: 75 }, time: 20, age: 2, at: 'mill', key: 'Q', desc: 'Ladang +75 makanan.' },
+  guilds: { name: 'Serikat Dagang', cost: { food: 300, gold: 100 }, time: 50, age: 2, at: 'market', key: 'R', desc: 'Komisi jual-beli di Pasar turun dari 30% menjadi 15%.' },
+  trade_route: { name: 'Rute Dagang', cost: { food: 200, wood: 200 }, time: 60, age: 3, at: 'market', key: 'T', desc: 'Pedagang singgah: setiap Pasar menghasilkan 24 emas per menit.' },
 };
 for (const [k, t] of Object.entries(TECHS)) t.id = k;
 
@@ -67,6 +70,43 @@ export const RESOURCES = {
   berry: { res: 'food', amount: 125, block: true },
   carcass: { res: 'food', amount: 100, block: false },
 };
+// Market (AoE2): buy / sell 100 of a resource for gold. Prices are shared by everyone; each trade moves the price,
+// and prices drift back towards the base price over time.
+export const MARKET = { lot: 100, base: { food: 100, wood: 100, stone: 130 }, step: 4, fee: 0.3, feeGuilds: 0.15, min: 20, max: 1000, drift: 1 / 15, tradeGold: 0.4 };
+
+// Home City shipments (AoE3): experience from gathering, building, research, treasures and combat earns shipments;
+// each one sends one card from the deck to the Town Center. units = [[type, n]], give = resources, mod = lasting bonus.
+export const XP = { gather: 0.4, build: 0.4, tech: 0.4, kill: 0.5, treasure: 1, first: 250, step: 100, travel: 35 };
+export const CARDS = {
+  vil3: { name: '3 Penduduk Desa', age: 1, units: [['villager', 3]], desc: 'Tiga penduduk desa tiba di Pusat Kota.' },
+  food300: { name: '300 Makanan', age: 1, give: { food: 300 }, repeat: true },
+  wood300: { name: '300 Kayu', age: 1, give: { wood: 300 }, repeat: true },
+  gold200: { name: '200 Emas', age: 1, give: { gold: 200 }, repeat: true },
+  sheep6: { name: 'Kawanan Domba', age: 1, units: [['sheep', 6]], desc: 'Enam domba gemuk (600 makanan) dikirim ke kotamu.' },
+  axe: { name: 'Kapak Baja', age: 1, mod: { gather: { wood: 0.15 } }, glyph: '🪓', desc: 'Penduduk desa menebang kayu 15% lebih cepat.' },
+  baskets: { name: 'Keranjang Anyam', age: 1, mod: { gather: { food: 0.1 } }, glyph: '🧺', desc: 'Mengumpulkan makanan 10% lebih cepat.' },
+  boots: { name: 'Sepatu Kulit', age: 1, mod: { vilSpeed: 0.1 }, glyph: '👢', desc: 'Penduduk desa berjalan 10% lebih cepat.' },
+  vil5: { name: '5 Penduduk Desa', age: 2, units: [['villager', 5]], desc: 'Lima penduduk desa tiba di Pusat Kota.' },
+  food700: { name: '700 Makanan', age: 2, give: { food: 700 }, repeat: true },
+  wood600: { name: '600 Kayu', age: 2, give: { wood: 600 }, repeat: true },
+  gold500: { name: '500 Emas', age: 2, give: { gold: 500 }, repeat: true },
+  stone400: { name: '400 Batu', age: 2, give: { stone: 400 }, repeat: true },
+  spear5: { name: '5 Prajurit Tombak', age: 2, units: [['spearman', 5]], repeat: true, desc: 'Lima prajurit tombak siap bertempur.' },
+  archer4: { name: '4 Pemanah', age: 2, units: [['archer', 4]], repeat: true, desc: 'Empat pemanah siap bertempur.' },
+  miners: { name: 'Penambang Ahli', age: 2, mod: { gather: { gold: 0.15, stone: 0.15 } }, glyph: '⛏', desc: 'Menambang emas dan batu 15% lebih cepat.' },
+  armor: { name: 'Zirah Tempaan', age: 2, mod: { ma: 1, pa: 1 }, glyph: '🛡', desc: 'Semua tentara mendapat +1 zirah jarak dekat dan +1 zirah jarak jauh.' },
+  merchants: { name: 'Pedagang Ulung', age: 2, mod: { fee: -0.1 }, glyph: '⚖', desc: 'Komisi Pasar berkurang 10%.' },
+  knight3: { name: '3 Ksatria', age: 3, units: [['knight', 3]], repeat: true, desc: 'Tiga ksatria berkuda dari ibu kota.' },
+  food1000: { name: '1000 Makanan', age: 3, give: { food: 1000 }, repeat: true },
+  gold1000: { name: '1000 Emas', age: 3, give: { gold: 1000 }, repeat: true },
+  plough: { name: 'Bajak Besi', age: 3, mod: { gather: { food: 0.2 } }, glyph: '🌾', desc: 'Mengumpulkan makanan 20% lebih cepat.' },
+};
+for (const [k, c] of Object.entries(CARDS)) {
+  c.id = k;
+  if (!c.desc && c.give) c.desc = 'Kiriman sumber daya dari ibu kota.' + (c.repeat ? ' Bisa dikirim berulang kali.' : '');
+  else if (c.repeat) c.desc += ' Bisa dikirim berulang kali.';
+}
+
 // gather rate per second (AoE2-like)
 export const RATE = { tree: 0.39, gold: 0.38, stone: 0.36, berry: 0.31, farm: 0.33, carcass: 0.41 };
 export const CARRY = 10;

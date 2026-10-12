@@ -99,6 +99,73 @@ input[type=text], #nameIn { background: #1b140e; border: 1px solid var(--gold); 
 #spPov { min-width: 120px; font-weight: 800; text-shadow: 0 0 2px #fff, 0 0 6px #fffa, 0 1px 1px #000; }
 body.watch #cmdWrap, body.watch #idleVil { opacity: 0.35; pointer-events: none; }
 
+/* ---------- war statistics panel (overlay; the game keeps running underneath) ---------- */
+#btnStats.on { box-shadow: inset 0 0 0 2px var(--gold2); background: linear-gradient(180deg, #9a7440, #5a4024); }
+#statsPanel { position: fixed; z-index: 45; top: 44px; left: 50%; transform: translateX(-50%); width: min(980px, calc(100vw - 24px)); max-height: calc(100vh - 230px); min-height: 240px;
+  display: flex; flex-direction: column; background: radial-gradient(ellipse at top, #4b3b2a 0%, #241b13 70%); border: 3px solid #6b5230; outline: 2px solid #1a130d;
+  box-shadow: inset 0 0 0 1px var(--gold), 0 10px 40px #000c; border-radius: 6px; padding: 10px 14px 12px; }
+.sp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.sp-head h2 { font-size: 22px; text-align: left; margin: 0; } .sp-head small { opacity: 0.8; font-size: 13px; }
+#statsClose { padding: 2px 10px; }
+#statsTabs, .metrics { display: flex; gap: 4px; margin: 8px 0 6px; flex-wrap: wrap; }
+#statsTabs .tb, .metrics .tb { padding: 4px 12px; font-size: 14px; opacity: 0.8; }
+#statsTabs .tb.on, .metrics .tb.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--gold2); background: linear-gradient(180deg, #9a7440, #5a4024); }
+#statsBody { overflow: auto; flex: 1; min-height: 0; padding-right: 4px; }
+#statsBody h3 { margin: 14px 0 6px; font-size: 15px; } #statsBody h3 small { font-family: Alegreya, serif; font-weight: 500; opacity: 0.7; letter-spacing: 0; }
+table.st { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.st th { color: var(--gold2); font-family: Cinzel, serif; font-size: 14px; text-align: left; padding: 4px 8px; border-bottom: 1px solid #d9b45a55; text-shadow: 0 1px 2px #000; }
+table.st td { padding: 5px 8px; border-bottom: 1px solid #ffffff14; vertical-align: top; }
+table.st td:first-child { color: #d8c8a0; white-space: nowrap; width: 1%; }
+table.st td small { display: block; opacity: 0.7; font-size: 12px; margin-top: 1px; }
+table.st td.best { background: #d9b45a1f; box-shadow: inset 2px 0 0 var(--gold2); }
+table.st .big { font-size: 20px; font-family: Cinzel, serif; color: var(--gold2); }
+table.st .warn { color: #ff8070; } table.st i { font-style: italic; opacity: 0.75; }
+.rv { display: inline-flex; align-items: center; gap: 2px; margin-right: 10px; white-space: nowrap; }
+.si { display: inline-block; width: 64px; height: 64px; zoom: 0.34; margin-right: 8px; border-radius: 8px; vertical-align: middle; font-style: normal !important; opacity: 1 !important; }   /* zoom shrinks the layout box too */
+table.st.solo { width: auto; min-width: min(560px, 100%); }
+.chip { display: inline-block; margin: 1px 4px 2px 0; padding: 1px 7px; border: 1px solid #a8834c80; border-radius: 10px; background: #00000030; font-size: 12.5px; white-space: nowrap; }
+.jobs { display: flex; height: 18px; min-width: 160px; gap: 2px; border-radius: 3px; overflow: hidden; background: #0004; }
+.jobs i { display: block; height: 100%; font-style: normal !important; opacity: 1 !important; font-size: 11px; line-height: 18px; text-align: center; color: #1a120a; font-weight: 700; overflow: hidden; min-width: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; margin: 8px 0 2px; color: #d8c8a0; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; } .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+.chartWrap { position: relative; } #statsChart { width: 100%; height: 260px; display: block; background: #00000030; border: 1px solid #ffffff12; border-radius: 4px; }
+#statsTip { position: absolute; top: 8px; display: none; pointer-events: none; background: #1d150f; border: 1px solid var(--gold); padding: 6px 9px; font-size: 13px; min-width: 150px; box-shadow: 0 6px 18px #000a; }
+#statsTip div { display: flex; align-items: center; gap: 6px; } #statsTip div b { margin-left: auto; padding-left: 10px; font-variant-numeric: tabular-nums; }
+#statsTip i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+#statsEvents { font-size: 13px; margin-top: 6px; line-height: 1.8; }
+.seg.map button { font-size: 13px; padding: 6px 2px; }
+
+/* ---------- market trade buttons: buy / sell badge on the resource icon ---------- */
+.cb em { position: absolute; left: 2px; top: 0; font-style: normal; font-size: 13px; font-weight: 800; text-shadow: 0 0 3px #000, 0 0 2px #000; z-index: 1; }
+.cb em.buy { color: #7cff7c; } .cb em.sell { color: #ff9070; }
+.stats .mp { white-space: nowrap; margin-right: 10px; } .stats .mp .si { margin-right: 4px; }
+
+/* ---------- Home City shipments (cards) ---------- */
+#btnCards { position: relative; padding-bottom: 5px; }
+#btnCards b { margin-left: 4px; color: #ffe070; } #btnCards b:empty { display: none; }
+#btnCards .xpbar { position: absolute; left: 4px; right: 4px; bottom: 2px; height: 3px; background: #0008; border-radius: 2px; overflow: hidden; }
+#btnCards .xpbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #d9b45a, #ffe9a0); }
+#btnCards.ready { animation: pulse 0.8s infinite alternate; box-shadow: inset 0 0 0 2px #ffe070; }
+#btnCards.on { box-shadow: inset 0 0 0 2px var(--gold2); background: linear-gradient(180deg, #9a7440, #5a4024); }
+#cardsPanel { position: fixed; z-index: 45; top: 44px; left: 50%; transform: translateX(-50%); width: min(980px, calc(100vw - 24px)); max-height: calc(100vh - 230px);
+  display: flex; flex-direction: column; background: radial-gradient(ellipse at top, #4b3b2a 0%, #241b13 70%); border: 3px solid #6b5230; outline: 2px solid #1a130d;
+  box-shadow: inset 0 0 0 1px var(--gold), 0 10px 40px #000c; border-radius: 6px; padding: 10px 14px 12px; }
+#cardsSub .hl { color: #ffe070; font-size: 15px; } #cardsSub .ship { margin-top: 4px; color: #bfe6ff; }
+#cardsBody { overflow: auto; flex: 1; min-height: 0; padding-right: 4px; }
+#cardsBody h3 { margin: 10px 0 6px; font-size: 15px; } #cardsBody h3 small { font-family: Alegreya, serif; opacity: 0.7; }
+.deck { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 6px 7px; min-height: 120px; text-align: center; color: var(--ink);
+  background: linear-gradient(180deg, #5a4630, #2e2318); border: 1px solid #1a110a; box-shadow: inset 0 0 0 1px #a8834c; border-radius: 6px; font-family: Alegreya, serif; }
+.card b { font-family: Cinzel, serif; font-size: 13px; color: var(--gold2); line-height: 1.15; } .card small { font-size: 12px; opacity: 0.85; line-height: 1.2; }
+.card .ci { display: block; width: 64px; height: 64px; zoom: 0.7; border-radius: 8px; font-style: normal; flex: none; }
+.card .ci.glyph { display: flex; align-items: center; justify-content: center; font-size: 40px; background: #00000040; box-shadow: inset 0 0 0 2px #d4af5a; }
+.card em { position: absolute; right: 6px; top: 4px; font-style: normal; color: #ffe070; font-weight: 700; }
+.card u { text-decoration: none; position: absolute; left: 6px; top: 4px; font-size: 11px; color: #9fe39f; }
+.card.ready { cursor: pointer; box-shadow: inset 0 0 0 2px #ffe070, 0 0 10px #ffd04055; } .card.ready:hover { filter: brightness(1.18); transform: translateY(-1px); }
+.card.used { opacity: 0.45; } .card.locked { opacity: 0.35; filter: grayscale(0.8); } .card:disabled { cursor: default; }
+#cardsBody .hint { font-size: 13px; opacity: 0.75; margin: 10px 0 0; }
+body.watch #pResign { display: none; }
+
 /* ======================================================================= touch / mobile */
 canvas { touch-action: none; }
 html, body { overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -140,4 +207,12 @@ body.touch #tooltip { pointer-events: none; }
   .fld { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 2px 0; } .fld input { padding: 4px 8px; font-size: 13px; margin: 0; flex: 1; }
   #btnPlay { position: sticky; bottom: 0; margin: 6px 0 4px; padding: 7px; font-size: 16px; box-shadow: 0 -6px 10px #2a2018; }
   .credit { font-size: 9px; bottom: 2px; }
+  #btnStats span, #btnCards span { display: none; }
+  #cardsPanel { top: 32px; max-height: calc(100vh - 142px); padding: 6px 8px 8px; width: calc(100vw - 70px); left: calc(50% - 27px); }
+  .deck { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 5px; } .card { min-height: 92px; padding: 5px 4px; } .card .ci { zoom: 0.5; } .card small { font-size: 10px; }
+  #statsPanel { top: 32px; max-height: calc(100vh - 142px); min-height: 0; padding: 6px 8px 8px; width: calc(100vw - 70px); left: calc(50% - 27px); }
+  .sp-head h2 { font-size: 16px; } .sp-head small { font-size: 11px; }
+  #statsTabs, .metrics { margin: 4px 0; } #statsTabs .tb, .metrics .tb { padding: 2px 8px; font-size: 12px; }
+  table.st { font-size: 12px; } table.st td, table.st th { padding: 3px 5px; } table.st .big { font-size: 15px; }
+  #statsChart { height: 150px; }
 }

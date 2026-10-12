@@ -1,10 +1,10 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips.
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES } from './data.js';
-import { canAfford, canBuild, techOk, idx } from './sim.js';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET } from './data.js';
+import { canAfford, canBuild, techOk, idx, buyPrice, sellPrice, marketFee } from './sim.js';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
-const VIL_BUILD = [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['barracks', 5], ['archery_range', 6], ['stable', 7], ['watch_tower', 10], ['stone_wall', 11], ['gate', 12], ['castle', 13]];
+const VIL_BUILD = [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['barracks', 5], ['archery_range', 6], ['stable', 7], ['market', 8], ['watch_tower', 10], ['stone_wall', 11], ['gate', 12], ['castle', 13]];
 
 export class HUD {
   constructor(game) {
@@ -14,7 +14,7 @@ export class HUD {
     this.miniT = 0; this.lastSig = '';
     const grid = $('cmd'); grid.innerHTML = '';
     for (let i = 0; i < 15; i++) {
-      const b = document.createElement('button'); b.className = 'cb'; b.innerHTML = `<i></i><span>${KEYS[i]}</span>`;
+      const b = document.createElement('button'); b.className = 'cb'; b.innerHTML = `<i></i><em></em><span>${KEYS[i]}</span>`;
       b.onmouseenter = () => this.tip(b); b.onmouseleave = () => this.tip(null);
       b.onpointerdown = (e) => { if (e.pointerType === 'touch') { this.tip(b); clearTimeout(this.tipT); this.tipT = setTimeout(() => this.tip(null), 1800); } };   // touch: show the tooltip briefly
       b.onclick = () => { if (b.act && !b.disabled) { this.g.sfx('click'); b.act(); } };
@@ -41,7 +41,8 @@ export class HUD {
     const r = b.getBoundingClientRect(); t.style.left = Math.max(4, r.left) + 'px'; t.style.bottom = (innerHeight - r.top + 8) + 'px';
   }
   setBtn(i, o) {
-    const b = this.btns[i]; if (!o) { b.className = 'cb empty'; b.act = null; b.tipHtml = ''; b.firstChild.setAttribute('style', ''); b.firstChild.textContent = ''; return; }
+    const b = this.btns[i]; b.children[1].textContent = (o && o.badge) || ''; b.children[1].className = (o && o.badgeCls) || '';
+    if (!o) { b.className = 'cb empty'; b.act = null; b.tipHtml = ''; b.firstChild.setAttribute('style', ''); b.firstChild.textContent = ''; return; }
     b.className = 'cb' + (o.disabled ? ' off' : '') + (o.active ? ' on' : ''); b.disabled = !!o.disabled; b.act = o.act;
     b.firstChild.setAttribute('style', o.icon ? this.iconStyle(o.icon) : ''); b.firstChild.textContent = o.icon && this.icons.icons[o.icon] ? '' : (o.glyph || '');
     b.tipHtml = `<b>${o.name}</b> <small>(${KEYS[i]})</small>${o.cost ? '<div>' + this.costHtml(o.cost) + '</div>' : ''}${o.desc ? '<div class="d">' + o.desc + '</div>' : ''}${o.why ? '<div class="why">' + o.why + '</div>' : ''}`;
@@ -77,7 +78,7 @@ export class HUD {
           let why = P.age < d.age ? `Butuh ${AGES[d.age]}` : (d.needs || []).filter(n => !G.hasBuilt(n)).map(n => 'Butuh ' + BUILDINGS[n].name).join(', ');
           if (ok && !canAfford(P, d.cost)) why = 'Sumber daya kurang';
           this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'gate' ? 'gate_x' : type, name: d.name, cost: d.cost, why, disabled: !ok || !canAfford(P, d.cost), active: G.placing?.type === type, act: () => G.startPlace(type),
-            desc: { house: '+5 populasi', mill: 'Tempat setor makanan, membuka ladang', lumber_camp: 'Tempat setor kayu', mining_camp: 'Tempat setor emas & batu', farm: 'Sumber makanan tak terbatas (perlu ditanam ulang)', barracks: 'Melatih infanteri', archery_range: 'Melatih pemanah', stable: 'Melatih kavaleri', watch_tower: 'Menembakkan panah ke musuh', stone_wall: 'Tarik garis untuk membangun tembok', gate: 'Gerbang untuk pasukanmu', castle: 'Benteng kuat, melatih ksatria' }[type] });
+            desc: { house: '+5 populasi', mill: 'Tempat setor makanan, membuka ladang', lumber_camp: 'Tempat setor kayu', mining_camp: 'Tempat setor emas & batu', farm: 'Sumber makanan tak terbatas (perlu ditanam ulang)', barracks: 'Melatih infanteri', archery_range: 'Melatih pemanah', stable: 'Melatih kavaleri', watch_tower: 'Menembakkan panah ke musuh', stone_wall: 'Tarik garis untuk membangun tembok', gate: 'Gerbang untuk pasukanmu', castle: 'Benteng kuat, melatih ksatria', market: 'Jual-beli makanan, kayu dan batu dengan emas' }[type] });
         }
       }
       this.setBtn(14, { glyph: '✋', name: 'Berhenti', act: () => G.stop() });
@@ -88,10 +89,16 @@ export class HUD {
     const d = BUILDINGS[b.type];
     this.setBtn(9, { glyph: '🗑', name: 'Hapus bangunan', act: () => G.deleteSel() });
     if (!b.built) return;
+    if (d.market) Object.keys(MARKET.base).forEach((r, k) => {      // buy on the top row, sell on the second row
+      const bp = buyPrice(W, P, r), sp = sellPrice(W, P, r), fee = Math.round(marketFee(P) * 100);
+      this.setBtn(k, { icon: 'res_' + r, badge: '▲', badgeCls: 'buy', name: `Beli ${MARKET.lot} ${RES_NAME[r]}`, cost: { gold: bp }, disabled: P.res.gold < bp, why: P.res.gold < bp ? 'Emas kurang' : '',
+        desc: `Harga naik setiap kali ada yang membeli. Komisi pasar ${fee}%.`, act: () => G.trade(b, r, true) });
+      this.setBtn(5 + k, { icon: 'res_' + r, badge: '▼', badgeCls: 'sell', name: `Jual ${MARKET.lot} ${RES_NAME[r]}`, desc: `Dapat <b>${sp} emas</b>. Harga turun setiap kali ada yang menjual.`, disabled: P.res[r] < MARKET.lot, why: P.res[r] < MARKET.lot ? `${RES_NAME[r]} kurang dari ${MARKET.lot}` : '', act: () => G.trade(b, r, false) });
+    });
     (d.trains || []).forEach((u, k) => {
       const ud = UNITS[u]; const slot = 'QWERT'.indexOf(ud.key);
       const why = P.age < ud.age ? `Butuh ${AGES[ud.age]}` : !canAfford(P, ud.cost) ? 'Sumber daya kurang' : '';
-      this.setBtn(slot >= 0 ? slot : k, { icon: u, name: ud.name, cost: ud.cost, desc: `${ud.desc}<br>HP ${ud.hp} · Serangan ${ud.atk}${ud.range ? ' · Jarak ' + ud.range : ''} · Zirah ${ud.ma}/${ud.pa}`, why, disabled: !!why || b.queue.length >= 5, act: () => G.train(b, u) });
+      this.setBtn(slot >= 0 ? slot : k, { icon: u, name: ud.name, cost: ud.cost, desc: `${ud.desc}<br>HP ${ud.hp} · Serangan ${ud.atk}${ud.range ? ' · Jarak ' + ud.range : ''} · Zirah ${ud.ma}/${ud.pa}${ud.vsBuilding ? ' · +' + ud.vsBuilding + ' vs bangunan' : ''}`, why, disabled: !!why || b.queue.length >= 5, act: () => G.train(b, u) });
     });
     (d.techs || []).forEach((t) => {
       const td = TECHS[t]; if (P.techs.has(t)) return;
@@ -101,7 +108,7 @@ export class HUD {
       if (!why && td.reqCount) { const have = new Set(); for (const e of W.ents.values()) if (e.kind === 'building' && e.owner === G.me && e.built && td.reqFrom.includes(e.type)) have.add(e.type); if (have.size < td.reqCount) why = `Butuh ${td.reqCount} dari: ` + td.reqFrom.map(x => BUILDINGS[x].name).join(', '); }
       if (!why && !canAfford(P, td.cost)) why = 'Sumber daya kurang';
       const slot = 'QWERTASDFG'.indexOf(td.key);
-      this.setBtn(slot >= 0 ? slot : 4, { glyph: td.toAge ? '👑' : { loom: '🧵', wheelbarrow: '🛒', double_bit_axe: '🪓', gold_mining: '⛏', horse_collar: '🐴' }[t] || '📜', name: td.name, cost: td.cost, desc: td.desc || (td.toAge ? 'Membuka bangunan & unit baru' : ''), why, disabled: !ok || !!why, act: () => G.research(b, t) });
+      this.setBtn(slot >= 0 ? slot : 4, { glyph: td.toAge ? '👑' : { loom: '🧵', wheelbarrow: '🛒', double_bit_axe: '🪓', gold_mining: '⛏', horse_collar: '🐴', guilds: '⚖', trade_route: '🐫' }[t] || '📜', name: td.name, cost: td.cost, desc: td.desc || (td.toAge ? 'Membuka bangunan & unit baru' : ''), why, disabled: !ok || !!why, act: () => G.research(b, t) });
     });
   }
   buildInfo(sel) {
@@ -140,6 +147,7 @@ export class HUD {
       else if (e.type === 'farm') st = `Makanan: <b>${Math.ceil(e.food)}</b>`;
       else if (e.queue[0]) { const q = e.queue[0]; const T = q.unit ? UNITS[q.unit].time : TECHS[q.tech].time; st = `${q.unit ? 'Melatih ' + UNITS[q.unit].name : 'Meneliti ' + TECHS[q.tech].name} ${Math.floor(q.t / T * 100)}%${W.players[e.owner].housed && q.unit ? ' — <b class="warn">butuh rumah!</b>' : ''}`; }
       else if (d.attack) st = `⚔ ${d.attack.atk} · 🏹 ${d.attack.range} · 🛡 ${d.ma}/${d.pa}`;
+      else if (d.market) { const P = W.players[e.owner]; st = 'Harga per 100: ' + Object.keys(MARKET.base).map(r => `<span class="mp"><i class="si" style="${this.iconStyle('res_' + r)}"></i>beli <b>${buyPrice(W, P, r)}</b> / jual <b>${sellPrice(W, P, r)}</b></span>`).join(' · ') + (P.techs.has('trade_route') ? ' · +24 emas/menit' : ''); }
       else if (d.pop) st = `Populasi +${d.pop}`;
       const qi = el.querySelectorAll('.queue i');
       e.queue.forEach((q, i) => { if (qi[i]) { const T = q.unit ? UNITS[q.unit].time : TECHS[q.tech].time; qi[i].lastChild.style.width = (i === 0 ? q.t / T * 100 : 0) + '%'; } });
@@ -154,14 +162,14 @@ export class HUD {
     const TC = [[88, 140, 54], [150, 120, 80], [56, 96, 40], [52, 100, 160], [70, 120, 46]];
     for (let k = 0; k < S * S; k++) {
       let col = TC[W.terrain[k]] || TC[0];
-      const o = W.occ[k]; if (o) { const e = W.ents.get(o); if (e && e.kind === 'res') col = { tree: [30, 70, 24], gold: [230, 200, 40], stone: [170, 170, 170], berry: [200, 90, 120] }[e.type]; else if (e && e.kind === 'building' && (e.owner === G.me || P.exp[k] || G.watch)) col = PLAYER_RGB[W.players[e.owner].color] || [200, 200, 200]; }
-      const f = G.watch ? 1 : P.exp[k] ? (P.vis[k] ? 1 : 0.55) : 0;
+      const o = W.occ[k]; if (o) { const e = W.ents.get(o); if (e && e.kind === 'res') col = { tree: [30, 70, 24], gold: [230, 200, 40], stone: [170, 170, 170], berry: [200, 90, 120] }[e.type]; else if (e && e.kind === 'building' && (e.owner === G.me || P.exp[k] || G.seeAll)) col = PLAYER_RGB[W.players[e.owner].color] || [200, 200, 200]; }
+      const f = G.seeAll ? 1 : P.exp[k] ? (P.vis[k] ? 1 : 0.55) : 0;
       d[k * 4] = col[0] * f; d[k * 4 + 1] = col[1] * f; d[k * 4 + 2] = col[2] * f; d[k * 4 + 3] = 255;
     }
     for (const e of W.dyn.values()) {
       if (e.kind !== 'unit' && e.kind !== 'treasure') continue; const k = idx(W, Math.floor(e.x), Math.floor(e.y));
-      if (e.kind === 'treasure') { if (!P.exp[k] && !G.watch) continue; d[k * 4] = 255; d[k * 4 + 1] = 230; d[k * 4 + 2] = 90; continue; }
-      if (e.owner !== G.me && !P.vis[k] && !G.watch) continue; const col = e.owner >= 0 ? PLAYER_RGB[W.players[e.owner].color] : UNITS[e.type].animal && !['wolf', 'bear'].includes(e.type) ? [235, 235, 220] : [150, 40, 30];
+      if (e.kind === 'treasure') { if (!P.exp[k] && !G.seeAll) continue; d[k * 4] = 255; d[k * 4 + 1] = 230; d[k * 4 + 2] = 90; continue; }
+      if (e.owner !== G.me && !P.vis[k] && !G.seeAll) continue; const col = e.owner >= 0 ? PLAYER_RGB[W.players[e.owner].color] : UNITS[e.type].animal && !['wolf', 'bear'].includes(e.type) ? [235, 235, 220] : [150, 40, 30];
       for (const kk of [k, k + 1, k + S]) if (kk < S * S) { d[kk * 4] = col[0]; d[kk * 4 + 1] = col[1]; d[kk * 4 + 2] = col[2]; }
     }
     c.putImageData(img, 0, 0);

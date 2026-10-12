@@ -28,8 +28,9 @@ Other folders (`overcooked`, `monopoly-ai`, `poker-ai`, …) are other games by 
 | Task | Command |
 |---|---|
 | Play locally | `start.bat` (opens http://localhost:8772, keeps a server window open) or `node server.cjs 8772`. `stop.bat` kills whatever listens on 8772. |
-| Headless AI-vs-AI sim test | `npm test`, or `node tests/sim.test.js [minutes] [seed] [mapSize]`. Prints the economy every 3 min, worst tick in ms and event counts. A healthy run: 25 game-min on a 144 map in about 5 s, worst tick under 60 ms. |
-| Browser tests | Needs the server running. Run `node tests/browser/<name>.cjs [outDir]` with `<name>` one of `features`, `mobile`, `spectator`, `freecam`, `zoom`. They use system Chrome (`C:/Program Files/Google/Chrome/Application/chrome.exe`, `--use-angle=d3d11`). Set `BASE=http://localhost:PORT/` to test another server, e.g. a served `docs/` build. Debug hook: `window.__ak = { game, start, app }`. Fast-forward pattern: `import('/js/sim.js')` then call `step(W)` in a loop with `ai.tick()`. |
+| Map fairness test | `node tests/map.test.js [seeds]`: every map type × 2/3/4 players; prints per-player home wood/gold/stone/food and fails if any resource gap between players exceeds 25% or a town can't walk to the others. Part of `npm test`. |
+| Headless AI-vs-AI sim test | `npm test`, or `node tests/sim.test.js [minutes] [seed] [mapSize] [mapType\|random] [players]`. Also prints when each AI first spotted an enemy building (scouting check: normally 2–12 game-min). Prints the economy every 3 min, worst tick in ms and event counts. A healthy run: 25 game-min on a 144 map in about 5 s, worst tick under 60 ms. |
+| Browser tests | Needs the server running. Run `node tests/browser/<name>.cjs [outDir]` with `<name>` one of `features`, `mobile`, `spectator`, `freecam`, `zoom`, `stats`, `endgame` (market, cards, surrender, defeat screen). `stats` covers the war statistics panel. They use system Chrome (`C:/Program Files/Google/Chrome/Application/chrome.exe`, `--use-angle=d3d11`). Set `BASE=http://localhost:PORT/` to test another server, e.g. a served `docs/` build. Debug hook: `window.__ak = { game, start, app }`. Fast-forward pattern: `import('/js/sim.js')` then call `step(W)` in a loop with `ai.tick()`. |
 | Build for the web | `build.bat` runs `python tools/build.py`. It writes **`docs/`** (GitHub Pages "main /docs"): PNG atlases become WebP (assets go from about 37 MB to 25 MB), it adds `.nojekyll` and a cache-busting `?v=` on main.js and style.css, and also writes `abad-kerajaan-web.zip` for itch.io. |
 | Deploy | `build.bat` then pick an option:<br>**2 = git commit & push.** Runs `git init` + `remote add` if needed; the default repo is `https://github.com/AkbarMaliki/abad-kerajaan.git`. The user must enable Pages (main / docs) once.<br>**3 = Firebase Hosting.** Uses the *separate* site `abad-kerajaan-game` via `npx firebase-tools@13`, because the user's Node is 18.20 and firebase-tools 14 needs Node 20. |
 
@@ -42,7 +43,10 @@ main.js   boot, menu, Game class: loop, events -> fx/sound/notify, camera, input
           spectator mode, zoom, fullscreen. IS_TOUCH flag. window.__ak debug handle.
 sim.js    deterministic simulation (no rendering). TICK = 0.1 game-s. Every input is a queued command (lockstep-ready).
 ai.js     computer player (one AI instance per AI player; spectator mode = AI for everyone).
-map.js    random map: terrain, pond, per-player resources, forests, wildlife, wolves, guarded treasures.
+map.js    random map types (MAP_TYPES: padang, rimba, danau, sungai, tambang; 'random' picks one), random rotation + seats,
+          one shared home layout per game, map-wide features copied per seat, balance() top-up, connect() safety carve.
+cards.js  CardPanel: Home City shipment deck (AoE3 cards), XP bar in the top bar.
+stats.js  score(), snapshot(), History (timeline every 10 game-s + first-contact log), StatsPanel ("Statistik Perang").
 data.js   all numbers: UNITS (incl. animals/bandit), BUILDINGS, TECHS, RESOURCES, RATE, TREASURES, GAIA = -1.
 render.js PixiJS View: terrain mesh + custom shader (texture blend, water, fog), depth-sorted sprites, particles,
           selection/HP bars, rally flags, floating text, fx(event) effects, spectator reveal.
@@ -73,6 +77,18 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
   - Building speed follows the AoE2 formula `3t/(n+2)`.
   - After finishing a building, a villager auto-gathers the matching resource, or helps the nearest foundation within 12 tiles.
 
+### End of game, Market, cards
+- **Defeat (conquest):** `keepsAlive(e)` — a player stays in while they own a non-animal unit or a *finished* building other than walls, gates, farms and houses. `checkVictory` (every 10 ticks) then destroys the loser's leftovers. **Resign:** command `{ t: 'resign' }` (pause menu "Menyerah", confirm twice; AI `hopeless()` = no TC and no way back for 20 s). Event `defeated` has `resign`. In 3–4 player games a beaten human gets "Tonton sisa pertandingan" (map revealed, `Game.lost`/`seeAll`).
+- **AI targeting:** `enemyTarget()` skips farms (non-blocking, so soldiers never auto-acquire them — armies used to idle on an enemy farm forever) and prefers Town Centers and production; a target attacked 3 times without falling is skipped for 240 s; when few enemy buildings are left, waves of 5 finish the job; survivors are hunted via `foes` sightings and `staleTarget()`. Melee units have `vsBuilding` attack bonus.
+- **Market (`Pasar`, Feudal, needs Mill):** command `{ t: 'trade', bid, res, buy }`, lots of 100; prices in `W.market` are shared and move ±`MARKET.step` per trade and drift back to `MARKET.base`; fee 30% (15% with `guilds`, card `merchants` −10%); `trade_route` tech = 24 gold/min per market. Sprite rendered by `_art/structures.py market` and packed with `pack.OUTD` pointed at this repo's `assets` (pack.py defaults to `../age/assets`).
+- **Cards (AoE3 shipments):** `addXp()` from gathering, building, research, kills, treasures (`XP` in data.js); thresholds grow by `XP.step`. `P.ships` available, command `{ t: 'card', card }`, one shipment travels at a time (`XP.travel` s) and `deliver()` applies `give` / `units` / `mod` (`P.mods`: gather %, villager speed, soldier armour, market fee). Events `shipready`, `shipsent`, `shipment`. AI: `pickCard()`.
+
+### Map generator (`map.js`) notes
+- Fairness: per-player resources follow one random layout `L` (angles relative to the direction of the map centre); forests, loose trees, neutral mines, wolves and mid treasures are generated for seat 0's wedge and rotated to every seat. `balance()` then tops up any player below 88% of the best on wood/gold/stone/food within 26 tiles (`homeResources`). `connect()` carves a path if a town is cut off.
+- `noise2` wraps around. It used to read past its grid for the stretched lookups (`n2(i * 2, …)`), returning NaN, so forests silently failed on part of the map — that's why trees used to bunch up in one region.
+- River (`sungai`): one arm between each pair of neighbouring seats; fords are dirt tiles marked `reserved = 2` (nothing spawns on them).
+- `W.map = { type, name, desc, seed }`.
+
 ### AI (`ai.js`) key points
 - `DIFF` is easy, normal or hard. Every `think` seconds the AI:
   - trains villagers and builds houses;
@@ -84,6 +100,10 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
   - rebalances piling resources (`rbT` timer);
   - trains military, defends against threats, sends attack waves;
   - hunts treasures (`treasureHunt`: the scout grabs free ones, an idle army of 5 or more clears guarded ones).
+- **Fog of war (no cheating):** the AI only uses what it has seen. `remember()` stores enemy buildings seen in its vision (`known`), and forgets them when seen destroyed. Gaia animals seen are kept in `seen` (with `danger` for wolves, bears and bandits). Resource lookups go through `this.res()` → `nearestResource(..., known = P.exp)`. Treasures only count on explored tiles. `enemyTarget()` only picks from `known`.
+- **Scouting:** `scoutTick()` drives the scout cavalry (`explorer`). It first circles the home ring, then `exploreTarget()` scores 8×8 cells (unexplored share, distance, same distance from the centre as our base, avoiding known towers/TCs, remembered beasts, guarded chests and paths past them). `evade()` rides away from wolves, guards and enemy soldiers within 5 tiles. A wounded scout runs home; below 40% HP it retires and `replaceScout()` trains a new one (Feudal+), or a party of 3 militia in the Dark Age that searches with the army sweep (`lastSweep`). The explorer is never pulled into base defence.
+- **Starvation guard:** if food < 60 and too few are on food, half the villagers are moved to meat/berries/farms (wolves eating the sheep used to deadlock the economy).
+- AI randomness uses its own `this.rnd` (seeded from `W.seed`), never `W.rnd`.
 - Use time-based timers (`W.t > this.xT`), **not** `W.tick % N`: AI ticks aren't aligned to tick multiples, so modulo checks almost never fire. That was a real bug.
 
 ### Rendering notes
@@ -117,6 +137,7 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
   - the building ghost follows the finger;
   - touch bar: ✖ cancel, ▢ box, ⚔ army, 🏰 Town Center, ⛶ fullscreen.
   - Compact HUD CSS lives in `@media (max-height: 560px)`. In portrait an overlay asks the player to rotate the phone.
+- **War statistics** (`📊 Statistik` button in the top bar, key I or F4, Esc closes): a non-blocking overlay with tabs Ringkasan / Ekonomi / Militer / Linimasa. Playing: your own kingdom in detail plus fog-limited enemy intel (age, when found, buildings known, units visible now). Watching, or after the game ends: every kingdom side by side. The end screen has a button to open it.
 - **Spectator** (menu: Mode → Tonton Bot vs Bot):
   - every player is AI;
   - speed 1x/2x/4x/8x (keys 1, 2, 4, 8);
@@ -190,6 +211,7 @@ The game side (`audio.js`):
 - **Measurement gotcha:** Blender renders in the background skew timings heavily (all cores busy). Re-measure when the CPU is idle.
 
 ## 7. Known issues / ideas for next steps
+- AI vs AI 1v1 games usually end in 35–60 game-min (conquest or resignation). No siege units yet: buildings fall to melee `vsBuilding` damage.
 - AI economy is a bit slower than AoE2 AI: Feudal at about 14–17 game-min. Tune `ai.js` weights.
 - Missing AoE2 systems the user may ask for: Blacksmith (attack/armour upgrades), Market, Monk + relics, Dock/fishing, Imperial Age, more unit lines and upgrades (Man-at-Arms…), formations, garrisoning, multiplayer (the sim is deterministic and command-based, so lockstep over Firebase would fit; the user already uses Firebase RTDB in other games).
 - Building variants exist only for houses; barracks, mill and the camps could get them too, the same way (render `<type>_b`, then pick by `id % n` in `render.js`).

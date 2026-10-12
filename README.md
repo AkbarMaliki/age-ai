@@ -64,6 +64,12 @@ Screenshots used to live in `docs/`; they are now in `screenshots/`.
   - Tab switches the point of view (whose resources and age are shown).
   - C toggles the automatic camera, which follows fights and age-ups.
   - Scrolling by hand pauses the automatic camera for 8 s.
+- **Random, fair maps (v3).** Pick *Tipe peta* in the menu, or *Acak* for a random one each game: Padang Terbuka (open, lots of hunt), Rimba Lebat (dense forest), Danau Besar (big central lake), Lembah Sungai (rivers with shallow fords between players) and Bukit Tambang (rich, contested centre mines). Start positions, rotation and resource layout change every game, but every player gets the same layout and a balancing pass tops up anyone short of wood, gold, stone or food.
+- **AI has to scout.** Computer players are under the fog of war too: they send their scout out, remember what they find, avoid wolves and guarded chests, and only attack buildings they have discovered.
+- **Market (Pasar).** Feudal Age, needs a Mill. Buy or sell 100 food / wood / stone for gold; prices are shared and move with every trade. Techs: *Serikat Dagang* (fee 30% → 15%) and *Rute Dagang* (24 gold per minute per market).
+- **Home City shipments (AoE3-style cards).** Gathering, building, research, treasures and kills give XP. Each full XP bar earns a shipment: open 🃏 *Kiriman* (key K) and pick a card — villagers, resource crates, soldiers or permanent bonuses (gather rate, villager speed, armour, market fee). It arrives at the Town Center 35 s later.
+- **Winning, losing, surrender.** A kingdom is out when it has no units and no working buildings left (walls, gates, farms, houses and foundations don't count). *Menyerah* in the pause menu resigns; AI players resign when they can't recover. In 3–4 player games you can keep watching after you're beaten.
+- **War statistics.** The 📊 *Statistik* button (or key I) opens a panel with score, economy (gather rate per minute, villager jobs, buildings, techs), military (army, kills, losses, buildings razed) and a timeline chart. While playing it shows your own kingdom plus what your scouts know about the enemy; in spectator mode and after the game it compares every kingdom.
 - **Work sounds.** Sampled and procedurally designed (`../_audio/sfx_age.py`, 4 variants each), with random pitch and stereo panning by screen position:
   - axe on wood, pick on stone, pick on gold, hoe in soil, berry bush rustle, hammer and nail, butchering;
   - drop sounds for wood, gold, stone and food.
@@ -85,7 +91,7 @@ Colour sprites and `_mask` sprites are rendered separately. The mask marks the p
 - Left click / drag: select. Right click: move, gather, attack or build (context-dependent).
 - Command grid hotkeys: Q W E R T / A S D F G / Z X C V B.
 - Esc: cancel. While placing a gate, R rotates it. For walls, click the start point and then the end point.
-- Ctrl+0-9 saves a control group and 0-9 selects it (double-tap to jump to it). `.` selects an idle villager. H jumps to the Town Center. Space centres on the selection. Delete removes it. P/F3 pauses.
+- Ctrl+0-9 saves a control group and 0-9 selects it (double-tap to jump to it). `.` selects an idle villager. H jumps to the Town Center. Space centres on the selection. Delete removes it. P/F3 pauses. I (or F4) opens the war statistics, K the shipment cards.
 - Arrow keys or the screen edges scroll the camera. Click the minimap to jump. Mouse wheel zooms towards the cursor (down to 0.3x, or 0.22x in spectator mode); - and = zoom too.
 
 ## Credits

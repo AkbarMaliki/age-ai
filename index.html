@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=5">
 <script type="importmap">{ "imports": { "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs" } }</script>
 </head>
 <body>
@@ -31,6 +31,8 @@
       <button id="spCam" class="tb" title="Kamera mengikuti aksi (C)">🎥 Otomatis</button>
     </div>
     <div class="clock" id="clock">00:00:00</div>
+    <button id="btnCards" class="tb" title="Kiriman Kerajaan (K)">🃏 <span>Kiriman</span><b id="cardN"></b><i class="xpbar"><i id="cardXp"></i></i></button>
+    <button id="btnStats" class="tb" title="Statistik perang (I)">📊 <span>Statistik</span></button>
     <button id="btnMenu" class="tb">Menu</button>
   </div>
   <div id="notify"></div>
@@ -51,6 +53,17 @@
     </div>
   </div>
   <div id="tooltip"></div>
+  <!-- war statistics (non-blocking overlay; the game keeps running) -->
+  <div id="statsPanel" class="hidden">
+    <div class="sp-head"><div><h2>Statistik Perang</h2><small id="statsSub"></small></div><button id="statsClose" class="tb" title="Tutup (I / Esc)">✖</button></div>
+    <div id="statsTabs"></div>
+    <div id="statsBody"></div>
+  </div>
+  <!-- Home City shipments (AoE3 cards) -->
+  <div id="cardsPanel" class="hidden">
+    <div class="sp-head"><div><h2>Kiriman Kerajaan</h2><small id="cardsSub"></small></div><button id="cardsClose" class="tb" title="Tutup (K / Esc)">✖</button></div>
+    <div id="cardsBody"></div>
+  </div>
 </div>
 
 <!-- ======================= MENU ======================= -->
@@ -62,6 +75,7 @@
     <div class="row"><span>Lawan (AI)</span><div class="seg" data-k="diff"><button data-v="easy">Mudah</button><button data-v="normal">Normal</button><button data-v="hard">Sulit</button></div></div>
     <div class="row"><span>Jumlah pemain</span><div class="seg" data-k="players"><button data-v="2">1 vs 1</button><button data-v="3">1 vs 2</button><button data-v="4">1 vs 3</button></div></div>
     <div class="row"><span>Warna</span><div class="seg colors" data-k="color"><button data-v="blue" class="c-blue">Biru</button><button data-v="red" class="c-red">Merah</button><button data-v="green" class="c-green">Hijau</button><button data-v="yellow" class="c-yellow">Kuning</button></div></div>
+    <div class="row"><span>Tipe peta</span><div class="seg map" data-k="map"><button data-v="random" title="Tipe peta acak setiap permainan">Acak</button><button data-v="padang">Padang</button><button data-v="rimba">Rimba</button><button data-v="danau">Danau</button><button data-v="sungai">Sungai</button><button data-v="tambang">Tambang</button></div></div>
     <div class="row"><span>Ukuran peta</span><div class="seg" data-k="size"><button data-v="112">Kecil</button><button data-v="144">Sedang</button><button data-v="180">Besar</button><button data-v="220">Raksasa</button></div></div>
     <div class="row vol"><span>Musik</span><input type="range" id="volMusic" min="0" max="1" step="0.05"><span>Efek</span><input type="range" id="volSfx" min="0" max="1" step="0.05"></div>
     <button id="btnPlay" class="big">⚔ Mulai Permainan</button>
@@ -76,11 +90,14 @@
     <div><h3>Ekonomi</h3><p>Pilih penduduk desa, klik kanan pohon / semak berry / tambang untuk mengumpulkan. Bangun <b>Kamp Penebang</b>, <b>Penggilingan</b>, dan <b>Kamp Tambang</b> di dekat sumber daya supaya bolak-baliknya singkat. Buat <b>Rumah</b> untuk menambah populasi.</p>
     <h3>Berburu &amp; Alam Liar</h3><p><b>Domba</b> menjadi milik siapa pun yang mendekat duluan &mdash; giring ke Pusat Kota lalu klik kanan dengan penduduk desa untuk menyembelih. <b>Rusa</b> lari saat didekati, <b>babi hutan</b> melawan balik (buru beramai-ramai). Waspadai <b>serigala</b> yang memangsa penduduk desa.</p>
     <h3>Harta Karun</h3><p>Peti emas, gerobak makanan, kayu dan batu tersebar di peta, dijaga <b>bandit</b>, serigala atau <b>beruang</b>. Kalahkan penjaganya lalu sentuh harta itu dengan unit mana saja untuk mendapat bonus.</p>
+    <h3>Peta &amp; Pengintaian</h3><p>Setiap permainan memakai peta acak: posisi awal, hutan, tambang dan buruan berubah, tapi tiap kerajaan mendapat jatah sumber daya yang adil. Lawan AI juga tertutup kabut perang &mdash; mereka harus mengintai dulu untuk menemukanmu, jadi kirim <b>pengintai</b>mu sendiri!</p>
+    <h3>Pasar &amp; Kiriman Kerajaan</h3><p>Di Zaman Feodal bangun <b>Pasar</b> untuk membeli atau menjual makanan, kayu dan batu dengan emas; harganya naik-turun setiap ada transaksi. Mengumpulkan, membangun, meneliti dan bertempur memberi <b>XP</b>; setiap XP penuh kamu boleh memilih satu <b>kartu kiriman</b> (🃏, tombol K): penduduk desa, sumber daya, tentara atau bonus permanen.</p>
+    <h3>Menang &amp; Kalah</h3><p>Sebuah kerajaan kalah bila tidak punya unit dan bangunan penting lagi (tembok, gerbang, ladang, rumah dan fondasi tidak dihitung), atau bila <b>menyerah</b> (menu jeda). Lawan AI juga menyerah saat sudah tidak berdaya.</p>
     <h3>Zaman</h3><p>Di Pusat Kota, naik ke <b>Zaman Feodal</b> (butuh 2 bangunan Zaman Kegelapan) lalu <b>Zaman Kastil</b> untuk membuka unit & bangunan baru.</p></div>
     <div><h3>Kontrol</h3><table>
       <tr><td>Klik kiri / tarik</td><td>Pilih unit</td></tr><tr><td>Klik kanan</td><td>Gerak / serang / kumpulkan / bangun</td></tr>
       <tr><td>Klik ganda</td><td>Pilih semua unit sejenis di layar</td></tr><tr><td>Q W E R T / A S D F G / Z X C V B</td><td>Tombol perintah</td></tr>
-      <tr><td>Ctrl + 1-9, 1-9</td><td>Simpan / pilih grup</td></tr><tr><td>H</td><td>Pusat Kota</td></tr><tr><td>.</td><td>Penduduk desa menganggur</td></tr>
+      <tr><td>Ctrl + 1-9, 1-9</td><td>Simpan / pilih grup</td></tr><tr><td>I</td><td>Statistik perang</td></tr><tr><td>K</td><td>Kiriman Kerajaan (kartu)</td></tr><tr><td>H</td><td>Pusat Kota</td></tr><tr><td>.</td><td>Penduduk desa menganggur</td></tr>
       <tr><td>Panah / tepi layar / tombol tengah</td><td>Geser kamera</td></tr><tr><td>Roda mouse</td><td>Zoom</td></tr><tr><td>Shift + klik bangun</td><td>Bangun berulang</td></tr><tr><td>Esc / F3</td><td>Batal / jeda</td></tr>
     </table></div>
   </div>
@@ -91,12 +108,15 @@
   <h2>Permainan Dijeda</h2>
   <button id="pResume" class="big">Lanjutkan</button>
   <button id="pSpeed">Kecepatan: 1x</button>
+  <button id="pResign">🏳 Menyerah</button>
   <button id="pQuit">Keluar ke Menu</button>
 </div></div>
 
 <div id="endScreen" class="screen dim hidden"><div class="panel wide">
   <h2 id="endTitle">Kemenangan!</h2>
   <table id="endStats"></table>
+  <button id="endWatch" class="hidden">👁 Tonton sisa pertandingan</button>
+  <button id="endFull">📊 Statistik lengkap &amp; linimasa</button>
   <button id="endMenu" class="big">Kembali ke Menu</button>
 </div></div>
 
@@ -104,6 +124,6 @@
 
 <div id="loading" class="screen"><div class="panel"><h2>Memuat…</h2><div class="bar"><i id="loadBar"></i></div><p id="loadText">Menyiapkan dunia</p></div></div>
 
-<script type="module" src="js/main.js?v=6"></script>
+<script type="module" src="js/main.js?v=8"></script>
 </body>
 </html>
