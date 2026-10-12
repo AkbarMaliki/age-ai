@@ -1,6 +1,6 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES } from './data.js';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP } from './data.js';
 import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive } from './sim.js';
 import { generate } from './map.js';
 import { AI } from './ai.js';
@@ -8,6 +8,8 @@ import { loadAll } from './assets.js';
 import { View, iso, UNIT_BOX } from './render.js';
 import { HUD } from './ui.js';
 import { Sound } from './audio.js';
+import { History, StatsPanel, score } from './stats.js';
+import { CardPanel } from './cards.js';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -18,7 +20,7 @@ class Game {
     const colors = [opts.color, ...PLAYER_COLORS.filter(c => c !== opts.color)].slice(0, opts.players);
     this.watch = opts.mode === 'watch';
     const COLOR_NAME = { blue: 'Raja Biru', red: 'Raja Merah', green: 'Adipati Hijau', yellow: 'Baron Kuning' };
-    this.W = generate({ size: opts.size, seed: opts.seed, players: colors.map((c, i) => ({ name: this.watch ? COLOR_NAME[c] : i ? PLAYER_NAMES[i] : (opts.name || PLAYER_NAMES[0]), color: c, ai: this.watch || i > 0, team: i })) });
+    this.W = generate({ size: opts.size, seed: opts.seed, type: opts.map, players: colors.map((c, i) => ({ name: this.watch ? COLOR_NAME[c] : i ? PLAYER_NAMES[i] : (opts.name || PLAYER_NAMES[0]), color: c, ai: this.watch || i > 0, team: i })) });
     this.ais = this.W.players.filter(p => this.watch || p.id > 0).map(p => new AI(this.W, p.id, opts.diff));
     this.view = new View(app, this.W, A, this.me);
     this.sel = []; this.groups = {}; this.acc = 0; this.speed = 1; this.paused = false; this.placing = null; this.over = false;
@@ -26,10 +28,15 @@ class Game {
     if (IS_TOUCH) this.view.cam.zoom = 0.8;            // phones: see a bit more of the map
     const tc = this.W.ents.get(this.W.players[0].tc); this.centerOn(tc.x + 2, tc.y + 3);
     this.hud = new HUD(this);
+    this.hist = new History(this.W); this.hist.onFound = (f) => this.onFound(f);
+    this.stats = new StatsPanel(this, this.hist);
+    this.cards = new CardPanel(this);
     this.bindInput();
     if (this.watch) this.setupSpectator();
     this.snd.music('game'); this.snd.ambience(true); this.snd.loadSamples();
     this.hud.notify(`${AGES[1]} dimulai. Kumpulkan sumber daya dan kalahkan musuhmu!`, 'age');
+    this.hud.notify(`Peta: ${this.W.map.name} — ${this.W.map.desc}`);
+    if (!this.watch) this.hud.notify('Lokasi musuh belum diketahui. Kirim pengintai untuk menjelajah! (I = statistik)');
     app.ticker.add(this.frame, this);
   }
   sfx(k, x, y) {
@@ -43,6 +50,7 @@ class Game {
     this.snd.play(k, gain, pan);
   }
   hasBuilt(t) { return hasBuilt(this.W, this.me, t); }
+  get seeAll() { return this.watch || !!this.lost; }      // spectators and beaten players see the whole map
 
   // ---------------------------------------------------------------- loop
   frame() {
@@ -52,7 +60,7 @@ class Game {
       let n = 0;
       while (this.acc >= TICK && n++ < 8) {
         for (const ai of this.ais) ai.tick();
-        step(this.W); this.acc -= TICK;
+        step(this.W); this.acc -= TICK; this.hist.tick();
         for (const e of this.W.ev) this.onEvent(e);
         this.W.ev.length = 0;
       }
@@ -63,7 +71,7 @@ class Game {
     this.view.applyCam();
     this.sel = this.sel.filter(id => this.W.ents.has(id));
     this.view.sync(Math.min(1, this.acc / TICK), this.paused ? 0 : dt * this.speed, this.sel, this.hover);
-    this.hud.update(dt);
+    this.hud.update(dt); this.stats.update(dt); this.cards.update(dt);
     if (this.placing) this.updateGhost();
   }
   onEvent(e) {
@@ -76,7 +84,7 @@ class Game {
       case 'mine': if (vis) this.sfx(e.res === 'gold' ? 'mine_gold' : 'mine_stone', e.x, e.y); break;
       case 'deposit': if (vis) this.sfx('drop_' + (e.res || 'food'), e.x, e.y); break;
       case 'die': if (vis) this.sfx(UNITS[e.type].animal ? e.type : e.type === 'villager' ? 'dieVil' : 'die', e.x, e.y); break;
-      case 'collapse': if (vis || mine) this.sfx('collapse', e.x, e.y); if (mine) this.hud.notify(`${BUILDINGS[e.type].name} kita hancur!`, 'bad'); break;
+      case 'collapse': if (vis || mine) this.sfx('collapse', e.x, e.y); if (!P.alive) break; if (mine && (e.hit || e.type !== 'farm')) this.hud.notify(`${BUILDINGS[e.type].name} kita hancur!`, 'bad'); else if (mine) this.hud.notify('Ladang habis — tanam ulang.'); break;
       case 'built': if (mine) { this.snd.play('built'); this.hud.notify(`${BUILDINGS[e.type].name} selesai dibangun.`); } break;
       case 'trained': if (mine) this.snd.play(e.type === 'villager' ? 'trainedVil' : 'trained'); break;
       case 'tech': if (mine) { this.snd.play('tech'); this.hud.notify(`Riset selesai: ${TECHS[e.tech].name}.`); } break;
@@ -95,9 +103,22 @@ class Game {
         else if (vis) this.hud.notify(`${W.players[e.owner].name} mengambil harta karun.`, 'enemy');
         break;
       case 'sheep': if (mine && vis) this.sfx('sheep', e.x, e.y); break;
-      case 'defeated': this.hud.notify(`${W.players[e.owner].name} telah dikalahkan.`, e.owner === this.me ? 'bad' : 'age'); break;
+      case 'defeated':
+        this.hud.notify(`${W.players[e.owner].name} ${e.resign ? 'menyerah' : 'telah dikalahkan'}.`, e.owner === this.me ? 'bad' : 'age');
+        if (e.owner === this.me && !this.lost && W.winner < 0) this.end(false);      // others may still be fighting (1 vs 2 / 1 vs 3)
+        break;
       case 'victory': this.end(e.team === W.players[this.me].team); break;
+      case 'shipready': if (mine) { this.snd.play('card'); this.hud.notify('Kiriman Kerajaan tersedia! Buka 🃏 Kiriman (K) dan pilih kartu.', 'age'); } break;
+      case 'shipsent': if (mine) this.hud.notify(`Kiriman berangkat: ${CARDS[e.card].name} — tiba dalam ${XP.travel} detik.`); break;
+      case 'shipment': if (mine) { this.snd.play('ship'); this.hud.notify(`Kiriman tiba di Pusat Kota: ${CARDS[e.card].name}!`, 'age'); this.view.fx({ k: 'age', x: e.x, y: e.y }); } break;
+      case 'trade': if (mine) this.snd.play('coin'); break;
     }
+  }
+  // first sighting of an enemy building (stats History). Players only hear about their own discoveries.
+  onFound(f) {
+    const W = this.W, by = W.players[f.by], of = W.players[f.of];
+    if (this.watch) { this.hud.notify(`${by.name} menemukan wilayah ${of.name}!`, 'enemy'); if (!this.hot || W.t - this.hot.t > 3) this.hot = { x: f.x, y: f.y, t: W.t }; }
+    else if (f.by === this.me) { this.snd.play('alert'); this.hud.notify(`Pengintai kita menemukan wilayah ${of.name}!`, 'age'); }
   }
   // ---------------------------------------------------------------- spectator (bot vs bot)
   setupSpectator() {
@@ -137,8 +158,10 @@ class Game {
         break;
       }
       case 'treasure': this.sfx('treasure', e.x, e.y); this.hud.notify(W.players[e.owner].name + ' menemukan harta karun: +' + e.amount + ' ' + RES_NAME[TREASURES[e.type].res]); break;
-      case 'defeated': this.snd.play('alert'); this.hud.notify(W.players[e.owner].name + ' telah dikalahkan!', 'bad'); break;
+      case 'defeated': this.snd.play('alert'); this.hud.notify(W.players[e.owner].name + (e.resign ? ' menyerah!' : ' telah dikalahkan!'), 'bad'); if (this.me === e.owner) this.cyclePov(1); break;
       case 'victory': this.end(true); break;
+      case 'shipment': this.hud.notify(`${W.players[e.owner].name} menerima kiriman: ${CARDS[e.card].name}`); this.sfx('ship', e.x, e.y); this.view.fx({ k: 'age', x: e.x, y: e.y }); break;
+      case 'trade': this.sfx('coin', e.x, e.y); break;
     }
   }
   spectatorCam(dt) {
@@ -160,16 +183,32 @@ class Game {
       this.over = true; this.snd.play('victory'); this.snd.music(null);
       const w = this.W.players.find(p => p.team === this.W.winner);
       $('endTitle').textContent = w ? w.name + ' Menang!' : 'Permainan Selesai'; $('endTitle').className = 'win';
-      $('endStats').innerHTML = '<tr><th></th><th>Unit dilatih</th><th>Membunuh</th><th>Kehilangan</th><th>Bangunan</th><th>Sumber daya</th><th>Zaman</th></tr>' +
-        this.W.players.map(p => '<tr><td style="color:rgb(' + PLAYER_RGB[p.color] + ')"><b>' + p.name + '</b></td><td>' + p.stats.units + '</td><td>' + p.stats.killed + '</td><td>' + p.stats.lost + '</td><td>' + p.stats.built + '</td><td>' + Math.floor(p.stats.gathered) + '</td><td>' + AGES[p.age] + '</td></tr>').join('');
-      $('endScreen').classList.remove('hidden'); return;
+      this.endTable(); return;
     }
     this.over = true; this.snd.play(win ? 'victory' : 'defeat'); this.snd.music(null);
-    const P = this.W.players;
-    $('endTitle').textContent = win ? 'Kemenangan!' : 'Kekalahan';
+    const P = this.W.players, w = P.find(p => p.team === this.W.winner);
+    $('endTitle').textContent = win ? 'Kemenangan!' : this.lost && w ? `Kekalahan — ${w.name} menang` : 'Kekalahan';
     $('endTitle').className = win ? 'win' : 'lose';
-    $('endStats').innerHTML = `<tr><th></th><th>Unit dilatih</th><th>Membunuh</th><th>Kehilangan</th><th>Bangunan</th><th>Sumber daya</th><th>Zaman</th></tr>` +
-      P.map(p => `<tr><td style="color:rgb(${PLAYER_RGB[p.color]})"><b>${p.name}</b></td><td>${p.stats.units}</td><td>${p.stats.killed}</td><td>${p.stats.lost}</td><td>${p.stats.built}</td><td>${Math.floor(p.stats.gathered)}</td><td>${AGES[p.age]}</td></tr>`).join('');
+    this.endTable(P);
+    // beaten while others still fight: keep watching the rest of the match with the whole map revealed
+    $('endWatch').classList.toggle('hidden', win || this.W.winner >= 0);
+    $('endWatch').onclick = () => {
+      this.lost = true; this.over = false; this.view.reveal = true; this.view.revealed = false; $('endScreen').classList.add('hidden');
+      this.snd.music('game'); this.hud.notify('Kerajaanmu telah jatuh. Menonton sisa pertandingan — seluruh peta terbuka.', 'bad');
+    };
+  }
+  resignMe() {
+    const b = $('pResign');
+    if (!this.resignAsk) { this.resignAsk = true; b.textContent = '🏳 Yakin menyerah? Klik sekali lagi'; setTimeout(() => { this.resignAsk = false; b.textContent = '🏳 Menyerah'; }, 4000); return; }
+    this.resignAsk = false; b.textContent = '🏳 Menyerah';
+    command(this.W, { t: 'resign', pid: this.me }); this.togglePause();
+  }
+  trade(b, res, buy) { command(this.W, { t: 'trade', pid: this.me, bid: b.id, res, buy }); }
+  endTable(P = this.W.players) {
+    this.hist.next = 0; this.hist.tick();      // final timeline sample
+    $('endStats').innerHTML = `<tr><th></th><th>Skor</th><th>Unit dilatih</th><th>Membunuh</th><th>Kehilangan</th><th>Bangunan dibangun</th><th>Bangunan dihancurkan</th><th>Sumber daya</th><th>Zaman</th></tr>` +
+      P.map(p => `<tr><td style="color:rgb(${PLAYER_RGB[p.color]})"><b>${p.name}</b></td><td><b>${score(this.W, p).total}</b></td><td>${p.stats.units}</td><td>${p.stats.killed}</td><td>${p.stats.lost}</td><td>${p.stats.built}</td><td>${p.stats.razed}</td><td>${Math.floor(p.stats.gathered)}</td><td>${AGES[p.age]}</td></tr>`).join('');
+    $('endFull').onclick = () => { this.stats.tab = 'time'; this.stats.toggle(true); };
     $('endScreen').classList.remove('hidden');
   }
 
@@ -448,8 +487,12 @@ class Game {
     this.bindTouchBar();
     cv.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
     addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
+      if (this.dead || e.target.tagName === 'INPUT') return;      // listeners of finished games stay attached
       this.keys[e.key] = true;
+      if (e.key === 'i' || e.key === 'I' || e.key === 'F4') { e.preventDefault(); this.stats.toggle(); return; }
+      if (e.key === 'k' || e.key === 'K') { e.preventDefault(); this.cards.toggle(); return; }
+      if (e.key === 'Escape' && this.stats.open) { this.stats.toggle(false); return; }
+      if (e.key === 'Escape' && this.cards.open) { this.cards.toggle(false); return; }
       if (e.key === 'Escape') { if (this.placing) { this.placing = null; this.view.setGhost(null); } else if (this.sel.length) this.sel = []; else this.togglePause(); return; }
       if (e.key === 'F3' || (e.key === 'p' && !e.ctrlKey)) { e.preventDefault(); this.togglePause(); return; }
       if (this.over || this.paused) return;
@@ -480,7 +523,7 @@ class Game {
     this.paused = !this.paused; $('pauseMenu').classList.toggle('hidden', !this.paused);
     this.snd.play('click');
   }
-  destroy() { document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
+  destroy() { this.dead = true; $('statsPanel').classList.add('hidden'); $('cardsPanel').classList.add('hidden'); $('endWatch').classList.add('hidden'); document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
 }
 
 // ---------------------------------------------------------------- boot / menus
@@ -492,6 +535,7 @@ async function boot() {
   // menu state
   const opts = store.get('opts', { diff: 'normal', color: 'blue', size: 144, seed: 0, players: 2, name: '', mode: 'play' });
   if (!opts.mode) opts.mode = 'play';
+  if (!opts.map) opts.map = 'random';
   if (![112, 144, 180, 220].includes(opts.size)) opts.size = 144;
   const segs = document.querySelectorAll('.seg');
   segs.forEach(s => { const k = s.dataset.k; s.querySelectorAll('button').forEach(b => { b.classList.toggle('on', String(opts[k]) === b.dataset.v); b.onclick = () => { opts[k] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); store.set('opts', opts); Sound.ui(); }; }); });
@@ -501,6 +545,7 @@ async function boot() {
   $('howClose').onclick = () => $('howto').classList.add('hidden');
   $('pResume').onclick = () => game && game.togglePause();
   $('pQuit').onclick = $('endMenu').onclick = () => toMenu();
+  $('pResign').onclick = () => game && !game.watch && game.resignMe();
   $('pSpeed').onclick = () => { if (!game) return; game.speed = game.speed === 1 ? 1.5 : game.speed === 1.5 ? 2 : 1; $('pSpeed').textContent = `Kecepatan: ${game.speed}x`; };
   $('volMusic').value = store.get('volMusic', 0.5); $('volSfx').value = store.get('volSfx', 0.8);
   const vol = () => { Sound.setVolume(+$('volMusic').value, +$('volSfx').value); store.set('volMusic', +$('volMusic').value); store.set('volSfx', +$('volSfx').value); };
