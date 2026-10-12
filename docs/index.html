@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#2a1f16">
+<title>Abad Kerajaan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya:wght@500;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
+<link rel="stylesheet" href="css/style.css?v=202610120944">
+<script type="importmap">{ "imports": { "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs" } }</script>
+</head>
+<body>
+<div id="game"></div>
+<div id="selbox"></div>
+
+<!-- ======================= HUD ======================= -->
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="res"><i class="ri food"></i><b id="r_food">0</b></div>
+    <div class="res"><i class="ri wood"></i><b id="r_wood">0</b></div>
+    <div class="res"><i class="ri gold"></i><b id="r_gold">0</b></div>
+    <div class="res"><i class="ri stone"></i><b id="r_stone">0</b></div>
+    <div class="res pop"><i class="ri popi"></i><b id="r_pop">0/0</b></div>
+    <div class="age"><span id="ageName">Zaman Kegelapan</span></div>
+    <div id="specBar" class="hidden">
+      <span class="spec-tag">👁 Penonton</span>
+      <button id="spPov" class="tb" title="Ganti sudut pandang (Tab)">Pemain</button>
+      <button data-sp="1" class="tb sp">1x</button><button data-sp="2" class="tb sp">2x</button><button data-sp="4" class="tb sp">4x</button><button data-sp="8" class="tb sp">8x</button>
+      <button id="spCam" class="tb" title="Kamera mengikuti aksi (C)">🎥 Otomatis</button>
+    </div>
+    <div class="clock" id="clock">00:00:00</div>
+    <button id="btnMenu" class="tb">Menu</button>
+  </div>
+  <div id="notify"></div>
+  <!-- touch toolbar (phones / tablets) -->
+  <div id="touchBar">
+    <button id="tbCancel" title="Batal / lepas pilihan">✖</button>
+    <button id="tbBox" title="Pilih area: seret satu jari">▢</button>
+    <button id="tbArmy" title="Pilih semua tentara di layar">⚔</button>
+    <button id="tbTC" title="Pusat Kota">🏰</button>
+    <button id="tbFull" title="Layar penuh">⛶</button>
+  </div>
+  <div id="bottom">
+    <div id="cmdWrap"><div id="cmd"></div></div>
+    <div id="info"></div>
+    <div id="miniWrap">
+      <button id="idleVil" title="Penduduk desa menganggur (.)"><span id="idleN"></span></button>
+      <canvas id="miniCanvas" width="320" height="160"></canvas>
+    </div>
+  </div>
+  <div id="tooltip"></div>
+</div>
+
+<!-- ======================= MENU ======================= -->
+<div id="menu" class="screen">
+  <div class="title"><h1>Abad Kerajaan</h1><p>Bangun kerajaanmu dari zaman kegelapan hingga zaman kastil</p></div>
+  <div class="panel">
+    <label class="fld">Nama penguasa <input id="nameIn" maxlength="16" placeholder="Kamu"></label>
+    <div class="row"><span>Mode</span><div class="seg" data-k="mode"><button data-v="play">Bermain</button><button data-v="watch">Tonton Bot vs Bot</button></div></div>
+    <div class="row"><span>Lawan (AI)</span><div class="seg" data-k="diff"><button data-v="easy">Mudah</button><button data-v="normal">Normal</button><button data-v="hard">Sulit</button></div></div>
+    <div class="row"><span>Jumlah pemain</span><div class="seg" data-k="players"><button data-v="2">1 vs 1</button><button data-v="3">1 vs 2</button><button data-v="4">1 vs 3</button></div></div>
+    <div class="row"><span>Warna</span><div class="seg colors" data-k="color"><button data-v="blue" class="c-blue">Biru</button><button data-v="red" class="c-red">Merah</button><button data-v="green" class="c-green">Hijau</button><button data-v="yellow" class="c-yellow">Kuning</button></div></div>
+    <div class="row"><span>Ukuran peta</span><div class="seg" data-k="size"><button data-v="112">Kecil</button><button data-v="144">Sedang</button><button data-v="180">Besar</button><button data-v="220">Raksasa</button></div></div>
+    <div class="row vol"><span>Musik</span><input type="range" id="volMusic" min="0" max="1" step="0.05"><span>Efek</span><input type="range" id="volSfx" min="0" max="1" step="0.05"></div>
+    <button id="btnPlay" class="big">⚔ Mulai Permainan</button>
+    <button id="btnHow" class="link">Cara bermain &amp; kontrol</button>
+  </div>
+  <div class="credit">Unit, hewan &amp; animasi: 0 A.D. © Wildfire Games (CC-BY-SA 3.0) · Suara: Piper TTS (OpenSLR 83 CC-BY-SA, LibriVox) · Tekstur Poly Haven &amp; ambientCG (CC0)</div>
+</div>
+
+<div id="howto" class="screen dim hidden"><div class="panel wide">
+  <h2>Cara Bermain</h2>
+  <div class="cols">
+    <div><h3>Ekonomi</h3><p>Pilih penduduk desa, klik kanan pohon / semak berry / tambang untuk mengumpulkan. Bangun <b>Kamp Penebang</b>, <b>Penggilingan</b>, dan <b>Kamp Tambang</b> di dekat sumber daya supaya bolak-baliknya singkat. Buat <b>Rumah</b> untuk menambah populasi.</p>
+    <h3>Berburu &amp; Alam Liar</h3><p><b>Domba</b> menjadi milik siapa pun yang mendekat duluan &mdash; giring ke Pusat Kota lalu klik kanan dengan penduduk desa untuk menyembelih. <b>Rusa</b> lari saat didekati, <b>babi hutan</b> melawan balik (buru beramai-ramai). Waspadai <b>serigala</b> yang memangsa penduduk desa.</p>
+    <h3>Harta Karun</h3><p>Peti emas, gerobak makanan, kayu dan batu tersebar di peta, dijaga <b>bandit</b>, serigala atau <b>beruang</b>. Kalahkan penjaganya lalu sentuh harta itu dengan unit mana saja untuk mendapat bonus.</p>
+    <h3>Zaman</h3><p>Di Pusat Kota, naik ke <b>Zaman Feodal</b> (butuh 2 bangunan Zaman Kegelapan) lalu <b>Zaman Kastil</b> untuk membuka unit & bangunan baru.</p></div>
+    <div><h3>Kontrol</h3><table>
+      <tr><td>Klik kiri / tarik</td><td>Pilih unit</td></tr><tr><td>Klik kanan</td><td>Gerak / serang / kumpulkan / bangun</td></tr>
+      <tr><td>Klik ganda</td><td>Pilih semua unit sejenis di layar</td></tr><tr><td>Q W E R T / A S D F G / Z X C V B</td><td>Tombol perintah</td></tr>
+      <tr><td>Ctrl + 1-9, 1-9</td><td>Simpan / pilih grup</td></tr><tr><td>H</td><td>Pusat Kota</td></tr><tr><td>.</td><td>Penduduk desa menganggur</td></tr>
+      <tr><td>Panah / tepi layar / tombol tengah</td><td>Geser kamera</td></tr><tr><td>Roda mouse</td><td>Zoom</td></tr><tr><td>Shift + klik bangun</td><td>Bangun berulang</td></tr><tr><td>Esc / F3</td><td>Batal / jeda</td></tr>
+    </table></div>
+  </div>
+  <button id="howClose" class="big">Mengerti</button>
+</div></div>
+
+<div id="pauseMenu" class="screen dim hidden"><div class="panel">
+  <h2>Permainan Dijeda</h2>
+  <button id="pResume" class="big">Lanjutkan</button>
+  <button id="pSpeed">Kecepatan: 1x</button>
+  <button id="pQuit">Keluar ke Menu</button>
+</div></div>
+
+<div id="endScreen" class="screen dim hidden"><div class="panel wide">
+  <h2 id="endTitle">Kemenangan!</h2>
+  <table id="endStats"></table>
+  <button id="endMenu" class="big">Kembali ke Menu</button>
+</div></div>
+
+<div id="rotate"><div>📱↻</div><p>Putar ponsel ke posisi <b>mendatar (landscape)</b> untuk bermain.</p></div>
+
+<div id="loading" class="screen"><div class="panel"><h2>Memuat…</h2><div class="bar"><i id="loadBar"></i></div><p id="loadText">Menyiapkan dunia</p></div></div>
+
+<script type="module" src="js/main.js?v=202610120944"></script>
+</body>
+</html>
