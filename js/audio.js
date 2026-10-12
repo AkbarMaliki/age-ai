@@ -96,12 +96,15 @@ Object.assign(SFX, {
   deer() { tone(900, 0.12, 'sine', 0.05, 0, 0.8); },
   treasure() { [1319, 1568, 2093, 2637].forEach((f, i) => tone(f, 0.4, 'sine', 0.07, i * 0.07)); hiss(0.4, 7000, 0.8, 0.05, 0.05); horn([392, 523], 0.18, 0.07); },
   hunt() { hiss(0.06, 1400, 1, 0.12); },
+  gunshot() { hiss(0.18, 1800, 0.7, 0.32); tone(110, 0.12, 'square', 0.12, 0, 0.5); hiss(0.6, 500, 0.6, 0.08, 0.05, 'lowpass'); },
+  cannon() { hiss(1.2, 160, 0.6, 0.55, 0, 'lowpass'); tone(55, 0.5, 'sine', 0.3, 0, 0.6); hiss(0.25, 1500, 0.8, 0.2); },
+  boom() { hiss(1.0, 240, 0.6, 0.45, 0, 'lowpass'); for (let i = 0; i < 4; i++) hiss(0.08, 1200, 2, 0.12, 0.1 + i * 0.09); },
   coin() { [2637, 3136].forEach((f, i) => tone(f, 0.18, 'sine', 0.05, i * 0.06)); hiss(0.05, 6000, 1.5, 0.05); },
   sel_market() { SFX.coin(); setTimeout(() => SFX.coin(), 140); },
   card() { [659, 880, 1175].forEach((f, i) => tone(f, 0.28, 'triangle', 0.08, i * 0.09)); },
   ship() { horn([262, 392, 523], 0.28, 0.1); setTimeout(() => bell(784, 0.05), 500); },
 });
-const MIN_GAP = { farm: 0.3, forage: 0.3, mine_gold: 0.2, mine_stone: 0.2, drop_wood: 0.25, drop_gold: 0.25, drop_food: 0.25, drop_stone: 0.25, hunt: 0.3, sheep: 1.5, wolf: 3, chop: 0.18, hammer: 0.15, swing: 0.07, arrowhit: 0.06, shoot: 0.05, die: 0.08 };
+const MIN_GAP = { gunshot: 0.08, cannon: 0.25, boom: 0.2, farm: 0.3, forage: 0.3, mine_gold: 0.2, mine_stone: 0.2, drop_wood: 0.25, drop_gold: 0.25, drop_food: 0.25, drop_stone: 0.25, hunt: 0.3, sheep: 1.5, wolf: 3, chop: 0.18, hammer: 0.15, swing: 0.07, arrowhit: 0.06, shoot: 0.05, die: 0.08 };
 
 // ---------------- music
 const EXT = (() => { try { return new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? '.ogg' : '.m4a'; } catch { return '.m4a'; } })();

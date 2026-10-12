@@ -13,9 +13,9 @@ for (const type of MAP_KEYS) for (const np of [2, 3, 4]) for (let s = 1; s <= se
   const W = generate({ size, seed: s * 7919 + np, type, players: Array.from({ length: np }, (_, i) => ({ name: 'P' + i, color: 'c' + i })) });
   const ms = performance.now() - t0;
   const home = W.players.map(P => homeResources(W, P.start[0], P.start[1]));
-  const gap = {}; const ok = linked(W); if (!ok) cut++;
-  for (const k of ['wood', 'gold', 'stone', 'food']) { const v = home.map(h => h[k]); gap[k] = Math.round(100 * (1 - Math.min(...v) / Math.max(...v))); worstGap = Math.max(worstGap, gap[k]); }
-  console.log(`${type.padEnd(8)} ${np}p ${size} ${ms.toFixed(0).padStart(4)}ms seats ${W.players.map(P => P.start.join(',')).join(' ')}  wood ${home.map(h => h.wood / 100).join('/')} gold ${home.map(h => h.gold).join('/')} stone ${home.map(h => h.stone).join('/')} food ${home.map(h => h.food).join('/')}  gap% ${JSON.stringify(gap)}${ok ? '' : '  !! TOWNS NOT CONNECTED'}`);
+  const gap = {}; const ok = W.map.water === 'islands' ? W.frozen || !linked(W) : linked(W);     // winter ice may join islands if (!ok) cut++;
+  for (const k of ['wood', 'gold', 'stone', 'food', 'iron']) { const v = home.map(h => h[k]); gap[k] = Math.round(100 * (1 - Math.min(...v) / Math.max(...v))); worstGap = Math.max(worstGap, gap[k]); if (gap[k] > 20) console.log('   !! gap', type, np, size, k, gap[k]); }
+  console.log(`${type.padEnd(8)} ${np}p ${size} ${ms.toFixed(0).padStart(4)}ms seats ${W.players.map(P => P.start.join(',')).join(' ')}  wood ${home.map(h => h.wood / 100).join('/')} gold ${home.map(h => h.gold).join('/')} stone ${home.map(h => h.stone).join('/')} food ${home.map(h => h.food).join('/')} iron ${home.map(h => h.iron).join('/')}  gap% ${JSON.stringify(gap)}${ok ? '' : (W.map.water === 'islands' ? '  !! ISLANDS TOUCH' : '  !! TOWNS NOT CONNECTED')}`);
 }
 console.log('worst per-resource gap between players:', worstGap + '%', '| maps with cut-off towns:', cut);
 if (worstGap > 25 || cut) process.exit(1);

@@ -45,7 +45,9 @@ sim.js    deterministic simulation (no rendering). TICK = 0.1 game-s. Every inpu
 ai.js     computer player (one AI instance per AI player; spectator mode = AI for everyone).
 map.js    random map types (MAP_TYPES: padang, rimba, danau, sungai, tambang; 'random' picks one), random rotation + seats,
           one shared home layout per game, map-wide features copied per seat, balance() top-up, connect() safety carve.
-cards.js  CardPanel: Home City shipment deck (AoE3 cards), XP bar in the top bar.
+cards.js  CardPanel: Home City shipment deck (AoE3 cards), XP bar in the top bar; DeckBuilder (menu, 20-card deck).
+advisor.js "!" Penasihat: enemy army mix from sightings / spy reports -> counter units, doctrine, formation.
+achievements.js 25 achievements + profile rank (localStorage ak_profile), recorded on the end screen.
 stats.js  score(), snapshot(), History (timeline every 10 game-s + first-contact log), StatsPanel ("Statistik Perang").
 data.js   all numbers: UNITS (incl. animals/bandit), BUILDINGS, TECHS, RESOURCES, RATE, TREASURES, GAIA = -1.
 render.js PixiJS View: terrain mesh + custom shader (texture blend, water, fog), depth-sorted sprites, particles,
@@ -76,6 +78,27 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
   - Carry 10 (+3 with Wheelbarrow), with AoE2-like gather rates (`RATE`). Drops go to the nearest drop site.
   - Building speed follows the AoE2 formula `3t/(n+2)`.
   - After finishing a building, a villager auto-gathers the matching resource, or helps the nearest foundation within 12 tiles.
+
+### v4 systems (sim.js unless noted)
+- **Derived stats:** never read `UNITS[t].atk` etc. for gameplay — use `stat(W, owner, type)` / `bstat(W, owner, type)`; they apply blacksmith techs, doctrines (`group: 'doc1'|'doc2'`, exclusive), cards (`P.mods`), specialists. Cached per player, invalidated by `bumpStats` (also stretches existing units' HP).
+- **Counters:** `cls` + `bonus` in data.js: spear > cavalry > archer > infantry. Specialists (`TECHS[t].spec = [from, to]`, exclusive per line) convert existing units and `trainType(P, type)` maps future training. Specialists reuse base sprites with `tint` / `scale` (`UNITS[t].sprite`). Ninja `stealth`: `hiddenFrom(W, e, pid)` (render + targeting).
+- **Iron** is the 5th resource (RES). Mining camps / TC accept it. Used by late blacksmith techs, Akademi, gunpowder units.
+- **Terrain:** `TER` codes in data.js. HILL: 0.72x speed, +25% damage and +1 range / los from high ground. ROCK: impassable. Water passable for land units when `W.frozen` (winter). `passable(W, i, j, owner, nav)` — `nav` = ships (open water only). Regions are kept for land and water separately.
+- **Ships:** `UNITS[t].naval` -> `u.nav`. Fishing boats gather `fish` (res on water) and drop at a dock; transports carry `capacity` units (`board` order / `unload` command, cargo is removed from `W.ents` while aboard and dies with the ship). Docks: `BUILDINGS.dock.water`, placement needs water + a shore tile.
+- **Roads:** `buildRoad` on every finished building (A* from its door to the nearest TC/castle, merging into existing roads) -> `W.road` (+15% speed). Rendered from a road mask texture.
+- **Day / night** (`W.opts.night` full/visual/off, `DAY` in data.js): dusk sends gatherers, builders and idle villagers home (`rest` order; houses shelter 5, a TC 15) where they go inside (`u.inside` = building id: hidden, not targetable, skipped by separation / minimap / box select; any other order or the home falling brings them out) unless `torches` tech / `nightWork` card. `restNow(W, P)`: idle / newly trained villagers go home too and the AI sends nobody out until dawn; night los x0.65; dawn: food upkeep per pop, hunger slows gathering for the day.
+- **Seasons / weather:** `SEASONS` (farm/hunt/berry/speed/los modifiers, `frozen`, `snow`); rain periods (`W.rainUntil`) lower accuracy and los.
+- **Formations:** `u.form` (garis/tempur/kotak/menyebar) via `{ t: 'form' }`; `formationTick` computes `u.fb` (armour / miss / speed bonuses); formations march at the slowest member's speed (`order.gs`).
+- **Foundations** with 0% progress are not `targetable` (enemies used to fixate on fresh foundations).
+- **Repair:** villager right-click on own damaged building -> `repair` order, costs half the build cost per HP.
+- **Spy ability** (Akademi + spy_network): `{ t: 'ability' }` -> enemy positions in vision 30 s + `spy` event with `spyReport()`.
+- **AI** (ai.js): personality from a random `DECKS` preset (`STYLE`), counter-picks doctrines / specialists / unit mix from `foes` sightings + spy reports, formations per attack, towers + a wall ring with gates (`wallRing`), repairs, docks / fishing / fleet / transport invasions on islands (`invasion` state machine), forward camps on big maps, and a town planner in `build()` (street grid every 7 tiles, rows of houses, no building on roads).
+- **Renderer:** relief shading (hills/rock), road mask, snow / autumn / ice uniforms, day-night `uLight` multiplying every sprite tint, additive glow pool (windows, torches, campfires), chimney smoke, birds, rain / snow overlay, windmill sails (`mill_body` + `mill_sail_N`), TC sprite by age (`town_center_dark` / `_castle`), house style by the age it was built in.
+- **Art added:** `_art/structures.py` blacksmith, academy, dock, town_center_dark/_castle, iron_a/b, `mill_anim`; `_art/vehicles.py` (new) renders fishing_boat, transport_ship, war_ship, ram, cannon in the unit layout. Pack into THIS repo with `python -c "import pack,os; pack.OUTD=os.path.abspath('../age-ai/assets'); pack.PLAYER_UNITS += [...]; pack.units(); pack.buildings(); pack.icons()"` (pack.py defaults to ../age/assets).
+- **Path budget:** A* is capped per tick (`W.paths` / `W.nodes`). A gatherer that fails to reach a resource twice marks it with `markUnreachable` (`unreachable(W, id, owner)`), and `nearestResource` plus the AI's hunting skip it, so nobody retries enclosed sheep and carcasses forever (this used to saturate the budget and freeze every unit on islands maps).
+- **AI food reserve:** from 40% of the day until the dawn upkeep, `ai.foodKeep` (tomorrow's upkeep +15%) is never spent on villagers, soldiers, scouts, techs or the next age; the market buys food if short. Winter scales the AI's farm count by 1 / `season.farm`. Builders give up on foundations they can't reach (`unreachable`), the AI cancels them, and wall-ring tiles must touch the home region.
+- **Units atlas** now also holds fishing_boat, transport_ship, war_ship, ram and cannon (`pack.PLAYER_UNITS += [...]`).
+- Tests: `npm test` = map + sim + `tests/naval.test.js` (dock, fishing, board/sail/unload, warship fire). Slower ones: `tests/stuck.test.js [min] [seed] [size] [players] [map]` (stuck-unit detector). Browser: `tests/browser/world.cjs` (seasons, day/night, formations, advisor, deck, achievements), `tests/browser/vehicles.cjs` (ship / siege sprites).
 
 ### End of game, Market, cards
 - **Defeat (conquest):** `keepsAlive(e)` — a player stays in while they own a non-animal unit or a *finished* building other than walls, gates, farms and houses. `checkVictory` (every 10 ticks) then destroys the loser's leftovers. **Resign:** command `{ t: 'resign' }` (pause menu "Menyerah", confirm twice; AI `hopeless()` = no TC and no way back for 20 s). Event `defeated` has `resign`. In 3–4 player games a beaten human gets "Tonton sisa pertandingan" (map revealed, `Game.lost`/`seeAll`).
@@ -211,7 +234,9 @@ The game side (`audio.js`):
 - **Measurement gotcha:** Blender renders in the background skew timings heavily (all cores busy). Re-measure when the CPU is idle.
 
 ## 7. Known issues / ideas for next steps
-- AI vs AI 1v1 games usually end in 35–60 game-min (conquest or resignation). No siege units yet: buildings fall to melee `vsBuilding` damage.
+- AI vs AI 1v1 games usually end in 35–60 game-min (conquest or resignation).
+- Specialists, gunners and cannons reuse tinted base sprites; dedicated 0 A.D.-style renders would look better.
+- Villager fishing reuses the forage animation plus a net-splash effect.
 - AI economy is a bit slower than AoE2 AI: Feudal at about 14–17 game-min. Tune `ai.js` weights.
 - Missing AoE2 systems the user may ask for: Blacksmith (attack/armour upgrades), Market, Monk + relics, Dock/fishing, Imperial Age, more unit lines and upgrades (Man-at-Arms…), formations, garrisoning, multiplayer (the sim is deterministic and command-based, so lockstep over Firebase would fit; the user already uses Firebase RTDB in other games).
 - Building variants exist only for houses; barracks, mill and the camps could get them too, the same way (render `<type>_b`, then pick by `id % n` in `render.js`).

@@ -8,7 +8,8 @@ A browser RTS in the style of Age of Empires II. It uses pre-rendered 3D sprites
 ```
 start.bat            (or: node server.cjs 8772)
 http://localhost:8772
-npm test             (headless AI-vs-AI game in the sim)
+npm test             (map fairness, headless AI-vs-AI game, naval checks)
+node tests/stuck.test.js 40 5 144 4   (stuck-unit detector, slower)
 ```
 
 ## Phone / tablet (touch)
@@ -69,6 +70,12 @@ Screenshots used to live in `docs/`; they are now in `screenshots/`.
 - **Market (Pasar).** Feudal Age, needs a Mill. Buy or sell 100 food / wood / stone for gold; prices are shared and move with every trade. Techs: *Serikat Dagang* (fee 30% → 15%) and *Rute Dagang* (24 gold per minute per market).
 - **Home City shipments (AoE3-style cards).** Gathering, building, research, treasures and kills give XP. Each full XP bar earns a shipment: open 🃏 *Kiriman* (key K) and pick a card — villagers, resource crates, soldiers or permanent bonuses (gather rate, villager speed, armour, market fee). It arrives at the Town Center 35 s later.
 - **Winning, losing, surrender.** A kingdom is out when it has no units and no working buildings left (walls, gates, farms, houses and foundations don't count). *Menyerah* in the pause menu resigns; AI players resign when they can't recover. In 3–4 player games you can keep watching after you're beaten.
+- **Military paths (v4).** Blacksmith upgrades (attack / armour lines, shown as gold pips over selected soldiers) and an exclusive *Doktrin* (Legion / Cavalry / Arrow Rain), a second doctrine at the *Akademi* (Fortress / Blitz / Formation tactics), one specialist per line (Samurai or Ninja, Fire Archers or Crossbows, Cataphracts or Lancers), gunpowder (needs **iron**) for gunners and cannons, battering rams. Spear > cavalry > archer > infantry, so different choices beat different opponents.
+- **Formations** for soldiers: line, battle (shield wall in front, archers behind), box, spread.
+- **Spies and the advisor.** The Akademi sends spies (enemy positions for 30 s); the *Penasihat* (! / J) reads the enemy army and suggests counters.
+- **Living world.** Day and night (villagers rest, torches and lit windows, food upkeep at dawn), seasons (snow freezes rivers), rain, birds, chimney smoke, turning windmills, roads that connect every new building to the town, towns that change look with each age.
+- **Terrain and water.** Hills (high ground bonus), mountain ridges with passes, islands. Docks with fishing boats, transports (carry 10) and warships; villagers can fish from the shore.
+- **Decks and achievements.** Build a 20-card deck in the menu; computer players each get a random deck that shapes their style. 25 achievements and a rank that grows across games.
 - **War statistics.** The 📊 *Statistik* button (or key I) opens a panel with score, economy (gather rate per minute, villager jobs, buildings, techs), military (army, kills, losses, buildings razed) and a timeline chart. While playing it shows your own kingdom plus what your scouts know about the enemy; in spectator mode and after the game it compares every kingdom.
 - **Work sounds.** Sampled and procedurally designed (`../_audio/sfx_age.py`, 4 variants each), with random pitch and stereo panning by screen position:
   - axe on wood, pick on stone, pick on gold, hoe in soil, berry bush rustle, hammer and nail, butchering;
@@ -91,7 +98,7 @@ Colour sprites and `_mask` sprites are rendered separately. The mask marks the p
 - Left click / drag: select. Right click: move, gather, attack or build (context-dependent).
 - Command grid hotkeys: Q W E R T / A S D F G / Z X C V B.
 - Esc: cancel. While placing a gate, R rotates it. For walls, click the start point and then the end point.
-- Ctrl+0-9 saves a control group and 0-9 selects it (double-tap to jump to it). `.` selects an idle villager. H jumps to the Town Center. Space centres on the selection. Delete removes it. P/F3 pauses. I (or F4) opens the war statistics, K the shipment cards.
+- Ctrl+0-9 saves a control group and 0-9 selects it (double-tap to jump to it). `.` selects an idle villager. H jumps to the Town Center. Space centres on the selection. Delete removes it. P/F3 pauses. I (or F4) opens the war statistics, K the shipment cards, J the advisor.
 - Arrow keys or the screen edges scroll the camera. Click the minimap to jump. Mouse wheel zooms towards the cursor (down to 0.3x, or 0.22x in spectator mode); - and = zoom too.
 
 ## Credits

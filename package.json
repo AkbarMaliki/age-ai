@@ -1,1 +1,1 @@
-{ "name": "abad-kerajaan", "private": true, "type": "module", "scripts": { "test": "node tests/map.test.js && node tests/sim.test.js" } }
+{ "name": "abad-kerajaan", "private": true, "type": "module", "scripts": { "test": "node tests/map.test.js && node tests/sim.test.js && node tests/naval.test.js" } }
