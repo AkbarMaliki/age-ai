@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS } from './data.js?v=20261013170658';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS } from './data.js?v=20261013201628';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -55,7 +55,7 @@ export const marketFee = (P) => Math.max(0.05, (P.techs.has('guilds') ? MARKET.f
 export const buyPrice = (W, P, r) => Math.round(W.market[r] * (1 + marketFee(P)));
 export const sellPrice = (W, P, r) => Math.round(W.market[r] * (1 - marketFee(P)));
 // buildings that keep a player in the game (walls, gates, farms, houses and foundations alone don't)
-export const keepsAlive = (e) => e.hp > 0 && (e.kind === 'unit' ? !UNITS[e.type].animal : e.kind === 'building' && e.built && !BUILDINGS[e.type].wall && !BUILDINGS[e.type].gate && !['farm', 'house'].includes(e.type));
+export const keepsAlive = (e) => e.hp > 0 && (e.kind === 'unit' ? !UNITS[e.type].animal && e.type !== 'child' : e.kind === 'building' && e.built && !BUILDINGS[e.type].wall && !BUILDINGS[e.type].gate && !['farm', 'house', 'well', 'outpost'].includes(e.type));
 // a foundation nobody has started building can't be attacked (enemies used to fixate on fresh foundations)
 export const targetable = (e) => !(e.kind === 'building' && !e.built && e.progress <= 0.001) && !e.inside;
 export const costVal = (c) => RES.reduce((s, r) => s + ((c && c[r]) || 0), 0);
@@ -737,7 +737,7 @@ function upkeep(W, P) {
   const need = Math.ceil(P.pop * per);
   if (P.res.food >= need) { P.res.food -= need; P.hungry = false; W.ev.push({ k: 'upkeep', owner: P.id, food: need }); }
   else { P.res.food = 0; P.hungry = true; P.stats.hungryDays++; W.ev.push({ k: 'hungry', owner: P.id, food: need }); }
-  for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && u.hu !== undefined) { u.hu = P.hungry ? Math.min(u.hu, 35) : 100; if (u.slept >= 25) u.en = Math.max(u.en, 90); u.slept = 0; }     // breakfast (or not), a night's sleep
+  for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && u.hu !== undefined) { u.hu = P.hungry ? Math.min(u.hu, 55) : 100; if (u.slept >= 25) u.en = Math.max(u.en, 90); u.slept = 0; }     // breakfast (or not), a night's sleep
 }
 // torches (tech or card): a late shift — villagers keep working by torchlight until midnight, then go in too
 const worksAtNight = (W, P) => P.mods.nightWork || P.techs.has('torches');
@@ -843,7 +843,9 @@ function moveAlong(W, u, tx, ty, goal, exact = false) {
   const nav = !!u.nav;
   if (!u.path || u.repath <= 0) {
     if (W.paths > 10 || W.nodes > 25000) { return false; }       // per-tick pathfinding budget
-    u.path = findPath(W, u.owner, u.x, u.y, goal, tx, ty, 0, nav); u.pi = 0;
+    // a goal on another landmass / sea can't be reached on foot (or by keel): only a short search towards it
+    const r0 = regionAt(W, u.x, u.y, nav), r1 = regionAt(W, tx, ty, nav), apart = r0 && r1 && r0 !== r1;
+    u.path = findPath(W, u.owner, u.x, u.y, goal, tx, ty, apart ? 1200 : 0, nav); u.pi = 0;
     if (globalThis.PATHDBG) { const k = u.type + ":" + (u.order && u.order.t) + (u.path.complete ? "" : u.path.exhausted ? ":EXH" : ":FAIL"); globalThis.PATHDBG[k] = (globalThis.PATHDBG[k] || 0) + 1; }      // diagnostics (tests)
     u.repath = (exact ? 6 : 10) + W.rnd() * 2;
     if (!u.path.complete) { u.fails = (u.fails || 0) + 1; u.repath = 2.5; } else u.fails = 0;
@@ -1101,7 +1103,18 @@ function unitTick(W, u) {
       if (!sh || sh.owner !== u.owner || !sh.cargo || sh.cargo.length >= stat(W, sh.owner, sh.type).capacity) { u.order = null; u.anim = 'idle'; break; }
       if (Math.hypot(sh.x - u.x, sh.y - u.y) <= 2.4) { embark(W, sh, u); break; }
       // walk to the shore by the ship (it is sailing in); wait there if it isn't reachable yet
-      if (!u.path || u.repath <= 0) { if (!canReach(W, u, sh, 2.2)) { const c = coastNear(W, sh.x, sh.y, u.owner); if (c && !sh.order && Math.hypot(sh.x - c[0], sh.y - c[1]) > 0.8) setOrder(W, sh, { t: 'move', x: c[0], y: c[1] }); if (c) { const f = nearestFree(W, c[0], c[1], u.owner, 2); if (f && Math.hypot(f[0] + 0.5 - u.x, f[1] + 0.5 - u.y) > 1) moveAlong(W, u, f[0] + 0.5, f[1] + 0.5, (i, j) => i === f[0] && j === f[1]); else u.anim = 'idle'; } break; } }
+      // can't walk up to the ship: head for the shore by it (the shore spot is worked out once a second per ship, and each
+      // passenger checks reachability at most every 1.5 s — a whole army boarding used to stall the game)
+      if (!u.path || u.repath <= 0) {
+        if (W.t >= (u.boardChk || 0)) { u.boardChk = W.t + 1.5; u.boardOk = canReach(W, u, sh, 2.2); }
+        if (!u.boardOk) {
+          if (!sh.shore || W.t - sh.shore.t > 1) sh.shore = { t: W.t, c: coastNear(W, sh.x, sh.y, u.owner) };
+          const c = sh.shore.c;
+          if (c && !sh.order && Math.hypot(sh.x - c[0], sh.y - c[1]) > 0.8) setOrder(W, sh, { t: 'move', x: c[0], y: c[1] });
+          if (c) { const f = nearestFree(W, c[0], c[1], u.owner, 2); if (f && Math.hypot(f[0] + 0.5 - u.x, f[1] + 0.5 - u.y) > 1) moveAlong(W, u, f[0] + 0.5, f[1] + 0.5, (i, j) => i === f[0] && j === f[1]); else u.anim = 'idle'; }
+          break;
+        }
+      }
       moveAlong(W, u, sh.x, sh.y, (i, j) => Math.hypot(i + 0.5 - sh.x, j + 0.5 - sh.y) <= 2.2);
       break;
     }
@@ -1812,7 +1825,7 @@ function lifeTick(W) {
       // energy: sleep restores it (best in your own home); work drains it. Without a night cycle nobody tires.
       if (!nightFull || u.type === 'child') u.en = 100;
       else if (resting) { u.en = Math.min(100, u.en + (u.inside === u.homeId ? LIFE.sleep : LIFE.sleepRough)); u.slept = (u.slept || 0) + 1; }
-      else if (!vil) u.en = u.inside ? Math.min(100, u.en + LIFE.sleep) : !o || o.t === 'patrol' && !u.path ? Math.min(100, u.en + LIFE.restIdle) : Math.max(0, u.en - LIFE.energyMarch);     // soldiers: rest when idle or garrisoned
+      else if (!vil) u.en = u.inside ? Math.min(100, u.en + LIFE.sleep) : !o ? Math.min(100, u.en + LIFE.restIdle) : o.t === 'patrol' ? Math.min(100, u.en + 0.08) : Math.max(0, u.en - LIFE.energyMarch);     // soldiers: rest when idle or garrisoned
       else u.en = Math.max(0, u.en - (working ? LIFE.energyWork : LIFE.energyIdle));
       u.hu = Math.max(0, u.hu - LIFE.hunger);
       // water: near a well, the Town Center or a shore they drink as they go
@@ -1822,7 +1835,7 @@ function lifeTick(W) {
       // health
       const cured = near(hospitals, u, BUILDINGS.hospital.hospital) || (o && o.why === 'cure' && u.inside);
       let dh = 0;
-      if (u.hu < 15) dh -= 0.3; if (u.th < 15) dh -= 0.35; if (u.en < 8) dh -= 0.08;
+      if (u.hu < 15) dh -= 0.18; if (u.th < 15) dh -= 0.35; if (u.en < 8 && u.he > 35) dh -= 0.08;
       if (u.sick) { dh -= cured ? -0.5 : herb ? 0.07 : 0.13; u.sick = Math.max(0, u.sick - (cured ? 3 : 1) * (herb ? 1.4 : 1)); if (!u.sick) { u.immune = W.t + 900; W.ev.push({ k: 'cured', owner: P.id, x: u.x, y: u.y }); } }
       else if (u.hu > 45 && u.th > 45 && u.en > 25) dh += cured ? 0.4 : 0.08;
       u.he = Math.max(0, Math.min(100, u.he + dh));

@@ -3,24 +3,24 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261013170658';
-import { DAY, RELICS } from './data.js?v=20261013170658';
-import { timeOfDay, unreachable, restNow } from './sim.js?v=20261013170658';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261013170658';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261013201628';
+import { DAY, RELICS } from './data.js?v=20261013201628';
+import { timeOfDay, unreachable, restNow } from './sim.js?v=20261013201628';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261013201628';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const segDist = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); };
 
 const DIFF = {
   easy:   { think: 2.0, vil: [18, 24, 28], wave: 12, firstAttack: 900, armyCap: 16, mil: 0.6 },
-  normal: { think: 1.0, vil: [22, 30, 38], wave: 9, firstAttack: 660, armyCap: 32, mil: 0.85 },
-  hard:   { think: 0.6, vil: [24, 34, 46], wave: 7, firstAttack: 480, armyCap: 50, mil: 1.0 },
+  normal: { think: 1.0, vil: [20, 28, 36], wave: 9, firstAttack: 660, armyCap: 32, mil: 0.85 },
+  hard:   { think: 0.6, vil: [22, 32, 44], wave: 7, firstAttack: 480, armyCap: 50, mil: 1.0 },
 };
 // personality: tweaks on top of the difficulty
 const STYLE = {
   eko:     { vil: 4, attack: 1.2, wave: 1, towers: 1, mix: { inf: 1, arch: 1, cav: 1.2 }, doc1: 'doc_cavalry', doc2: 'doc_formation', iron: 0.08, ages: ['feudal', 'castle_trade', 'imperial'] },
-  serbu:   { vil: -4, attack: 0.72, wave: -2, towers: 0, mix: { inf: 1.2, arch: 0.8, cav: 1.3 }, doc1: 'doc_cavalry', doc2: 'doc_blitz', iron: 0.06, early: true, ages: ['feudal_war', 'castle_war', 'imperial_war'], horseArchers: true },
-  benteng: { vil: 0, attack: 1.35, wave: 2, towers: 4, walls: true, mix: { inf: 1.2, arch: 1.4, cav: 0.6 }, doc1: 'doc_legion', doc2: 'doc_fortress', iron: 0.08, ages: ['feudal_wall', 'castle_war', 'imperial_war'], healers: true },
+  serbu:   { vil: -2, attack: 0.72, wave: -2, towers: 0, mix: { inf: 1.2, arch: 0.8, cav: 1.3 }, doc1: 'doc_cavalry', doc2: 'doc_blitz', iron: 0.06, early: true, ages: ['feudal_war', 'castle_war', 'imperial_war'], horseArchers: true },
+  benteng: { vil: 0, attack: 1.2, wave: 1, towers: 3, walls: true, mix: { inf: 1.2, arch: 1.4, cav: 0.6 }, doc1: 'doc_legion', doc2: 'doc_fortress', iron: 0.08, ages: ['feudal_wall', 'castle_war', 'imperial_war'], healers: true },
   ilmu:    { vil: 2, attack: 1.1, wave: 0, towers: 1, mix: { inf: 0.9, arch: 1.5, cav: 0.8 }, doc1: 'doc_archers', doc2: 'doc_formation', iron: 0.14, scholar: true, ages: ['feudal', 'castle', 'imperial_lore'], healers: true },
   laut:    { vil: 2, attack: 1.05, wave: 0, towers: 1, mix: { inf: 1, arch: 1.4, cav: 0.8 }, doc1: 'doc_archers', doc2: 'doc_blitz', iron: 0.06, navy: true, ages: ['feudal', 'castle_trade', 'imperial'] },
 };
@@ -149,6 +149,9 @@ export class AI {
     if (S.walls || S.towers > 2) want.stone += 0.04;
     if (this.lifeNeed && this.lifeNeed.wood && P.res.wood < this.lifeNeed.wood) want.wood *= 1.35;      // timber for the tavern / hospital
     if (P.age >= 2 && P.res.stone < 120 && canBuild(W, this.pid, 'town_center') && vils.length >= 20) want.stone = Math.max(want.stone, 0.1);      // stone for a new town
+    if (this.expandNeed && P.res.wood < 300) want.wood *= 1.25;
+    if (P.age >= 3 && !count('castle') && vils.length >= 25 && P.res.stone < 650) want.stone = Math.max(want.stone, 0.12);      // a castle: unique units, trebuchets
+    if (P.age >= 3 && count('academy', false) && !Object.keys(TECHS).some(t => TECHS[t].spec && t.startsWith('spec_') && P.techs.has(t)) && P.res.iron < 150) want.iron = Math.max(want.iron, 0.08);   // iron for a specialist line
     for (const k in want) if (want[k] > 0) want[k] *= Math.max(0.15, Math.min(1.6, 1.4 - P.res[k] / 900));
     // the people eat every dawn: keep a granary
     if (P.res.food < P.pop * 3 + 50 || P.hungry) want.food *= 1.6;
@@ -204,10 +207,11 @@ export class AI {
       if (this.known.size) this.everKnown = true;
       const core = [...this.known.values()].filter(k => !['farm', 'house'].includes(k.type)).length;
       const tgt = this.enemyTarget(), weak = this.everKnown && core <= 3;     // enemy nearly wiped out: finish it with what we have
-      const need = Math.max(4, weak ? Math.min(5, this.D.wave + this.wave) : this.D.wave + this.wave + S.wave);
+      const foePop = Math.max(1, ...W.players.filter(q => q.alive && q.team !== P.team).map(q => q.pop)), ahead = P.pop / foePop >= 2 && army.length >= 10;   // far stronger: finish it
+      const need = Math.max(4, weak ? Math.min(5, this.D.wave + this.wave) : ahead ? 6 : this.D.wave + this.wave + S.wave);
       const peace = W.opts.treaty && W.t < W.opts.treaty;
       if (!peace && this.koth(idleArmy)) { /* army sent to the monument */ }
-      else if (tgt && !peace && W.t > firstAttack && idleArmy.length >= need && W.t - this.lastAttack > (weak ? 25 : 60)) {
+      else if (tgt && !peace && W.t > firstAttack && idleArmy.length >= need && W.t - this.lastAttack > (weak || ahead ? 25 : this.beachT && W.t - this.beachT < 300 ? 40 : 60)) {
         if (this.overSea(tgt)) { this.startInvasion(idleArmy, tgt); }
         else {
           const ids = idleArmy.map(u => u.id), form = this.formationFor(idleArmy);
@@ -239,8 +243,8 @@ export class AI {
   recent(id, s) { const o = this.seen.get(id); return !!o && this.W.t - o.t < s; }
   // can we pay for this and still keep the age-up savings?
   afford(c) {
-    const R = this.reserve, Q = this.lifeNeed; if (!R && !Q) return canAfford(this.P, c);
-    for (const k in c) if (this.P.res[k] < c[k] + (R && R[k] || 0) + (Q && Q[k] || 0)) return false;
+    const R = this.reserve, Q = this.lifeNeed, X = this.expandNeed; if (!R && !Q && !X) return canAfford(this.P, c);
+    for (const k in c) if (this.P.res[k] < c[k] + (R && R[k] || 0) + (Q && Q[k] || 0) + (X && X[k] || 0)) return false;
     return true;
   }
   res(kind, x, y, r) { return nearestResource(this.W, kind, x, y, r, this.pid, null, this.P.exp); }
@@ -484,7 +488,7 @@ export class AI {
     if (P.age >= 4 && P.techs.has('gunpowder') && this.S.navy && fleet.filter(f => f.type === 'cannon_galleon').length < 3 && dock.queue.length < 2 && this.afford(unitCost(P, 'cannon_galleon'))) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'cannon_galleon' });
     if (fleet.length < Math.min(10, wantFleet) && dock.queue.length < 2 && this.afford(UNITS.war_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'war_ship' });
     const trans = this.m.units.filter(u => u.type === 'transport_ship').length;
-    if (island && P.age >= 2 && trans < 2 && dock.queue.length < 2 && this.afford(UNITS.transport_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'transport_ship' });
+    if (island && P.age >= 2 && trans < (this.m.units.filter(u => MILITARY(u.type) && !u.nav).length >= 20 ? 4 : 2) && dock.queue.length < 2 && this.afford(UNITS.transport_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'transport_ship' });
   }
   // centre of the nearest explored spot where a dock fits and a builder from home can walk up to it
   dockSpot() {
@@ -510,6 +514,9 @@ export class AI {
     const go = army.slice(0, cap);
     this.inv = { ships: ships.map(s => s.id), units: go.map(u => u.id), tgt, t: this.W.t, state: 'board' };
     this.lastAttack = this.W.t;
+    // the war fleet sails ahead to clear the landing
+    const fleet = this.m.units.filter(u => u.nav && MILITARY(u.type) && !UNITS[u.type].trade && u.type !== 'transport_ship' && !(u.order && u.order.t === 'attack'));
+    if (fleet.length) { const c = nearestFree(this.W, tgt[0], tgt[1], this.pid, 10, true); if (c) command(this.W, { t: 'move', pid: this.pid, ids: fleet.map(u => u.id), x: c[0] + 0.5, y: c[1] + 0.5, amove: true }); }
   }
   // board -> sail -> land -> attack; gives up after a while if something goes wrong
   invasion(army) {
@@ -530,6 +537,7 @@ export class AI {
       return true;
     }
     if (inv.state === 'land') {
+      this.beachT = W.t;                 // a beachhead: the next waves follow sooner
       const landed = inv.units.map(id => W.ents.get(id)).filter(u => u && u.kind === 'unit');
       if (landed.length) command(W, { t: 'move', pid: this.pid, ids: landed.map(u => u.id), x: inv.tgt[0], y: inv.tgt[1], amove: true });
       this.inv = null; return false;
@@ -562,7 +570,6 @@ export class AI {
       let un = 0, all = 0;
       for (let j = cj * CELL + 1; j < Math.min(S, cj * CELL + CELL); j += 2) for (let i = ci * CELL + 1; i < Math.min(S, ci * CELL + CELL); i += 2) { all++; if (!exp[j * S + i]) un++; }
       if (!all || un / all < 0.45) continue;
-      const f = nearestFree(W, x, y, this.pid, 4, nav); if (!f || (home && regionAt(W, f[0] + 0.5, f[1] + 0.5, nav) !== home)) continue;   // stay on our landmass / sea
       const db = Math.hypot(x - bx, y - by), df = Math.hypot(x - fx, y - fy);
       let sc;
       if (!far) { if (db > 28) continue; sc = df * 0.8 + Math.abs(db - 16) * 1.5; }
@@ -571,7 +578,9 @@ export class AI {
       if (beasts.some(o => Math.hypot(o.x - x, o.y - y) < 7)) sc += 30;        // ... and away from wolves, bears and bandits,
       else if (beasts.some(o => segDist(o.x, o.y, fx, fy, x, y) < 6)) sc += 40;  // also on the way there
       sc += this.rnd() * 8 - (un / all) * 6;
-      if (sc < bs) { bs = sc; best = [f[0] + 0.5, f[1] + 0.5, cell]; }
+      if (sc >= bs) continue;                     // cheap score first; the walkable-spot search only for a better candidate
+      const f = nearestFree(W, x, y, this.pid, 4, nav); if (!f || (home && regionAt(W, f[0] + 0.5, f[1] + 0.5, nav) !== home)) continue;   // stay on our landmass / sea
+      bs = sc; best = [f[0] + 0.5, f[1] + 0.5, cell];
     }
     if (!best) return null;
     this.tried.set(best[2], W.t);
@@ -704,7 +713,7 @@ export class AI {
   }
   // the people's needs: a tavern, wells where they work and live, a hospital, a barn with livestock
   lifeCare(P, mine, vils) {
-    const W = this.W; if (W.t < (this.lcT || 0)) return; this.lcT = W.t + 4;
+    const W = this.W; if (W.t < (this.lifeT || 0)) return; this.lifeT = W.t + 4;
     const count = (t, any = true) => mine.bld.filter(b => b.type === t && (any || b.built)).length, L = P.life || { fun: 80, sick: 0 };
     if (!W.opts.life) { this.lifeNeed = null; if (!count('barn') && vils.length >= 22 && count('mill', false)) this.build('barn', this.base, 8, 16); }
     else {
@@ -760,8 +769,11 @@ export class AI {
       if (camp) this.build('outpost', [camp.x + camp.w / 2, camp.y + camp.h / 2], 2, 5, true);
       else if (posts < P.age) { const C = W.size / 2, [bx, by] = this.base, d = Math.hypot(C - bx, C - by) || 1, x = bx + (C - bx) / d * 21, y = by + (C - by) / d * 21; if (!mineT(x, y)) this.build('outpost', [x, y], 0, 5, true); }
     }
-    // a new town by rich resources
-    if (P.age >= 2 && !ageing && vils.length >= 24 && canBuild(W, this.pid, 'town_center') && !mine.bld.some(b => b.type === 'town_center' && !b.built) && !this.colony && W.t > (this.tcT || 0) && P.res.wood >= 300 && P.res.stone >= 110) {
+    // a new town by rich resources: once a site is known, armies and research leave its cost aside
+    const due = P.age >= 2 && vils.length >= 24 && canBuild(W, this.pid, 'town_center') && !mine.bld.some(b => b.type === 'town_center' && !b.built) && !this.colony;
+    if (due && W.t > (this.siteT || 0)) { this.siteT = W.t + 60; this.site = this.expansionSite(false) || (W.map && W.map.water === 'islands' ? this.expansionSite(true) : null); }
+    this.expandNeed = due && this.site ? costOf(P, 'town_center') : null;
+    if (due && !ageing && W.t > (this.tcT || 0) && P.res.wood >= 300 && P.res.stone >= 110) {
       this.tcT = W.t + 120;
       const site = this.expansionSite(false);
       if (site) { this.build('town_center', site, 0, 3, true); this.tcT = W.t + 300; }
@@ -771,7 +783,10 @@ export class AI {
   // the best spot for a new town: free land 24-50 tiles out, nobody's territory, away from known enemies, rich around
   expansionSite(otherIsland) {
     const W = this.W, S = W.size, [bx, by] = this.base, home = regionAt(W, bx, by + 3), T = W.terr;
-    const foes = [...this.known.values()];
+    const foes = [...this.known.values()], VAL = { gold: 3, stone: 2, iron: 1.5, berry: 1.5, fish: 1, tree: 0.25 };
+    // resources on a coarse grid once (not every entity for every candidate spot)
+    const G = 8, gn = Math.ceil(S / G), cellV = new Float32Array(gn * gn);
+    for (const e of W.ents.values()) if (e.kind === 'res' && VAL[e.type] && this.P.exp[idx(W, Math.floor(e.x), Math.floor(e.y))]) cellV[Math.floor(e.y / G) * gn + Math.floor(e.x / G)] += VAL[e.type];
     let best = null, bs = -1e9;
     for (let j = 4; j < S - 8; j += 4) for (let i = 4; i < S - 8; i += 4) {
       const dd = Math.hypot(i - bx, j - by); if (otherIsland ? dd > 90 : (dd < 24 || dd > 50)) continue;
@@ -779,11 +794,8 @@ export class AI {
       const rg = regionAt(W, i + 2, j + 5); if (otherIsland ? (rg === home || !rg) : rg !== home) continue;
       if (foes.some(f => Math.hypot(f.x - i, f.y - j) < 30)) continue;
       if (!placementOk(W, this.pid, 'town_center', i, j)) continue;
-      let sc = 0;
-      for (const e of W.ents.values()) {
-        if (e.kind !== 'res') continue; const d = Math.hypot(e.x - i - 2, e.y - j - 2); if (d > 11) continue;
-        sc += { gold: 3, stone: 2, iron: 1.5, berry: 1.5, fish: 1, tree: 0.25 }[e.type] || 0;
-      }
+      let sc = 0; const ci = Math.floor((i + 2) / G), cj = Math.floor((j + 2) / G);
+      for (let b2 = cj - 1; b2 <= cj + 1; b2++) for (let a2 = ci - 1; a2 <= ci + 1; a2++) if (a2 >= 0 && b2 >= 0 && a2 < gn && b2 < gn) sc += cellV[b2 * gn + a2];
       if (otherIsland) { let shore = false; for (let a = 0; a < 16 && !shore; a++) { const x = Math.round(i + 2 + Math.cos(a / 16 * 6.28) * 7), y = Math.round(j + 2 + Math.sin(a / 16 * 6.28) * 7); if (x >= 0 && y >= 0 && x < S && y < S && W.terrain[y * S + x] === 3) shore = true; } if (!shore) continue; }
       sc -= dd * (otherIsland ? 0.15 : 0.3);
       if (sc > bs) { bs = sc; best = [i + 2, j + 2]; }
@@ -991,7 +1003,11 @@ export class AI {
   }
   // no Town Center, (almost) no villagers and no army to speak of: nothing left to fight for
   hopeless(tc, vils, army) {
-    const W = this.W, P = this.P; if (W.t < 300 || tc) return false;
+    const W = this.W, P = this.P; if (W.t < 300) return false;
+    // crushed: a handful of people left against an enemy many times stronger, for two minutes running
+    const top = Math.max(...W.players.filter(q => q.alive && q.team !== P.team).map(q => q.pop), 0);
+    if (W.t > 1200 && P.pop < 15 && top > Math.max(40, P.pop * 5) && army.length < 6) { this.crushT ||= W.t; if (W.t - this.crushT > 120) return true; } else this.crushT = 0;
+    if (tc) return false;
     const canRebuild = vils.length >= 1 && P.res.wood + P.res.gold >= 400 && P.res.stone >= 100;
     const makers = this.m.bld.some(b => b.built && BUILDINGS[b.type].trains);
     return (!vils.length && army.length < 5 && !makers) || (vils.length < 3 && !canRebuild && army.length < 4);
@@ -1139,8 +1155,8 @@ export class AI {
   }
   build(type, near, rMin, rMax, anywhere = false) {
     const W = this.W, P = this.P; if (!canBuild(W, this.pid, type) || !canAfford(P, costOf(P, type))) return false;
-    const Q = this.lifeNeed, c0 = costOf(P, type);          // the tavern / hospital the people need comes before other buildings
-    if (Q && !['house', 'farm', 'tavern', 'hospital', 'mill', 'town_center', 'dock', 'barn', 'well'].includes(type) && Object.keys(c0).some(k => P.res[k] < c0[k] + (Q[k] || 0))) return false;
+    const Q = this.lifeNeed, X = this.expandNeed, c0 = costOf(P, type);          // the tavern the people need and the next town come before other buildings
+    if ((Q || X) && !['house', 'farm', 'tavern', 'hospital', 'mill', 'town_center', 'dock', 'barn', 'well'].includes(type) && Object.keys(c0).some(k => P.res[k] < c0[k] + (Q && Q[k] || 0) + (X && X[k] || 0))) return false;
     const d = BUILDINGS[type], n = d.n;
     // already placing one?
     if (this.m.bld.some(b => b.type === type && !b.built)) return false;
