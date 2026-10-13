@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261013162906';
-import { DAY, RELICS } from './data.js?v=20261013162906';
-import { timeOfDay, unreachable, restNow } from './sim.js?v=20261013162906';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261013162906';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261013163829';
+import { DAY, RELICS } from './data.js?v=20261013163829';
+import { timeOfDay, unreachable, restNow } from './sim.js?v=20261013163829';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261013163829';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const segDist = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); };
@@ -464,6 +464,12 @@ export class AI {
       if (!(fish && this.build('dock', [fish.x, fish.y], 1, 8))) { const sp = this.dockSpot(); if (sp) this.build('dock', sp, 0, 3); }
     }
     const dock = this.m.bld.find(b => b.type === 'dock' && b.built); if (!dock) return;
+    // the shoals by our docks are fished out: a new dock by the nearest known fish further out
+    if (W.t > (this.dock2T || 0) && this.count('dock') < 3 && P.res.wood >= 180) {
+      this.dock2T = W.t + 30;
+      const docks = this.m.bld.filter(b => b.type === 'dock');
+      if (!docks.some(b => this.res('fish', b.x, b.y, 18))) { const far = this.res('fish', this.base[0], this.base[1], island ? 90 : 60); if (far && docks.every(b => Math.hypot(b.x - far.x, b.y - far.y) > 18)) this.build('dock', [far.x, far.y], 1, 8); }
+    }
     const boats = this.m.units.filter(u => u.type === 'fishing_boat').length;
     const shoals = fish ? [...W.dyn.values(), ...W.ents.values()].filter(e => e.kind === 'res' && e.type === 'fish' && Math.hypot(e.x - dock.x, e.y - dock.y) < 30).length : 0;
     if (fish && boats < Math.min(S.navy ? 10 : 8, 2 + shoals * 2) && dock.queue.length < 2 && this.afford(UNITS.fishing_boat.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'fishing_boat' });

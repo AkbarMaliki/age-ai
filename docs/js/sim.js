@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES } from './data.js?v=20261013162906';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES } from './data.js?v=20261013163829';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -906,6 +906,7 @@ function unitTick(W, u) {
   const o = u.order;
   if (!o) {
     u.anim = u.anim === 'attack' && u.aT < 0.8 ? 'attack' : 'idle';
+    if (d.fisher && u.owner >= 0 && u.fished && (W.tick + u.id) % 30 === 0) { const f = farFish(W, u); if (f) { setOrder(W, u, { t: 'gather', id: f.id, kind: 'fish' }); return; } }
     if (s.heal) { u.scan -= TICK; if (u.scan <= 0 && !u.relic) { u.scan = 0.6; const t = woundedNear(W, u, losOf(W, u)); if (t) setOrder(W, u, { t: 'heal', id: t.id, auto: true }); } return; }
     if (u.type !== 'villager' && !d.animal && u.owner !== GAIA && s.atk > 0 && u.stance !== 'pasif') {
       u.scan -= TICK;
@@ -1390,11 +1391,11 @@ function villagerGather(W, u, o) {
   if (r && r.kind === 'building' && (r.type !== 'farm' || !r.built || r.food <= 0)) r = null;
   if (r && boat && r.type !== 'fish') r = null;
   if (!r) {
-    const k = o.kind; const n = k && nearestResource(W, k, u.x, u.y, boat ? 14 : 8, u.owner, null, null, nav);
+    const k = o.kind; const n = k && (nearestResource(W, k, u.x, u.y, boat ? 14 : 8, u.owner, null, null, nav) || (boat && farFish(W, u)));
     if (n) { o.id = n.id; o.kind = kindOf(n); u.path = null; return; }
     u.order = null; u.anim = 'idle'; if (u.carry && u.carry.n > 0) { const dsite = nearestDrop(W, u.owner, u.carry.res, u.x, u.y, boat); if (dsite) u.order = { t: 'drop', id: dsite.id, then: null }; } return;
   }
-  const kind = kindOf(r); o.kind = kind;
+  const kind = kindOf(r); o.kind = kind; if (boat) u.fished = true;
   if (u.fails >= 2 && kind !== 'farm') {
     o.skip = o.skip || new Set(); o.skip.add(r.id); u.fails = 0; u.path = null; markUnreachable(W, r.id, u.owner);   // remembered, so nobody else is sent there either
     const n = nearestResource(W, kind, u.x, u.y, 10, u.owner, o.skip, null, nav); if (n) { o.id = n.id; return; }
@@ -1438,6 +1439,8 @@ function villagerGather(W, u, o) {
     if (u.carry && u.carry.n > 0 && !boat) u.anim = 'carry';
   }
 }
+// a fishing boat out of fish sails to the nearest shoal its kingdom has seen (up to 60 tiles away)
+const farFish = (W, u) => nearestResource(W, 'fish', u.x, u.y, 60, u.owner, null, W.players[u.owner] && W.players[u.owner].exp, true);
 function villagerDrop(W, u, o) {
   const b = alive(W, o.id), boat = u.type === 'fishing_boat';
   if (!b || !b.built) { const d2 = u.carry && nearestDrop(W, u.owner, u.carry.res, u.x, u.y, boat); if (d2) { o.id = d2.id; u.path = null; } else { u.order = o.then; } return; }
@@ -1581,7 +1584,7 @@ function spawn(W, b, type) {
     if (t && (type === 'villager' || UNITS[type].fisher) && (t.kind === 'res' || (t.kind === 'building' && t.type === 'farm'))) setOrder(W, u, { t: 'gather', id: t.id });
     else if (t && t.kind === 'building' && t.owner !== b.owner) setOrder(W, u, { t: 'attack', id: t.id });
     else setOrder(W, u, { t: 'move', x: b.rally.x, y: b.rally.y });
-  } else if (UNITS[type].fisher) { const f = nearestResource(W, 'fish', u.x, u.y, 14, b.owner, null, null, true); if (f) setOrder(W, u, { t: 'gather', id: f.id }); }
+  } else if (UNITS[type].fisher) { const f = nearestResource(W, 'fish', u.x, u.y, 14, b.owner, null, null, true) || farFish(W, u); if (f) setOrder(W, u, { t: 'gather', id: f.id }); }
 }
 function finishTech(W, b, tech) {
   const P = W.players[b.owner], t = TECHS[tech];
