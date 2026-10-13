@@ -492,8 +492,8 @@ export class View {
       s.scale.set((mir ? -1 : 1) * sc, sc);
       s.x = sx; s.y = sy;
       if (e.kind === 'unit' && e.nm !== undefined) {
-        const mood = e.sick ? 'sick' : e.th < 20 ? 'thirst' : e.hu < 15 ? 'hunger' : e.en < 12 ? 'tired' : e.fu < 15 ? 'sad' : null;
-        if (mood && (visible || mineE)) { if (!v.badge) { v.badge = new Sprite(); v.badge.anchor.set(0.5); this.sky.addChild(v.badge); } v.badge.texture = this.moodTex(mood); v.badge.visible = true; v.badge.x = sx; v.badge.y = sy - (UNIT_BOX[e.type] || [15, 62])[1] * sc - 10 + Math.sin(this.t * 3 + e.id) * 2; v.badge.zIndex = sy + 999; }
+        const mood = e.sick ? 'sick' : e.th < 15 ? 'thirst' : e.hu < 12 ? 'hunger' : e.en < 8 ? 'tired' : e.fu < 10 ? 'sad' : null;
+        if (mood && (visible || mineE)) { if (!v.badge) { v.badge = new Sprite(); v.badge.anchor.set(0.5); this.sky.addChild(v.badge); } v.badge.texture = this.moodTex(mood); v.badge.visible = true; v.badge.scale.set(0.55); v.badge.x = sx; v.badge.y = sy - (UNIT_BOX[e.type] || [15, 62])[1] * sc - 10 + Math.sin(this.t * 3 + e.id) * 2; v.badge.zIndex = sy + 999; }
         else if (v.badge) v.badge.visible = false;
       }
       if (e.kind === 'relic' && e.carrier) { s.scale.set(0.45); s.y = sy - 46; }        // carried high by its monk

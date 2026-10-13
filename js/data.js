@@ -215,10 +215,10 @@ export const START_PRESETS = {
 };
 // ---- daily life: every person has needs (0..100); they drive behaviour, work speed, health, births and morale
 export const LIFE = {
-  hunger: 0.11, thirst: 0.17, energyWork: 0.34, energyIdle: 0.12, fun: 0.055, funSoldier: 0.04,     // per second
-  sleep: 1.1, sleepRough: 0.55,                // energy regained per second indoors (own home / any shelter)
+  hunger: 0.11, thirst: 0.17, energyWork: 0.2, energyIdle: 0.06, energyMarch: 0.05, fun: 0.055, funSoldier: 0.04,     // per second
+  sleep: 3, sleepRough: 1.6, restIdle: 0.4,                // energy regained per second indoors (own home / any shelter)
   tavernFun: 45, tavernTime: 22, tavernMeal: 3, drinkTime: 3, sickTime: 150, cureTime: 25,
-  outbreak: 0.012, spread: 0.035, birthEvery: 75, birthP: 0.22, growUp: 300, desertFun: 6,
+  outbreak: 0.012, spread: 0.015, birthEvery: 75, birthP: 0.22, growUp: 300, desertFun: 6,
   prosperWin: 78,
 };
 export const NAMES = {

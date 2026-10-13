@@ -1,9 +1,9 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013161223';
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261013161223';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge } from './sim.js?v=20261013161223';
-import { NAMES, LIFE } from './data.js?v=20261013161223';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013162906';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261013162906';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge } from './sim.js?v=20261013162906';
+import { NAMES, LIFE } from './data.js?v=20261013162906';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -79,7 +79,7 @@ export class HUD {
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
   // k: scale of a 64 px icon (small boxes shrink the whole sheet, so the offsets must shrink too)
-  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261013161223);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261013162906);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
   // portrait of a unit as this kingdom fields it (upgraded lines have their own look)
   spriteOf(owner, type) { const d = UNITS[type]; if (!d) return type; const s = owner >= 0 && !d.animal ? stat(this.g.W, owner, type).sprite : null; return s && this.icons.icons[s] ? s : d.sprite; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
@@ -304,7 +304,7 @@ export class HUD {
       const bar = (v, g, t) => `<i class="nd" title="${t}: ${Math.round(v)}"><em>${g}</em><span class="tr"><b style="width:${Math.max(0, Math.min(100, v))}%;background:${v >= 60 ? '#5fbf4a' : v >= 30 ? '#d9b23a' : '#d0402a'}"></b></span></i>`;
       const home = e.homeId && W.ents.get(e.homeId), mates = home ? [...W.dyn.values()].filter(u => u.homeId === home.id && u !== e).length : 0;
       st = `<div class="who">${e.sex === 'f' ? '♀' : '♂'} ${personAge(W, e)} th · keluarga ${NAMES.fam[e.fam]}${home ? ` · rumah bersama ${mates} orang` : e.type === 'villager' || e.type === 'child' ? ' · <b class="warn">tanpa rumah</b>' : ''}${e.sick ? ' · <b class="warn">🤒 sakit</b>' : ''}${e.type === 'child' ? ` · dewasa dalam ${Math.max(0, Math.ceil((LIFE.growUp - (W.t - e.born)) / 60))} mnt` : ''}</div>`
-        + `<div class="needs">${bar(e.hu, '🍞', 'Kenyang')}${bar(e.th, '💧', 'Minum')}${bar(e.en, '⚡', 'Energi')}${bar(e.fu, '🎭', 'Hiburan')}${bar(e.he, '❤', 'Kesehatan')}<span class="wr" title="Kecepatan kerja">⚒ ${Math.round((e.wr ?? 1) * 100)}%</span></div><div class="cs">${st}</div>`;
+        + `<div class="needs">${bar(e.hu, '🍞', 'Kenyang')}${bar(e.th, '💧', 'Minum')}${bar(e.en, '⚡', 'Energi')}${bar(e.fu, '🎭', 'Hiburan')}${bar(e.he, '❤', 'Kesehatan')}${MILITARY(e.type) ? `<span class="wr" title="Kekuatan serangan (sakit, lelah, lapar atau tidak bahagia melemahkan)">💪 ${Math.round((0.8 + 0.2 * Math.min(1, e.wr ?? 1)) * 100)}%</span>` : `<span class="wr" title="Kecepatan kerja (sakit, lelah, lapar, haus atau bosan memperlambat)">⚒ ${Math.round((e.wr ?? 1) * 100)}%</span>`}<span class="wr" title="Kecepatan berjalan">🦶 ${Math.round((0.7 + 0.3 * Math.min(1, e.wr ?? 1)) * 100)}%</span></div><div class="cs">${st}</div>`;
     }
     if (e.kind === 'unit' && e.faith !== undefined) st += ` · ✝ iman ${Math.round(e.faith * 100)}%${e.relic ? ' · 📿 membawa relik' : ''}`;
     if (e.kind === 'relic') st = e.carrier ? 'Sedang dibawa seorang Biarawan.' : 'Relik suci. Hanya Biarawan yang bisa membawanya ke Biara (+30 emas/menit). Klik kanan dengan Biarawan.';

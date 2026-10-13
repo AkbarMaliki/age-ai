@@ -733,7 +733,7 @@ function upkeep(W, P) {
   const need = Math.ceil(P.pop * per);
   if (P.res.food >= need) { P.res.food -= need; P.hungry = false; W.ev.push({ k: 'upkeep', owner: P.id, food: need }); }
   else { P.res.food = 0; P.hungry = true; P.stats.hungryDays++; W.ev.push({ k: 'hungry', owner: P.id, food: need }); }
-  for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && u.hu !== undefined) u.hu = P.hungry ? Math.min(u.hu, 35) : 100;     // breakfast (or not)
+  for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && u.hu !== undefined) { u.hu = P.hungry ? Math.min(u.hu, 35) : 100; if (u.slept >= 25) u.en = Math.max(u.en, 90); u.slept = 0; }     // breakfast (or not), a night's sleep
 }
 // torches (tech or card): a late shift — villagers keep working by torchlight until midnight, then go in too
 const worksAtNight = (W, P) => P.mods.nightWork || P.techs.has('torches');
@@ -811,7 +811,7 @@ function speedOf(W, u) {
   if (u.fb) sp *= u.fb.speed;
   if (u.relic) sp *= RELICS.speed;
   if (u.type === 'ram' && W.garr) sp *= 1 + 0.08 * (W.garr.get(u.id) || 0);
-  if (!u.nav) { const k = tileAt(W, u.x, u.y); if (W.terrain[k] === TER.HILL) sp *= 0.72; else if (W.road[k]) sp *= 1.15; if (W.season.speed) sp *= W.season.speed; }
+  if (!u.nav) { const k = tileAt(W, u.x, u.y); if (W.terrain[k] === TER.HILL) sp *= 0.72; else if (W.road[k]) sp *= 1.15; if (W.season.speed) sp *= W.season.speed; if (u.wr !== undefined) sp *= 0.7 + 0.3 * Math.min(1, u.wr); }
   return sp;
 }
 export const NEAR = 0.8;   // standing on any of the 8 tiles around a footprint counts as 'at' it
@@ -1801,9 +1801,10 @@ function lifeTick(W) {
     for (const u of people) {
       const vil = u.type === 'villager', o = u.order, working = o && ['gather', 'drop', 'build', 'repair'].includes(o.t), resting = u.inside && o && o.t === 'rest';
       // energy: sleep restores it (best in your own home); work drains it. Without a night cycle nobody tires.
-      if (!nightFull) u.en = 100;
-      else if (resting) u.en = Math.min(100, u.en + (u.inside === u.homeId ? LIFE.sleep : LIFE.sleepRough));
-      else u.en = Math.max(0, u.en - (working ? LIFE.energyWork : LIFE.energyIdle) * (vil ? 1 : 0.5));
+      if (!nightFull || u.type === 'child') u.en = 100;
+      else if (resting) { u.en = Math.min(100, u.en + (u.inside === u.homeId ? LIFE.sleep : LIFE.sleepRough)); u.slept = (u.slept || 0) + 1; }
+      else if (!vil) u.en = u.inside ? Math.min(100, u.en + LIFE.sleep) : !o || o.t === 'patrol' && !u.path ? Math.min(100, u.en + LIFE.restIdle) : Math.max(0, u.en - LIFE.energyMarch);     // soldiers: rest when idle or garrisoned
+      else u.en = Math.max(0, u.en - (working ? LIFE.energyWork : LIFE.energyIdle));
       u.hu = Math.max(0, u.hu - LIFE.hunger);
       // water: near a well, the Town Center or a shore they drink as they go
       if (near(wells, u, BUILDINGS.well.well) || wg[idx(W, Math.min(W.size - 1, Math.floor(u.x)), Math.min(W.size - 1, Math.floor(u.y)))] || u.inside) u.th = Math.min(100, u.th + 8);
@@ -1841,7 +1842,8 @@ function lifeTick(W) {
     }
     for (const u of people) if (u.sick && W.ents.has(u.id) && !u.inside) {
       if (W.rnd() < LIFE.spread * (T.has('quarantine') ? 0.4 : 1)) {
-        let tgt = null; unitsNear(W, u.x, u.y, 2.2, (e) => { if (!tgt && e !== u && e.owner >= 0 && isPerson(e) && !e.sick && !e.inside && e.nm !== undefined && !(e.immune > W.t) && Math.hypot(e.x - u.x, e.y - u.y) <= 2.2) tgt = e; });
+        let tgt = null; unitsNear(W, u.x, u.y, 1.6, (e) => { if (!tgt && e !== u && e.owner >= 0 && isPerson(e) && !e.sick && !e.inside && e.nm !== undefined && !(e.immune > W.t) && Math.hypot(e.x - u.x, e.y - u.y) <= 1.6) tgt = e; });
+        if (tgt && tgt.he > 70 && W.rnd() < 0.5) tgt = null;          // a healthy body fights it off
         if (tgt) { tgt.sick = LIFE.sickTime; if (tgt.owner !== u.owner) W.ev.push({ k: 'contagion', owner: tgt.owner, x: tgt.x, y: tgt.y }); }
       }
     }
