@@ -1,10 +1,10 @@
 // Tech tree viewer: every building with what it trains and researches, laid out by age. Opened from the home menu
 // (the whole tree) or in game (marks what this kingdom has already researched and what is still locked).
-import { UNITS, BUILDINGS, TECHS, AGES, RES, RES_NAME, CIVS } from './data.js?v=20261013163829';
+import { UNITS, BUILDINGS, TECHS, AGES, RES, RES_NAME, CIVS } from './data.js?v=20261013170658';
 
 const $ = (id) => document.getElementById(id);
 const ORDER = ['town_center', 'house', 'mill', 'lumber_camp', 'mining_camp', 'dock', 'market', 'barracks', 'archery_range', 'stable', 'blacksmith', 'academy', 'monastery',
-  'siege_workshop', 'castle', 'watch_tower', 'palisade', 'stone_wall', 'gate', 'wonder', 'well', 'tavern', 'hospital', 'barn'];
+  'siege_workshop', 'castle', 'watch_tower', 'palisade', 'stone_wall', 'gate', 'wonder', 'well', 'tavern', 'hospital', 'barn', 'outpost'];
 const GLYPH = { fishing_boat: '⛵', transport_ship: '🚢', war_ship: '⛴', fire_ship: '🔥', demo_ship: '💥', cannon_galleon: '💣', trade_cog: '⛵', trade_cart: '🛒', ram: '🪵', mangonel: '🪨', scorpion: '🏹', trebuchet_p: '🏗', cannon: '💣', unique: '★' };
 const AGE_SHORT = ['', 'Kegelapan', 'Feodal', 'Kastil', 'Imperial'];
 const costTxt = (c) => RES.filter(r => c && c[r]).map(r => `${c[r]} ${RES_NAME[r].toLowerCase()}`).join(', ');

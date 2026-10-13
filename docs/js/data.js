@@ -76,7 +76,7 @@ export const TREASURES = {
 
 // n = footprint (tiles). drop = resources accepted. block=false lets units walk over it (farms). water = built on water.
 export const BUILDINGS = {
-  town_center: { name: 'Pusat Kota', n: 4, hp: 2400, ma: 3, pa: 5, cost: { wood: 275, stone: 100 }, time: 150, age: 1, pop: 5, los: 8, drop: ['food', 'wood', 'gold', 'stone', 'iron'], trains: ['villager'], garrison: 15, techs: ['loom', 'wheelbarrow', 'hand_cart', 'torches', 'civic_defense', 'feudal', 'feudal_war', 'feudal_wall', 'castle', 'castle_war', 'castle_trade'], ability: 'bell', attack: { atk: 5, range: 6, reload: 2.0 }, key: 'Q', page: 0 },
+  town_center: { name: 'Pusat Kota', n: 4, terr: 18, hp: 2400, ma: 3, pa: 5, cost: { wood: 275, stone: 100 }, time: 150, age: 1, pop: 5, los: 8, drop: ['food', 'wood', 'gold', 'stone', 'iron'], trains: ['villager'], garrison: 15, techs: ['loom', 'wheelbarrow', 'hand_cart', 'torches', 'civic_defense', 'feudal', 'feudal_war', 'feudal_wall', 'castle', 'castle_war', 'castle_trade'], ability: 'bell', attack: { atk: 5, range: 6, reload: 2.0 }, key: 'Q', page: 0 },
   house: { name: 'Rumah', n: 2, hp: 550, ma: 0, pa: 7, cost: { wood: 25 }, time: 25, age: 1, pop: 5, los: 2 },
   mill: { name: 'Penggilingan', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['food'], techs: ['horse_collar', 'heavy_plow', 'crop_rotation', 'granary'], reseed: true },
   lumber_camp: { name: 'Kamp Penebang', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['wood'], techs: ['double_bit_axe', 'bow_saw', 'two_man_saw'] },
@@ -88,6 +88,7 @@ export const BUILDINGS = {
   stable: { name: 'Istal', n: 3, hp: 1500, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 6, trains: ['scout', 'knight'], needs: ['barracks'], techs: ['light_cav', 'hussar', 'cavalier', 'paladin', 'husbandry', 'flank_tactics'] },
   blacksmith: { name: 'Pandai Besi', n: 3, hp: 1800, ma: 1, pa: 7, cost: { wood: 150 }, time: 40, age: 2, los: 6, needs: ['barracks'], techs: ['forging', 'iron_casting', 'scale_mail', 'chain_mail', 'scale_barding', 'chain_barding', 'fletching', 'bodkin', 'padded_archer', 'doc_legion', 'doc_cavalry', 'doc_archers'] },
   academy: { name: 'Akademi', n: 4, hp: 2100, ma: 1, pa: 8, cost: { wood: 225, stone: 75 }, time: 60, age: 2, los: 7, needs: ['blacksmith'], trains: ['cannon', 'healer'], techs: ['medicine', 'spy_network', 'masonry', 'ballistics', 'gunpowder', 'spec_samurai', 'spec_ninja', 'spec_fire', 'spec_crossbow', 'spec_cataphract', 'spec_lancer', 'doc_fortress', 'doc_blitz', 'doc_formation'], ability: 'spy' },
+  outpost: { name: 'Pos Perbatasan', n: 1, hp: 450, ma: 1, pa: 6, cost: { wood: 80, stone: 25 }, time: 20, age: 1, los: 11, terr: 9, desc: 'Menandai wilayah kekuasaan (radius 9) dan mengawasi sekitar. Di wilayah sendiri pengumpulan +10%.' },
   well: { name: 'Sumur', n: 1, hp: 300, ma: 0, pa: 6, cost: { wood: 40, stone: 15 }, time: 12, age: 1, los: 3, well: 10, desc: 'Air bersih: warga dalam 10 petak tidak kehausan.' },
   tavern: { name: 'Kedai', n: 3, hp: 1300, ma: 1, pa: 5, cost: { wood: 175 }, time: 40, age: 1, los: 5, tavern: 12, techs: ['brewery', 'minstrels'], desc: 'Hiburan, makan dan minum. Warga mampir saat senja.' },
   hospital: { name: 'Balai Pengobatan', n: 3, hp: 1500, ma: 2, pa: 6, cost: { wood: 175, gold: 75 }, time: 50, age: 2, los: 6, hospital: 11, techs: ['herbalism', 'quarantine', 'sanitation'], desc: 'Menyembuhkan yang sakit dan menahan wabah.' },
@@ -100,7 +101,7 @@ export const BUILDINGS = {
   palisade: { name: 'Pagar Kayu', n: 1, hp: 250, ma: 2, pa: 5, cost: { wood: 3 }, time: 5, age: 1, los: 2, wall: true, palisade: true },
   stone_wall: { name: 'Tembok Batu', n: 1, hp: 1800, ma: 8, pa: 10, cost: { stone: 5 }, time: 8, age: 2, los: 2, wall: true },
   gate: { name: 'Gerbang', n: 1, len: 3, hp: 2750, ma: 6, pa: 6, cost: { stone: 30 }, time: 70, age: 2, los: 4, gate: true },
-  castle: { name: 'Kastil', n: 4, hp: 4800, ma: 8, pa: 11, cost: { stone: 650 }, time: 200, age: 3, pop: 20, los: 11, trains: ['knight', 'unique', 'trebuchet_p'], techs: ['conscription'], garrison: 20, attack: { atk: 11, range: 8, reload: 2.0, arrows: 3 } },
+  castle: { name: 'Kastil', n: 4, terr: 14, hp: 4800, ma: 8, pa: 11, cost: { stone: 650 }, time: 200, age: 3, pop: 20, los: 11, trains: ['knight', 'unique', 'trebuchet_p'], techs: ['conscription'], garrison: 20, attack: { atk: 11, range: 8, reload: 2.0, arrows: 3 } },
 };
 for (const [k, b] of Object.entries(BUILDINGS)) { b.id = k; if (b.block === undefined) b.block = true; }
 
@@ -214,6 +215,9 @@ export const START_PRESETS = {
   deathmatch: { name: 'Deathmatch', res: { food: 20000, wood: 20000, gold: 10000, stone: 5000, iron: 3000 } },
 };
 // ---- daily life: every person has needs (0..100); they drive behaviour, work speed, health, births and morale
+// territory: what may be built where. In enemy land only military buildings go up (a forward base).
+export const FORWARD = new Set(['barracks', 'archery_range', 'stable', 'siege_workshop', 'castle', 'watch_tower', 'palisade', 'stone_wall', 'gate']);
+export const TERR_BONUS = 0.1;          // gathering inside your own territory
 export const LIFE = {
   hunger: 0.11, thirst: 0.17, energyWork: 0.2, energyIdle: 0.06, energyMarch: 0.05, fun: 0.055, funSoldier: 0.04,     // per second
   sleep: 3, sleepRough: 1.6, restIdle: 0.4,                // energy regained per second indoors (own home / any shelter)

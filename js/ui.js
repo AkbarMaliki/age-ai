@@ -9,8 +9,8 @@ const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
 // villager build menu, two pages
 const VIL_PAGES = [
-  [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['dock', 5], ['market', 6], ['blacksmith', 7], ['academy', 8], ['monastery', 10], ['wonder', 11]],
-  [['barracks', 0], ['archery_range', 1], ['stable', 2], ['siege_workshop', 3], ['castle', 4], ['watch_tower', 5], ['palisade', 6], ['stone_wall', 7], ['gate', 8]],
+  [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['dock', 5], ['market', 6], ['blacksmith', 7], ['academy', 8], ['monastery', 10], ['wonder', 11], ['town_center', 12]],
+  [['barracks', 0], ['archery_range', 1], ['stable', 2], ['siege_workshop', 3], ['castle', 4], ['watch_tower', 5], ['palisade', 6], ['stone_wall', 7], ['gate', 8], ['outpost', 10]],
   [['house', 0], ['well', 1], ['tavern', 2], ['hospital', 3], ['barn', 4], ['market', 5], ['monastery', 6], ['farm', 7], ['mill', 8]],
 ];
 const PAGE_NAME = ['🏠 Ekonomi', '⚔ Militer & Pertahanan', '🍺 Kehidupan Warga'];
@@ -20,6 +20,8 @@ const BLD_DESC = { house: '+5 populasi', mill: 'Tempat setor makanan, membuka la
   blacksmith: 'Peningkatan senjata & zirah, dan memilih DOKTRIN perang pertama', academy: 'Riset: mata-mata, mesiu, pasukan khusus dan DOKTRIN kedua',
   monastery: 'Melatih Biarawan; simpan relik di sini untuk emas', palisade: 'Pagar kayu murah dan cepat (Zaman Kegelapan). Tarik garis seperti tembok.', siege_workshop: 'Melatih Pendobrak, Mangonel dan Skorpion',
   wonder: `Keajaiban Dunia: pertahankan ${WONDER_TIME / 60} menit untuk MENANG`,
+  outpost: 'Pos Perbatasan: memperluas wilayah kekuasaan (radius 9) dan mengawasi. Di wilayah sendiri pengumpulan +10%; di wilayah musuh hanya bangunan militer yang boleh dibangun.',
+  town_center: 'Kota baru: wilayah kekuasaan radius 18, setor semua sumber daya, latih penduduk. Satu Pusat Kota per zaman (2 di Feodal, 3 di Kastil, 4 di Imperial).',
   well: 'Air bersih untuk warga dalam 10 petak. Warga yang haus bekerja lambat dan bisa jatuh sakit.', tavern: 'Kedai: hiburan, makan dan minum — warga mampir saat senja. Tanpa hiburan warga bosan, malas, lalu pergi.',
   hospital: 'Balai Pengobatan: menyembuhkan yang sakit dan menahan wabah.', barn: 'Kandang dengan padang: domba/sapi di sini bertambah gemuk dan menghasilkan susu. Bisa membeli ternak.' };
 // fixed slots per building (some have more commands than keys follow from the data)
@@ -134,7 +136,10 @@ export class HUD {
   }
   // the people at a glance: happiness, health, the sick, newborns, prosperity
   lifeBar(W, P) {
-    const L = W.opts.life && P.life, el = $('lifeInfo'); if (!el) return; if (!L) { if (el.innerHTML) el.innerHTML = ''; return; }
+    const L = W.opts.life && P.life, el = $('lifeInfo'); if (!el) return;
+    if (this.landN === undefined) { this.landN = 0; for (const k of W.terrain) if (k !== 3) this.landN++; } const land = this.landN;
+    const terr = `<span title="Wilayah kekuasaan: bagian daratan peta yang kamu kuasai (Pusat Kota, Kastil, Pos Perbatasan)">🗺 ${land ? Math.round((P.terrN || 0) / land * 100) : 0}%</span>`;
+    if (!L) { if (el.innerHTML !== terr) el.innerHTML = terr; return; }
     // a word from the steward when the people suffer (at most every few minutes per topic)
     if (!this.g.watch && W.t > 120) {
       const has = (t) => { for (const b of W.dyn.values()) if (b.kind === 'building' && b.owner === P.id && b.type === t) return true; return false; };
@@ -145,7 +150,7 @@ export class HUD {
       if (L.homeless >= 3) say('home', '🏚 Ada warga tanpa rumah — mereka tidur di luar dan tidak bisa berkeluarga.');
     }
     const col = (v) => v >= 65 ? 'good' : v >= 35 ? 'mid' : 'bad';
-    const html = `<span class="${col(L.fun)}" title="Kebahagiaan rata-rata (hiburan): Kedai, Biara, Pasar">😊 ${Math.round(L.fun)}</span><span class="${col(L.health)}" title="Kesehatan rata-rata">❤ ${Math.round(L.health)}</span><span class="${col(L.need)}" title="Makan & minum (yang paling kurang)">🍞 ${Math.round(L.need)}</span>${L.sick ? `<span class="bad" title="Warga sakit — Balai Pengobatan menyembuhkan dan menahan wabah">🤒 ${L.sick}</span>` : ''}${L.homeless ? `<span class="mid" title="Tanpa rumah">🏚 ${L.homeless}</span>` : ''}<span title="Kelahiran">👶 ${L.births}</span><span class="${col(P.prosper)}" title="Indeks Kemakmuran${W.opts.victory === 'prosper' ? ` — pertahankan di atas ${LIFE.prosperWin} selama 10 menit untuk menang` : ''}">⭐ ${P.prosper}</span>`;
+    const html = `<span class="${col(L.fun)}" title="Kebahagiaan rata-rata (hiburan): Kedai, Biara, Pasar">😊 ${Math.round(L.fun)}</span><span class="${col(L.health)}" title="Kesehatan rata-rata">❤ ${Math.round(L.health)}</span><span class="${col(L.need)}" title="Makan & minum (yang paling kurang)">🍞 ${Math.round(L.need)}</span>${L.sick ? `<span class="bad" title="Warga sakit — Balai Pengobatan menyembuhkan dan menahan wabah">🤒 ${L.sick}</span>` : ''}${L.homeless ? `<span class="mid" title="Tanpa rumah">🏚 ${L.homeless}</span>` : ''}<span title="Kelahiran">👶 ${L.births}</span>${terr}<span class="${col(P.prosper)}" title="Indeks Kemakmuran${W.opts.victory === 'prosper' ? ` — pertahankan di atas ${LIFE.prosperWin} selama 10 menit untuk menang` : ''}">⭐ ${P.prosper}</span>`;
     if (el.innerHTML !== html) el.innerHTML = html;
   }
   // top bar countdowns: wonders standing, the monument held, the treaty still running
@@ -169,7 +174,8 @@ export class HUD {
           const d = BUILDINGS[type]; const ok = canBuild(W, G.me, type), cost = costOf(P, type);
           let why = P.age < d.age ? `Butuh ${AGES[d.age]}` : (d.needs || []).filter(n => !G.hasBuilt(n)).map(n => 'Butuh ' + BUILDINGS[n].name).join(', ');
           if (ok && !canAfford(P, cost)) why = 'Sumber daya kurang';
-          this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵', well: '🪣', tavern: '🍺', hospital: '⚕', barn: '🐄' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
+          if (type === 'town_center' && !ok && P.age >= d.age) why = `Batas Pusat Kota tercapai (maks ${Math.max(1, P.age)} di zaman ini)`;
+          this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵', well: '🪣', tavern: '🍺', hospital: '⚕', barn: '🐄', outpost: '🚩', town_center: '🏰' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
         }
         const nx = (this.page + 1) % VIL_PAGES.length;
         this.setBtn(9, { glyph: PAGE_NAME[nx].split(' ')[0], name: 'Halaman: ' + PAGE_NAME[nx].slice(3), desc: 'Ganti halaman bangunan (Ekonomi → Militer → Kehidupan Warga)', act: () => { this.page = nx; this.lastSig = ''; } });

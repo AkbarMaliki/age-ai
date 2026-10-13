@@ -65,7 +65,8 @@ export class AI {
     const firstAttack = this.D.firstAttack * S.attack;
 
     // ---- villagers
-    const target = Math.max(12, this.D.vil[P.age - 1] + S.vil);
+    const tcs = mine.bld.filter(b => b.type === 'town_center' && b.built);
+    const target = Math.max(12, this.D.vil[P.age - 1] + S.vil) + Math.max(0, tcs.length - 1) * 8;      // every new town adds villagers
     const ageing = tc && tc.queue.some(q => q.tech && TECHS[q.tech].toAge);
     // dawn brings the food upkeep: keep enough in the granary as night approaches
     this.foodKeep = W.opts.night !== 'off' && (timeOfDay(W) > 0.4 || timeOfDay(W) < 0.03) ? Math.ceil(P.pop * DAY.upkeep * (P.techs.has('granary') ? 0.6 : 1) * Math.max(0, 1 + P.mods.upkeep) * 1.15) + 30 : 0;     // tomorrow's bread is not spent
@@ -106,6 +107,7 @@ export class AI {
     if (P.age >= 4 && !count('wonder') && (S.scholar || this.style === 'eko' || P.res.gold > 3000) && P.res.wood >= 1000 && P.res.stone >= 1000 && P.res.gold >= 1000 && vils.length >= 35) this.build('wonder', this.base, 8, 18);
     this.economy2(P, mine);
     this.lifeCare(P, mine, vils);
+    this.expand(P, mine, vils, tcs, ageing, target);
     this.diplomacy(P);
     if (!tc && vils.length && canAfford(P, BUILDINGS.town_center.cost)) this.build('town_center', this.base, 0, 10);     // rebuild a lost Town Center
     if (P.age >= 2 && !count('market') && vils.length >= 24 && P.res.wood >= 260) this.build('market', this.base, 8, 15);
@@ -146,6 +148,7 @@ export class AI {
     if (P.age === 1 && this.planFeudal()) want.gold = 0.04;
     if (S.walls || S.towers > 2) want.stone += 0.04;
     if (this.lifeNeed && this.lifeNeed.wood && P.res.wood < this.lifeNeed.wood) want.wood *= 1.35;      // timber for the tavern / hospital
+    if (P.age >= 2 && P.res.stone < 120 && canBuild(W, this.pid, 'town_center') && vils.length >= 20) want.stone = Math.max(want.stone, 0.1);      // stone for a new town
     for (const k in want) if (want[k] > 0) want[k] *= Math.max(0.15, Math.min(1.6, 1.4 - P.res[k] / 900));
     // the people eat every dawn: keep a granary
     if (P.res.food < P.pop * 3 + 50 || P.hungry) want.food *= 1.6;
@@ -215,6 +218,8 @@ export class AI {
           if (!weak) this.wave = Math.min(this.wave + 2, 10); this.lastAttack = W.t;
           if (tgt[2]) { const tr = this.tries.get(tgt[2]) || [0, 0]; tr[0] = tr[0] >= 3 ? 1 : tr[0] + 1; tr[1] = W.t + 240; this.tries.set(tgt[2], tr); }
         }
+      } else if (!this.known.size && this.homeDone && idleArmy.length >= 8 && W.t > 900 && !this.inv && W.t - this.lastAttack > 120 && this.m.units.some(u => u.type === 'transport_ship' && !u.order)) {
+        const land = this.otherLand(); if (land) this.startInvasion(idleArmy, land);           // islands: sail an army over to find the enemy
       } else if (!this.known.size && idleArmy.length >= 3 && W.t - this.lastSweep > 25) {     // nobody (left) found: soldiers search together
         const ax = idleArmy.reduce((a, u) => a + u.x, 0) / idleArmy.length, ay = idleArmy.reduce((a, u) => a + u.y, 0) / idleArmy.length;
         const g = this.exploreTarget(ax, ay, true) || this.staleTarget(ax, ay);
@@ -581,7 +586,7 @@ export class AI {
       // only the fast scout cavalry explores alone (slow soldiers get run down by wolves); they search in groups instead.
       // Nothing left to see on our own island: a ship explores the coasts.
       u = army.find(a => a.type === 'scout' && a.hp >= a.maxHp * 0.5 && (!a.order || a.order.t === 'move')) || null;
-      if (!u && !this.known.size && this.homeDone) u = fleet.find(s => !s.order) || this.m.units.find(s => s.type === 'war_ship' || s.type === 'fishing_boat') || null;
+      if (!u && !this.known.size && this.homeDone) u = fleet.find(s => !s.order) || this.m.units.find(s => s.type === 'war_ship' || s.type === 'fishing_boat' || (s.type === 'transport_ship' && !s.cargo.length && !(this.inv && this.inv.ships.includes(s.id)) && !(this.colony && this.colony.ship === s.id))) || null;
       this.explorer = u ? u.id : 0; this.scoutGoal = null; this.scoutPos = null;
       if (!u) { this.replaceScout(); return; }
     }
@@ -601,7 +606,8 @@ export class AI {
     let t = this.exploreTarget(u.x, u.y, far, u.nav) || (!far ? this.exploreTarget(u.x, u.y, true, u.nav) : null);
     if (!t && !u.nav && !this.known.size && this.W.t > 240) {             // our landmass is mapped: time for a ship
       this.homeDone = true;
-      const ship = fleet.find(s => !s.order) || this.m.units.find(s => s.type === 'war_ship' || s.type === 'fishing_boat');
+      const ship = fleet.find(s => !s.order) || this.m.units.find(s => s.type === 'war_ship' || s.type === 'fishing_boat' || (s.type === 'transport_ship' && !s.cargo.length && !(this.inv && this.inv.ships.includes(s.id))));
+      if (!ship) { const dk = this.m.bld.find(b => b.type === 'dock' && b.built && !b.queue.length); if (dk && canAfford(this.P, UNITS.fishing_boat.cost)) command(W, { t: 'train', pid: this.pid, bid: dk.id, type: 'fishing_boat' }); }
       if (ship) { this.explorer = ship.id; this.scoutGoal = null; command(W, { t: 'stop', pid: this.pid, ids: [ship.id] }); return; }
     }
     if (!t) {          // whole map seen: patrol past known enemy buildings to keep the picture fresh
@@ -736,6 +742,101 @@ export class AI {
     const W = this.W, S = W.size;
     for (let j = Math.floor(y) - 4; j <= y + 4; j++) for (let i = Math.floor(x) - 4; i <= x + 4; i++) if (i >= 0 && j >= 0 && i < S && j < S && W.terrain[j * S + i] === 3) return true;
     return false;
+  }
+  // ---------------------------------------------------------------- expansion
+  // Border posts claim the land where we work (camps out of our territory), then a second / third Town Center goes up
+  // by rich resources further out — on our own landmass, or by ship on another island (a colony with its own dock).
+  expand(P, mine, vils, tcs, ageing, target) {
+    const W = this.W;
+    // the new towns train villagers too
+    for (const t of tcs) if (t !== this.tc && !t.queue.length && vils.length < target && this.afford(UNITS.villager.cost) && P.res.food - 50 >= this.foodKeep) command(W, { t: 'train', pid: this.pid, bid: t.id, type: 'villager' });
+    if (this.colony) this.colonyTick();
+    if (W.t < (this.expT || 0)) return; this.expT = W.t + 20;
+    const T = W.terr, mineT = (x, y) => T && T[idx(W, Math.floor(x), Math.floor(y))] === this.pid + 1;
+    // border posts by camps outside our land, then out towards the middle of the map
+    const posts = mine.bld.filter(b => b.type === 'outpost').length;
+    if (W.t > 420 && posts < Math.min(5, P.age + 1) && !mine.bld.some(b => b.type === 'outpost' && !b.built)) {
+      const camp = mine.bld.find(b => b.built && ['lumber_camp', 'mining_camp', 'mill', 'dock'].includes(b.type) && !mineT(b.x + b.w / 2, b.y + b.h / 2));
+      if (camp) this.build('outpost', [camp.x + camp.w / 2, camp.y + camp.h / 2], 2, 5, true);
+      else if (posts < P.age) { const C = W.size / 2, [bx, by] = this.base, d = Math.hypot(C - bx, C - by) || 1, x = bx + (C - bx) / d * 21, y = by + (C - by) / d * 21; if (!mineT(x, y)) this.build('outpost', [x, y], 0, 5, true); }
+    }
+    // a new town by rich resources
+    if (P.age >= 2 && !ageing && vils.length >= 24 && canBuild(W, this.pid, 'town_center') && !mine.bld.some(b => b.type === 'town_center' && !b.built) && !this.colony && W.t > (this.tcT || 0) && P.res.wood >= 300 && P.res.stone >= 110) {
+      this.tcT = W.t + 120;
+      const site = this.expansionSite(false);
+      if (site) { this.build('town_center', site, 0, 3, true); this.tcT = W.t + 300; }
+      else if (W.map && W.map.water === 'islands') { const s2 = this.expansionSite(true); if (s2) this.startColony(s2, vils); }
+    }
+  }
+  // the best spot for a new town: free land 24-50 tiles out, nobody's territory, away from known enemies, rich around
+  expansionSite(otherIsland) {
+    const W = this.W, S = W.size, [bx, by] = this.base, home = regionAt(W, bx, by + 3), T = W.terr;
+    const foes = [...this.known.values()];
+    let best = null, bs = -1e9;
+    for (let j = 4; j < S - 8; j += 4) for (let i = 4; i < S - 8; i += 4) {
+      const dd = Math.hypot(i - bx, j - by); if (otherIsland ? dd > 90 : (dd < 24 || dd > 50)) continue;
+      const k = idx(W, i, j); if (!this.P.exp[k] || (T && T[k])) continue;
+      const rg = regionAt(W, i + 2, j + 5); if (otherIsland ? (rg === home || !rg) : rg !== home) continue;
+      if (foes.some(f => Math.hypot(f.x - i, f.y - j) < 30)) continue;
+      if (!placementOk(W, this.pid, 'town_center', i, j)) continue;
+      let sc = 0;
+      for (const e of W.ents.values()) {
+        if (e.kind !== 'res') continue; const d = Math.hypot(e.x - i - 2, e.y - j - 2); if (d > 11) continue;
+        sc += { gold: 3, stone: 2, iron: 1.5, berry: 1.5, fish: 1, tree: 0.25 }[e.type] || 0;
+      }
+      if (otherIsland) { let shore = false; for (let a = 0; a < 16 && !shore; a++) { const x = Math.round(i + 2 + Math.cos(a / 16 * 6.28) * 7), y = Math.round(j + 2 + Math.sin(a / 16 * 6.28) * 7); if (x >= 0 && y >= 0 && x < S && y < S && W.terrain[y * S + x] === 3) shore = true; } if (!shore) continue; }
+      sc -= dd * (otherIsland ? 0.15 : 0.3);
+      if (sc > bs) { bs = sc; best = [i + 2, j + 2]; }
+    }
+    return best && bs > (otherIsland ? 2 : 6) ? best : null;
+  }
+  // islands: a transport takes settlers (and a small escort) to another island and they raise a Town Center there
+  startColony(site, vils) {
+    const W = this.W, ship = this.m.units.find(u => u.type === 'transport_ship' && !u.order && !u.cargo.length && !(this.inv && this.inv.ships.includes(u.id)));
+    if (!ship) { const dk = this.m.bld.find(b => b.type === 'dock' && b.built && !b.queue.length); if (dk && this.afford(UNITS.transport_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dk.id, type: 'transport_ship' }); return; }
+    const settlers = vils.filter(v => !v.inside && (!v.order || !['build', 'repair', 'board'].includes(v.order.t))).slice(0, 5);
+    const escort = this.m.units.filter(u => MILITARY(u.type) && !u.nav && !(this.guard && this.guard.has(u.id)) && (!u.order || u.order.amove)).slice(0, 3);
+    if (settlers.length < 4) return;
+    this.colony = { ship: ship.id, settlers: settlers.map(u => u.id), escort: escort.map(u => u.id), site, state: 'board', t: W.t };
+    W.ev.push({ k: 'colony', owner: this.pid, x: site[0], y: site[1] });
+  }
+  colonyTick() {
+    const W = this.W, c = this.colony, ship = alive(W, c.ship);
+    if (!ship || W.t - c.t > 300) { this.colony = null; return; }
+    const ids = [...c.settlers, ...c.escort];
+    if (c.state === 'board') {
+      if (!c.parked) { c.parked = true; const p = this.coast(this.base); if (p) command(W, { t: 'move', pid: this.pid, ids: [ship.id], x: p[0], y: p[1] }); }
+      const ashore = ids.map(id => W.ents.get(id)).filter(u => u && u.kind === 'unit');
+      for (const u of ashore) if (!u.order || u.order.t !== 'board') command(W, { t: 'smart', pid: this.pid, ids: [u.id], target: ship.id, x: ship.x, y: ship.y });
+      if (!ashore.length || W.t - c.t > 80) { c.state = 'sail'; if (ship.cargo.length) command(W, { t: 'unload', pid: this.pid, ids: [ship.id], x: c.site[0], y: c.site[1] }); else { this.colony = null; } }
+      return;
+    }
+    if (c.state === 'sail') { if (!ship.cargo.length) { c.state = 'build'; c.t2 = W.t; } return; }
+    if (c.state === 'build') {
+      const vs = c.settlers.map(id => W.ents.get(id)).filter(u => u && u.kind === 'unit');
+      if (!vs.length) { this.colony = null; return; }
+      // a spot by the landing for the Town Center, then a dock
+      let spot = null; const [sx, sy] = c.site;
+      for (let r = 0; r < 10 && !spot; r++) for (let a = 0; a < Math.max(1, r * 8) && !spot; a++) { const i = Math.round(sx - 2 + Math.cos(a / Math.max(1, r * 8) * 6.28) * r), j = Math.round(sy - 2 + Math.sin(a / Math.max(1, r * 8) * 6.28) * r); if (placementOk(W, this.pid, 'town_center', i, j) && regionAt(W, i + 2, j + 5) === regionAt(W, vs[0].x, vs[0].y)) spot = [i, j]; }
+      if (spot && canAfford(this.P, costOf(this.P, 'town_center'))) { command(W, { t: 'place', pid: this.pid, type: 'town_center', i: spot[0], j: spot[1], ids: vs.map(u => u.id) }); W.ev.push({ k: 'colonyland', owner: this.pid, x: spot[0] + 2, y: spot[1] + 2 }); }
+      const esc = c.escort.map(id => W.ents.get(id)).filter(u => u && u.kind === 'unit');
+      if (esc.length) command(W, { t: 'move', pid: this.pid, ids: esc.map(u => u.id), x: sx, y: sy, amove: true });
+      this.colony = null; this.tcT = W.t + 300;
+    }
+  }
+  // the nearest land on another landmass (an unexplored part preferred) — where an army goes looking for the enemy
+  otherLand() {
+    const W = this.W, S = W.size, [bx, by] = this.base, home = regionAt(W, bx, by + 3);
+    let best = null, bs = 1e9;
+    for (let j = 3; j < S - 3; j += 5) for (let i = 3; i < S - 3; i += 5) {
+      if (W.terrain[j * S + i] === 3 || !passable(W, i, j, this.pid)) continue;
+      const rg = regionAt(W, i + 0.5, j + 0.5); if (!rg || rg === home) continue;
+      if (W.t - (this.landTried?.get(rg) ?? -1e9) < 600) continue;
+      const sc = Math.hypot(i - bx, j - by) - (this.P.exp[j * S + i] ? 0 : 25);
+      if (sc < bs) { bs = sc; best = [i + 0.5, j + 0.5, rg]; }
+    }
+    if (best) (this.landTried ||= new Map()).set(best[2], W.t);
+    return best && [best[0], best[1]];
   }
   // allies help each other: spare resources to a starving ally every few minutes
   diplomacy(P) {
@@ -1002,7 +1103,7 @@ export class AI {
   order(type, i, j) {
     const W = this.W;
     const vils = this.m.units.filter(u => u.type === 'villager').sort((a1, b1) => Math.hypot(a1.x - i, a1.y - j) - Math.hypot(b1.x - i, b1.y - j));
-    const builders = restNow(W, this.P) ? [] : vils.filter(v => !v.order || v.order.t !== 'build').slice(0, type === 'house' || type === 'farm' ? 1 : type === 'castle' ? 5 : 2).map(v => v.id);
+    const builders = restNow(W, this.P) ? [] : vils.filter(v => !v.order || v.order.t !== 'build').slice(0, type === 'house' || type === 'farm' ? 1 : type === 'castle' || type === 'town_center' ? 4 : 2).map(v => v.id);
     command(W, { t: 'place', pid: this.pid, type, i, j, ids: builders });
     this.m.bld.push({ type, built: false, placedAt: W.t, x: i, y: j });
   }

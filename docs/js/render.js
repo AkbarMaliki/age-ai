@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261013163829';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261013163829';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261013170658';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261013170658';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -186,6 +186,7 @@ export class View {
     this.ghost = new Container(); this.ghostG = new Graphics(); this.ghostS = new Sprite(); this.ghostS.alpha = 0.6; this.ghost.addChild(this.ghostG, this.ghostS); this.over.addChild(this.ghost); this.ghost.visible = false;
     this.barG = new Graphics(); this.over.addChild(this.barG);
     this.markers = []; this.markG = new Graphics(); this.flat.addChild(this.markG);
+    this.terrG = new Graphics(); this.flat.addChildAt(this.terrG, 0); this.terrKey = '';
     this.fireT = 0; this.floats = []; this.birds = []; this.birdT0 = 6; this.flakes = []; this.light = [1, 1, 1];
     this.rocks = this.makeRocks();
   }
@@ -254,6 +255,29 @@ export class View {
     for (let k = 0; k < R.length; k++) { const v = R[k] ? 255 : 0, P = R[k] ? W.players[R[k] - 1] : null; d[k * 4] = v; d[k * 4 + 1] = P ? Math.round(v * (P.age - 1) / 3) : 0; d[k * 4 + 3] = 255; }
     this.roadCtx.putImageData(this.roadImg, 0, 0); this.roadTex.source.update();
     this.buildProps();
+  }
+  // borders of the kingdoms: a coloured line along the edge of each one's land (only where we have explored)
+  drawTerritory() {
+    const W = this.W, T = W.terr, g = this.terrG; if (!T) return;
+    const P = W.players[this.me], S = W.size, exp = this.reveal ? null : P.exp;
+    let ex = 0; if (exp) for (let k = 0; k < S * S; k += 97) ex += exp[k];
+    const key = W.terrVer + ':' + ex + ':' + this.me + ':' + !!this.reveal; if (key === this.terrKey) return; this.terrKey = key;
+    g.clear();
+    const col = (o) => { const c = PLAYER_RGB[W.players[o - 1].color] || [200, 200, 200]; return (c[0] << 16) | (c[1] << 8) | c[2]; };
+    const seg = new Map();
+    const add = (o, a, b) => { if (!seg.has(o)) seg.set(o, []); seg.get(o).push(a, b); };
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      const k = j * S + i, o = T[k]; if (!o || (exp && !exp[k])) continue;
+      if (i + 1 >= S || T[k + 1] !== o) add(o, [i + 1, j], [i + 1, j + 1]);
+      if (i === 0 || T[k - 1] !== o) add(o, [i, j], [i, j + 1]);
+      if (j + 1 >= S || T[k + S] !== o) add(o, [i, j + 1], [i + 1, j + 1]);
+      if (j === 0 || T[k - S] !== o) add(o, [i, j], [i + 1, j]);
+    }
+    for (const [o, pts] of seg) {
+      const draw = () => { for (let n = 0; n < pts.length; n += 2) { const [ax, ay] = iso(pts[n][0], pts[n][1]), [bx, by] = iso(pts[n + 1][0], pts[n + 1][1]); g.moveTo(ax, ay).lineTo(bx, by); } };
+      draw(); g.stroke({ width: 10, color: col(o), alpha: 0.22 });          // a soft band
+      draw(); g.stroke({ width: 3, color: col(o), alpha: 0.9 });            // and a crisp line
+    }
   }
   // street furniture that comes with the ages: lanterns along Castle Age roads, gilt lamps and banners in the Imperial Age
   // (visual only, placed by a fixed hash so every client sees the same street)
@@ -440,6 +464,7 @@ export class View {
     const U = this.terrainShader.resources.tu.uniforms;
     U.uTime = this.t; U.uLight[0] = L[0]; U.uLight[1] = L[1]; U.uLight[2] = L[2]; U.uWet += ((raining(W) ? 1 : 0) - U.uWet) * Math.min(1, dt * 0.5);
     this.fogT -= dt; if (this.fogT <= 0) { this.fogT = 0.25; this.updateFog(); this.updateRoads(); }
+    if ((this.terrT = (this.terrT || 0) - dt) <= 0) { this.terrT = 1.5; this.drawTerritory(); }
     const scr = this.app.screen, z = this.cam.zoom;
     const vx0 = (-this.root.x) / z - 200, vy0 = (-this.root.y) / z - 250, vx1 = vx0 + scr.width / z + 400, vy1 = vy0 + scr.height / z + 500;
     const lit = (t) => mulTint(t, L);

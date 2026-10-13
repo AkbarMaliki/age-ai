@@ -1,6 +1,6 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY } from './data.js';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js';
 import { openTechTree } from './techtree.js';
 import { Saves } from './saves.js';
 import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js';
@@ -258,6 +258,8 @@ class Game {
       case 'treatyend': this.snd.play('alert'); this.hud.notify('⚔ Gencatan senjata berakhir! Serangan kini dimungkinkan.', 'bad'); break;
       case 'wonderbuilt': { const o = W.players[e.owner]; this.snd.play('age'); this.hud.notify(o.team === P.team ? `🏛 Keajaiban ${o.name} berdiri! Pertahankan ${Math.round(e.secs / 60)} menit untuk menang.` : `🏛 ${o.name} menyelesaikan Keajaiban Dunia! Hancurkan dalam ${Math.round(e.secs / 60)} menit atau kalah!`, o.team === P.team ? 'age' : 'bad'); break; }
       case 'wonderlost': this.hud.notify('🏛 Sebuah Keajaiban Dunia runtuh!', 'age'); break;
+      case 'colony': if (mine) this.hud.notify('⛵ Pemukim berlayar untuk mendirikan kota di pulau lain.', 'age'); else if (vis) this.hud.notify(`⛵ ${W.players[e.owner].name} mengirim pemukim ke pulau lain!`, 'enemy'); break;
+      case 'colonyland': if (mine) this.hud.notify('🏰 Pemukim mendarat — Pusat Kota baru sedang dibangun.', 'age'); break;
       case 'birth': if (mine) { this.snd.play('trainedVil'); this.hud.notify(`👶 Bayi lahir di keluarga ${e.fam}: ${e.name.split(' ')[0]}!`, 'age'); } break;
       case 'grownup': if (mine) this.hud.notify(`🧑 ${e.name} kini dewasa dan siap bekerja.`); break;
       case 'outbreak': if (mine) { this.snd.play('alert'); this.hud.notify(`🤒 Wabah! ${e.name} jatuh sakit — penyakit menular ke yang berdekatan. Bangun Balai Pengobatan dan Sumur.`, 'bad'); } break;
@@ -548,7 +550,12 @@ class Game {
       if (tiles.length) { this.send({ t: 'place', pid: this.me, type: p.type, tiles, ids: vils }); this.snd.play('place'); }
       this.placing = shift ? { type: p.type, axis: p.axis } : null; this.view.setGhost(null); return;
     }
-    if (!p.ok) { this.snd.play('nope'); return; }
+    if (!p.ok) {
+      this.snd.play('nope');
+      const W = this.W, k = W.terr && idx(W, Math.max(0, Math.min(W.size - 1, p.i)), Math.max(0, Math.min(W.size - 1, p.j)));
+      if (k !== undefined && W.terr[k] && W.terr[k] - 1 !== this.me && W.players[W.terr[k] - 1].team !== W.players[this.me].team && !FORWARD.has(p.type)) this.hud.notify(`🚩 Wilayah ${W.players[W.terr[k] - 1].name}: di sini hanya boleh bangunan militer (barak, menara, kastil, tembok).`, 'bad');
+      return;
+    }
     this.send({ t: 'place', pid: this.me, type: p.type, i: p.i, j: p.j, axis: p.axis, ids: vils });
     this.snd.play('place');
     if (!shift || !canAfford(this.W.players[this.me], costOf(this.W.players[this.me], p.type))) { this.placing = null; this.view.setGhost(null); }

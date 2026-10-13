@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES } from './data.js';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS } from './data.js';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -232,6 +232,7 @@ function onBuilt(W, b, silent) {
   if (!silent) { P.stats.built++; addXp(W, P, costVal(d.cost) * XP.build); W.ev.push({ k: 'built', x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }
   if (!silent || b.type !== 'town_center') buildRoad(W, b);
   if (b.type === 'town_center') plaza(W, b);
+  if (d.terr) W.terrDirty = true;
 }
 // a paved square right round a Town Center (the heart of the town plan; also a road for speed)
 function plaza(W, b) {
@@ -415,6 +416,7 @@ export function hasBuilt(W, pid, type) { for (const e of W.dyn.values()) if (e.k
 export function canBuild(W, pid, type) {
   const d = BUILDINGS[type], P = W.players[pid];
   if (P.age < d.age) return false;
+  if (type === 'town_center') { let n = 0; for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === pid && e.type === 'town_center') n++; if (n >= Math.max(1, P.age)) return false; }   // a new town per age
   return !(d.needs || []).some(t => !hasBuilt(W, pid, t));
 }
 export function canTrain(W, pid, type) {
@@ -430,6 +432,7 @@ export function placementOk(W, pid, type, i, j, axis = 'x') {
     if (W.occ[k] || !P.exp[k] || ter === TER.ROCK) return false;
     if (d.water ? ter !== TER.WATER : ter === TER.WATER) return false;
     if (W.focc[k] && W.ents.has(W.focc[k])) return false;     // nothing goes on top of a farm (farmers got trapped under houses)
+    if (W.terr && W.terr[k] && W.terr[k] - 1 !== pid && !FORWARD.has(type) && enemies(W, W.terr[k] - 1, pid)) return false;   // enemy land: only a forward base
   }
   if (d.water) {     // a dock needs a shore next to it
     let shore = false;
@@ -701,6 +704,7 @@ export function step(W) {
   if (W.tick % 10 === 0) checkVictory(W);
   if (W.tick % 10 === 5) { relicTick(W); ruleTick(W); }
   if (W.tick % 10 === 7) { barnTick(W); if (W.opts.life) lifeTick(W); }
+  if (W.terrDirty && W.tick % 10 === 3) territory(W);
 }
 
 // ---------------------------------------------------------------- day / night, food upkeep, weather
@@ -1325,6 +1329,7 @@ export function damage(W, t, dmg, src) {
     for (let a = 0; a < t.w; a++) for (let c = 0; c < t.h; c++) { const k = idx(W, t.x + a, t.y + c); if (W.occ[k] === t.id) W.occ[k] = 0; if (W.focc[k] === t.id) W.focc[k] = 0; }
     W.regionDirty = true; W.regionDirtyW = true;
     if (t.built && d.pop) P.popCap = Math.max(0, P.popCap - d.pop);
+    if (d.terr) W.terrDirty = true;
     if (t.type !== 'farm') add(W, { kind: 'rubble', n: Math.min(4, Math.max(t.w, t.h)), x: t.x + t.w / 2, y: t.y + t.h / 2, t: 0 });
     W.ev.push({ k: 'collapse', x: t.x + t.w / 2, y: t.y + t.h / 2, owner: t.owner, type: t.type, n: t.w, hit: !!src });
     for (const q of t.queue) { const c = q.cost || (q.unit ? UNITS[q.unit].cost : TECHS[q.tech].cost); for (const r of RES) P.res[r] += c[r] || 0; }
@@ -1352,6 +1357,7 @@ function rateOf(W, u, kind, src) {
   if (kind === 'carcass' && S.hunt) r *= S.hunt;
   if (P.hungry) r *= DAY.hungry;
   if (W.night && W.opts.night === 'full' && u.type === 'villager') r *= P.mods.nightWork ? 1 : 0.7;      // working by torchlight
+  if (W.terr && W.terr[tileAt(W, u.x, u.y)] === u.owner + 1) r *= 1 + TERR_BONUS;          // our own land
   return r * (1 + P.mods.gather[RES_TYPE[kind]]) * (u.wr ?? 1);
 }
 export function openSide(W, e, nav = false) {
@@ -1869,6 +1875,27 @@ function lifeTick(W) {
     const L = P.life = { n, fun: n ? sumFu / n : 0, health: n ? sumHe / n : 0, need: n ? sumNeed / n : 0, sick, homeless, amen, births: P.stats.births || 0 };
     P.prosper = Math.round(L.fun * 0.22 + L.health * 0.22 + L.need * 0.16 + amen * 100 * 0.2 + Math.min(1, P.pop / (0.6 * (W.opts.popLimit || POP_LIMIT))) * 100 * 0.1 + (P.age - 1) / 3 * 100 * 0.1);
   }
+}
+
+// ================================================================ territory
+// Every Town Center (18), castle (14) and outpost (9) claims the land round it; where claims overlap the nearest (relative
+// to its reach) wins. W.terr[k] = owner + 1 (0 = nobody's). P.terrN = tiles held.
+function territory(W) {
+  W.terrDirty = false;
+  const S = W.size, T = W.terr || (W.terr = new Uint8Array(S * S)), best = new Float32Array(S * S).fill(2);
+  T.fill(0);
+  for (const P of W.players) P.terrN = 0;
+  for (const b of W.dyn.values()) {
+    if (b.kind !== 'building' || !b.built || b.owner < 0) continue;
+    const R = BUILDINGS[b.type].terr; if (!R) continue;
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    for (let j = Math.max(0, Math.floor(cy - R)); j <= Math.min(S - 1, Math.ceil(cy + R)); j++) for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(S - 1, Math.ceil(cx + R)); i++) {
+      const k = j * S + i, d = Math.hypot(i + 0.5 - cx, j + 0.5 - cy) / R; if (d > 1 || W.terrain[k] === TER.WATER) continue;
+      if (d < best[k]) { best[k] = d; T[k] = b.owner + 1; }
+    }
+  }
+  for (let k = 0; k < S * S; k++) if (T[k]) W.players[T[k] - 1].terrN++;
+  W.terrVer = (W.terrVer || 0) + 1;
 }
 
 function relicTick(W) {
