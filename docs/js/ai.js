@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261013205428';
-import { DAY, RELICS } from './data.js?v=20261013205428';
-import { timeOfDay, unreachable, restNow } from './sim.js?v=20261013205428';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261013205428';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js?v=20261014002822';
+import { DAY, RELICS } from './data.js?v=20261014002822';
+import { timeOfDay, unreachable, restNow } from './sim.js?v=20261014002822';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014002822';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const segDist = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); };

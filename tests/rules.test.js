@@ -120,5 +120,17 @@ const research = (W, b, tech) => { command(W, { t: 'research', pid: b.owner, bid
   command(W, { t: 'tribute', pid: 0, to: 2, res: 'gold', n: 500 }); run(W, 0.2);
   check(A.res.gold === a0 - 500 && C.res.gold === c0 + 400, 'tribute: 500 gold sent, 400 arrive');
 }
+// ---- 10. orders that lose their target or point never break the game (a smart order on a target that died first)
+{
+  const W = world(); const tc = tcOf(W, 0); const us = [0, 1, 2].map(k => unit(W, 0, 'militia', tc.x + 6 + k, tc.y + 6));
+  let ok = true;
+  try {
+    command(W, { t: 'smart', pid: 0, ids: us.map(u => u.id), target: 987654 });            // no such target, no x / y
+    command(W, { t: 'move', pid: 0, ids: us.map(u => u.id), x: undefined, y: NaN });
+    command(W, { t: 'smart', pid: 0, ids: us.map(u => u.id), target: 0, x: 'a', y: null });
+    run(W, 2);
+  } catch (e) { ok = false; console.log(e.stack); }
+  check(ok && us.every(u => Number.isFinite(u.x) && Number.isFinite(u.y)), 'orders without a target point are ignored safely');
+}
 console.log(fail ? `${fail} rules check(s) failed` : 'all rules checks passed');
 if (fail) process.exit(1);

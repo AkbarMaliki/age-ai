@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS } from './data.js?v=20261013205428';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS } from './data.js?v=20261014002822';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -645,7 +645,8 @@ function applyCmd0(W, c) {
 // lay a group out around the target point. f = formation key; tempur puts melee in front and ranged / siege behind.
 // Formations (other than a single unit or 'garis') march at the pace of their slowest member (gs).
 function formation(W, us, x, y, fn, force) {
-  const n = us.length; if (!n) return;
+  const n = us.length; if (!n || !Number.isFinite(+x) || !Number.isFinite(+y)) return;      // no point to go to (e.g. a smart order whose target died first)
+  x = +x; y = +y;
   if (n === 1) { fn(us[0], x, y); return; }
   const f = force || us[0].form || 'garis';
   const sp = f === 'menyebar' ? 1.5 : f === 'kotak' ? 0.65 : 0.75;
@@ -663,6 +664,7 @@ function formation(W, us, x, y, fn, force) {
   const left = new Set(slots.map((_, i) => i));
   for (const u of order) {
     let bi = -1, bd = 1e9; for (const i of left) { const d = Math.hypot(slots[i][0] - u.x, slots[i][1] - u.y); if (d < bd) { bd = d; bi = i; } }
+    if (bi < 0) { fn(u, x, y, gs); continue; }
     left.delete(bi); fn(u, slots[bi][0], slots[bi][1], gs);
   }
 }
