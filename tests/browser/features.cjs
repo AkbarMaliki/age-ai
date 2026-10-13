@@ -13,7 +13,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, seed: 4242, players: 2, name: '' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500);
   await p.screenshot({ path: `${SP}/v2_menu.png` });
-  await p.click('#btnPlay'); await p.waitForTimeout(5000);
+  await p.click('#btnPlay'); const tLoad = Date.now(); await p.waitForFunction(() => window.__ak && __ak.game, null, { timeout: 60000 }); console.log('game ready in', Date.now() - tLoad, 'ms'); await p.waitForTimeout(1500);
   const G = (f, a) => p.evaluate(f, a);
   console.log('ents', await G(() => { const c = {}; for (const e of __ak.game.W.ents.values()) { const k = e.kind === 'unit' ? e.type + (e.owner < 0 ? '(g)' : '') : e.kind === 'treasure' ? 'treasure' : null; if (k) c[k] = (c[k] || 0) + 1; } return JSON.stringify(c); }));
   await p.screenshot({ path: `${SP}/v2_start.png` });

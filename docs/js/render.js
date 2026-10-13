@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261013201628';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261013201628';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261013205428';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261013205428';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -524,6 +524,10 @@ export class View {
       if (e.kind === 'relic' && e.carrier) { s.scale.set(0.45); s.y = sy - 46; }        // carried high by its monk
       s.zIndex = e.kind === 'building' ? sy - (e.w + e.h) * 6 : sy;
       if (e.kind === 'building' && e.type !== 'farm' && BUILDINGS[e.type].n > 1) s.zIndex = iso(e.x + e.w * 0.75, e.y + e.h * 0.75)[1] - 2;
+      if (e.kind === 'unit') {        // standing in a barn's yard: drawn over the barn sprite (its yard floor and fence), still sorted among themselves
+        const fb = W.focc[k], bb = fb && W.ents.get(fb);
+        if (bb && BUILDINGS[bb.type] && BUILDINGS[bb.type].pen) s.zIndex = iso(bb.x + bb.w * 0.75, bb.y + bb.h * 0.75)[1] - 1 + sy / 1e5;
+      }
       s.alpha = e.kind === 'corpse' ? Math.min(1, (15 - e.t) / 3) : e.kind === 'rubble' ? Math.min(1, (40 - e.t) / 5) : e.kind === 'res' && e.type === 'fish' ? 0.75 + 0.2 * Math.sin(this.t * 2 + e.id) : (e.kind === 'building' && !e.built && !A.buildings.has(e.type + '_c0') ? 0.6 : 1);
       if (e.kind === 'unit' && mineE && us && us.stealth && W.t - (e.lastAtk || -99) > 3) s.alpha = 0.5;                 // our ninjas, sneaking
       let tint = visible || mineE ? (hover === e.id ? 0xfff2c0 : 0xffffff) : 0x9a9aa6;

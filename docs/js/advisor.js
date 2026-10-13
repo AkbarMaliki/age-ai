@@ -1,7 +1,7 @@
 // The royal advisor ("!" top left): turns what your soldiers have seen — or what your spies brought home — into a
 // read of each enemy's army and the paths they committed to, and suggests counters (units, doctrine, formation).
-import { UNITS, TECHS, AGES, PLAYER_RGB, MILITARY, BUILDINGS } from './data.js?v=20261013201628';
-import { idx } from './sim.js?v=20261013201628';
+import { UNITS, TECHS, AGES, PLAYER_RGB, MILITARY, BUILDINGS } from './data.js?v=20261013205428';
+import { idx } from './sim.js?v=20261013205428';
 
 const $ = (id) => document.getElementById(id);
 const CLS = (t) => { const c = UNITS[t] && UNITS[t].cls; return c === 'cavalry' ? 'cav' : c === 'archer' ? 'arch' : c === 'infantry' ? 'inf' : c === 'siege' ? 'siege' : c === 'ship' ? 'ship' : null; };

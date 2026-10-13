@@ -1,6 +1,6 @@
 // War statistics: score, live kingdom snapshot, timeline history, first-contact log, and the "Statistik Perang" panel.
 // Playing: only your own kingdom in full, plus fog-limited intel on enemies. Watching bot vs bot: every kingdom side by side.
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, CARDS } from './data.js?v=20261013201628';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, CARDS } from './data.js?v=20261013205428';
 
 const $ = (id) => document.getElementById(id);
 const sum = (c) => RES.reduce((s, r) => s + ((c && c[r]) || 0), 0);
