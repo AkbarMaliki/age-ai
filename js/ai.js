@@ -6,7 +6,7 @@
 import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js';
 import { DAY, RELICS } from './data.js';
 import { timeOfDay, unreachable, restNow } from './sim.js';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy } from './sim.js';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const segDist = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); };
@@ -105,6 +105,7 @@ export class AI {
     if (P.age >= 3 && !count('siege_workshop') && count('blacksmith', false) && vils.length >= 26 && P.res.wood >= 260) this.build('siege_workshop', this.base, 7, 14);
     if (P.age >= 4 && !count('wonder') && (S.scholar || this.style === 'eko' || P.res.gold > 3000) && P.res.wood >= 1000 && P.res.stone >= 1000 && P.res.gold >= 1000 && vils.length >= 35) this.build('wonder', this.base, 8, 18);
     this.economy2(P, mine);
+    this.lifeCare(P, mine, vils);
     this.diplomacy(P);
     if (!tc && vils.length && canAfford(P, BUILDINGS.town_center.cost)) this.build('town_center', this.base, 0, 10);     // rebuild a lost Town Center
     if (P.age >= 2 && !count('market') && vils.length >= 24 && P.res.wood >= 260) this.build('market', this.base, 8, 15);
@@ -141,9 +142,10 @@ export class AI {
     }
     this.research();
     // ---- assign idle villagers
-    const want = P.age === 1 ? { food: 0.6, wood: 0.4, gold: 0, stone: 0, iron: 0 } : P.age === 2 ? { food: 0.44, wood: 0.29, gold: 0.2, stone: 0.03, iron: S.iron * 0.6 } : { food: 0.4, wood: 0.26, gold: 0.2, stone: 0.06, iron: S.iron };
+    const want = P.age === 1 ? { food: 0.56, wood: 0.44, gold: 0, stone: 0, iron: 0 } : P.age === 2 ? { food: 0.42, wood: 0.33, gold: 0.2, stone: 0.04, iron: S.iron * 0.6 } : { food: 0.4, wood: 0.29, gold: 0.2, stone: 0.06, iron: S.iron };      // towns need timber: wells, taverns, barns
     if (P.age === 1 && this.planFeudal()) want.gold = 0.04;
     if (S.walls || S.towers > 2) want.stone += 0.04;
+    if (this.lifeNeed && this.lifeNeed.wood && P.res.wood < this.lifeNeed.wood) want.wood *= 1.35;      // timber for the tavern / hospital
     for (const k in want) if (want[k] > 0) want[k] *= Math.max(0.15, Math.min(1.6, 1.4 - P.res[k] / 900));
     // the people eat every dawn: keep a granary
     if (P.res.food < P.pop * 3 + 50 || P.hungry) want.food *= 1.6;
@@ -157,7 +159,7 @@ export class AI {
       if (unfinished.length) { const b = unfinished.shift(); command(W, { t: 'smart', pid: this.pid, ids: [v.id], target: b.id, x: b.x, y: b.y }); continue; }
       const res = Object.keys(want).filter(k => want[k] > 0).sort((a, b) => (now[a] - vils.length * want[a]) - (now[b] - vils.length * want[b]))[0];
       let tgt = null;
-      if (res === 'food') { tgt = this.meat(vilsOn('carcass')) || this.res('berry', this.base[0], this.base[1], 16) || this.freeFarm() || this.shoreFish(v); }
+      if (res === 'food') { tgt = this.meat(vilsOn('carcass')) || this.res('berry', this.base[0], this.base[1], 16) || (vilsOn('fish') < 8 && this.shoreFish(v)) || this.freeFarm() || this.shoreFish(v); }
       else if (res === 'wood') tgt = this.nearDropRes('tree', 'wood', v);
       else tgt = this.nearDropRes(res, res, v);
       if (!tgt) tgt = this.nearDropRes('tree', 'wood', v);
@@ -191,8 +193,10 @@ export class AI {
     // ---- defend / attack (only targets it has discovered)
     if (this.inv && this.invasion(army)) return;
     const threat = this.threat();
-    const idleArmy = army.filter(u => (!u.order || u.order.amove) && u.id !== this.explorer);
-    if (threat) { const ids = army.filter(u => (!u.order || u.order.t !== 'attack') && u.id !== this.explorer).map(u => u.id); if (ids.length) command(W, { t: 'move', pid: this.pid, ids, x: threat.x, y: threat.y, amove: true }); }
+    const guard = this.homeGuard(army, threat);                   // the town watch stays home; the rest is the field army
+    const field = army.filter(u => !guard.has(u.id));
+    const idleArmy = field.filter(u => (!u.order || u.order.amove) && u.id !== this.explorer);
+    if (threat) this.defend(army, guard, threat);
     else {
       if (this.known.size) this.everKnown = true;
       const core = [...this.known.values()].filter(k => !['farm', 'house'].includes(k.type)).length;
@@ -230,8 +234,8 @@ export class AI {
   recent(id, s) { const o = this.seen.get(id); return !!o && this.W.t - o.t < s; }
   // can we pay for this and still keep the age-up savings?
   afford(c) {
-    const R = this.reserve; if (!R) return canAfford(this.P, c);
-    for (const k in c) if (this.P.res[k] < c[k] + (R[k] || 0)) return false;
+    const R = this.reserve, Q = this.lifeNeed; if (!R && !Q) return canAfford(this.P, c);
+    for (const k in c) if (this.P.res[k] < c[k] + (R && R[k] || 0) + (Q && Q[k] || 0)) return false;
     return true;
   }
   res(kind, x, y, r) { return nearestResource(this.W, kind, x, y, r, this.pid, null, this.P.exp); }
@@ -393,11 +397,14 @@ export class AI {
   }
   // a ring of stone wall around the town at radius R, with four gates; built a stretch at a time
   wallRing(type = 'stone_wall') {
-    const W = this.W, P = this.P, [bx, by] = this.base, R = W.size >= 180 ? 20 : 17;
+    const W = this.W, P = this.P, [bx, by] = this.base, R0 = W.size >= 180 ? 20 : 18;
     if (this.m.bld.some(b => (b.type === 'stone_wall' || b.type === 'palisade' || b.type === 'gate') && !b.built)) return;       // finish the current stretch first
     if (!this.ring) {
       const pts = [], seen = new Set();
-      for (let k = 0; k < 360; k++) { const a = k / 360 * Math.PI * 2, i = Math.round(bx + Math.cos(a) * R), j = Math.round(by + Math.sin(a) * R), key = i + ',' + j; if (!seen.has(key)) { seen.add(key); pts.push([i, j, a]); } }
+      // the radius bulges out round a field block that is close to town, so the first fields sit inside the wall
+      const blocks = (this.fds || []).slice(0, 1).map(F => [F.mx - 7, F.my - 7, F.mx + 10, F.my + 10]);
+      const Rof = (a) => { let R = R0; for (let r = R0; r < R0 + 22; r++) { const x = bx + Math.cos(a) * r, y = by + Math.sin(a) * r; if (blocks.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1)) R = r + 1.5; } return R; };
+      for (let k = 0; k < 720; k++) { const a = k / 720 * Math.PI * 2, R = Rof(a), i = Math.round(bx + Math.cos(a) * R), j = Math.round(by + Math.sin(a) * R), key = i + ',' + j; if (!seen.has(key)) { seen.add(key); pts.push([i, j, a]); } }
       this.ring = pts; this.ringI = 0; this.gates = [0, 1, 2, 3].map(q => q * Math.PI / 2 + this.rnd() * 0.5);
     }
     const nearGate = (a) => this.gates.some(g => Math.abs(Math.atan2(Math.sin(a - g), Math.cos(a - g))) < 0.13);
@@ -451,21 +458,22 @@ export class AI {
   water(vils, fleet) {
     const W = this.W, P = this.P, S = this.S; if (W.t < (this.watT || 0)) return; this.watT = W.t + 6;
     const island = W.map && W.map.water === 'islands';
-    const fish = this.res('fish', this.base[0], this.base[1], island ? 80 : 34);
-    if (!this.count('dock') && (fish || island) && vils.length >= (S.navy || island ? 8 : 14) && P.res.wood >= 150) {
+    const fish = this.res('fish', this.base[0], this.base[1], island ? 80 : 46);
+    if (!this.count('dock') && (fish || island) && vils.length >= (S.navy || island ? 8 : 11) && P.res.wood >= 150) {
       // by the fish if possible, else the nearest shore of our own landmass (on big islands the sea can be 40+ tiles away)
       if (!(fish && this.build('dock', [fish.x, fish.y], 1, 8))) { const sp = this.dockSpot(); if (sp) this.build('dock', sp, 0, 3); }
     }
     const dock = this.m.bld.find(b => b.type === 'dock' && b.built); if (!dock) return;
     const boats = this.m.units.filter(u => u.type === 'fishing_boat').length;
-    if (fish && boats < (S.navy ? 6 : 3) && dock.queue.length < 2 && canAfford(P, UNITS.fishing_boat.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'fishing_boat' });
+    const shoals = fish ? [...W.dyn.values(), ...W.ents.values()].filter(e => e.kind === 'res' && e.type === 'fish' && Math.hypot(e.x - dock.x, e.y - dock.y) < 30).length : 0;
+    if (fish && boats < Math.min(S.navy ? 10 : 8, 2 + shoals * 2) && dock.queue.length < 2 && this.afford(UNITS.fishing_boat.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'fishing_boat' });
     const enemyShips = [...this.foes.values()].filter(f => f.nav && MILITARY(f.type) && !UNITS[f.type].trade && f.type !== 'transport' && W.t - f.t < 120).length;
     const wantFleet = P.age >= 2 ? (S.navy ? 5 : 0) + enemyShips + (island ? 3 : 0) : 0;
     if (P.age >= 3 && enemyShips >= 2 && fleet.length < wantFleet + 2 && dock.queue.length < 2 && this.afford(unitCost(P, 'fire_ship'))) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: this.rnd() < 0.7 ? 'fire_ship' : 'demo_ship' });
     if (P.age >= 4 && P.techs.has('gunpowder') && this.S.navy && fleet.filter(f => f.type === 'cannon_galleon').length < 3 && dock.queue.length < 2 && this.afford(unitCost(P, 'cannon_galleon'))) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'cannon_galleon' });
     if (fleet.length < Math.min(10, wantFleet) && dock.queue.length < 2 && this.afford(UNITS.war_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'war_ship' });
     const trans = this.m.units.filter(u => u.type === 'transport_ship').length;
-    if (island && P.age >= 2 && trans < 2 && dock.queue.length < 2 && canAfford(P, UNITS.transport_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'transport_ship' });
+    if (island && P.age >= 2 && trans < 2 && dock.queue.length < 2 && this.afford(UNITS.transport_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dock.id, type: 'transport_ship' });
   }
   // centre of the nearest explored spot where a dock fits and a builder from home can walk up to it
   dockSpot() {
@@ -633,9 +641,12 @@ export class AI {
     for (const e of W.dyn.values()) {
       let sc = null;
       if (e.kind === 'res' && e.type === 'carcass' && e.amount > 10 && this.P.exp[idx(W, Math.floor(e.x + 0.5), Math.floor(e.y + 0.5))]) sc = Math.hypot(e.x - bx, e.y - by);
-      else if (e.kind === 'unit' && e.type === 'sheep' && (e.owner === this.pid || (e.owner === GAIA && this.recent(e.id, 60)))) sc = Math.hypot(e.x - bx, e.y - by) + 4;
-      else if (e.kind === 'unit' && e.type === 'deer' && this.P.age === 1 && this.recent(e.id, 60)) sc = Math.hypot(e.x - bx, e.y - by) + 8;
-      if (sc === null || sc > 18 || unreachable(W, e.id, this.pid)) continue;
+      else if (e.kind === 'unit' && (e.type === 'sheep' || e.type === 'cow') && (e.owner === this.pid || (e.owner === GAIA && this.recent(e.id, 60)))) {
+        if (e.pen && (e.meat || 0) < UNITS[e.type].fat * 0.95 && this.P.res.food > 120) continue;      // livestock fattens in the barn until it is worth it
+        sc = Math.hypot(e.x - bx, e.y - by) + (e.pen ? 0 : 4);
+      }
+      else if (e.kind === 'unit' && e.type === 'deer' && this.recent(e.id, 90)) sc = Math.max(0, Math.hypot(e.x - bx, e.y - by) - 10) + 8;      // hunting parties go further out
+      if (sc === null || sc > 20 || unreachable(W, e.id, this.pid)) continue;
       if (e.kind === 'res') { let n = 0; for (const v of this.m.units) if (v.order && v.order.id === e.id) n++; if (n >= 5) continue; }
       if (sc < bd) { bd = sc; best = e; }
     }
@@ -666,7 +677,7 @@ export class AI {
   economy2(P, mine) {
     const W = this.W; if (W.t < (this.eco2T || 0)) return; this.eco2T = W.t + 5;
     const farms = mine.bld.filter(b => b.type === 'farm').length, q = W.reseed[this.pid] || 0;
-    if (farms >= 6 && q < 4 && P.res.wood >= 300 + 60 * q) command(W, { t: 'reseed', pid: this.pid, bid: 0, n: 1 });
+    if (farms >= 6 && q < 4 && P.res.wood >= 300 + 60 * q + (this.lifeNeed ? this.lifeNeed.wood || 0 : 0)) command(W, { t: 'reseed', pid: this.pid, bid: 0, n: 1 });
     const dock = mine.bld.find(b => b.type === 'dock' && b.built);
     if (dock && P.age >= 2 && P.res.wood >= 400 && !this.res('fish', dock.x, dock.y, 14) && this.m.units.some(u => u.type === 'fishing_boat')) command(W, { t: 'fishtrap', pid: this.pid, bid: dock.id });
     const mk = mine.bld.find(b => b.type === 'market' && b.built);
@@ -678,6 +689,47 @@ export class AI {
     }
     // regicide: the king stays inside the Town Center (or castle)
     if (P.king) { const k = W.ents.get(P.king), home = mine.bld.find(b => b.type === 'castle' && b.built) || mine.bld.find(b => b.type === 'town_center' && b.built); if (k && home && !k.inside && (!k.order || k.order.t !== 'garrison')) command(W, { t: 'garrison', pid: this.pid, ids: [k.id], target: home.id }); }
+  }
+  // the people's needs: a tavern, wells where they work and live, a hospital, a barn with livestock
+  lifeCare(P, mine, vils) {
+    const W = this.W; if (W.t < (this.lcT || 0)) return; this.lcT = W.t + 4;
+    const count = (t, any = true) => mine.bld.filter(b => b.type === t && (any || b.built)).length, L = P.life || { fun: 80, sick: 0 };
+    if (!W.opts.life) { this.lifeNeed = null; if (!count('barn') && vils.length >= 22 && count('mill', false)) this.build('barn', this.base, 8, 16); }
+    else {
+    // a bored, unhappy people comes first: armies and research leave the wood / gold for the tavern
+    const needTav = !count('tavern') && P.pop >= 14 && (L.fun < 70 || P.pop >= 22);
+    this.lifeNeed = needTav ? BUILDINGS.tavern.cost : P.age >= 2 && !count('hospital') && L.sick >= 3 ? BUILDINGS.hospital.cost : null;
+    if (needTav) this.build('tavern', this.base, 3, 12);
+    else if (count('tavern') < 2 && P.pop >= 55 && L.fun < 55) this.build('tavern', this.base, 3, 14);
+    if (P.age >= 2 && !count('hospital') && (P.pop >= 35 || L.sick >= 2)) this.build('hospital', this.base, 3, 12);
+    if (!count('barn') && P.pop >= 20 && count('mill', false) && (count('tavern') || P.pop >= 30)) this.build('barn', this.base, 8, 16);
+    }
+    // a well wherever people work or live far from water (camps, field mills, house blocks)
+    if (W.opts.life && W.t > (this.wellT || 0)) {
+      this.wellT = W.t + 15;
+      const water = mine.bld.filter(b => b.built && (b.type === 'well' || b.type === 'town_center'));
+      const wet = (x, y) => water.some(b => Math.hypot(b.x + b.w / 2 - x, b.y + b.h / 2 - y) <= 10) || this.nearWater(x, y);
+      const sites = mine.bld.filter(b => b.built && ['lumber_camp', 'mining_camp', 'mill', 'house', 'barn', 'barracks'].includes(b.type)).sort((a, b) => Math.hypot(a.x - this.base[0], a.y - this.base[1]) - Math.hypot(b.x - this.base[0], b.y - this.base[1]));
+      const dry = sites.find(b => !wet(b.x + b.w / 2, b.y + b.h / 2));
+      if (dry && !mine.bld.some(b => b.type === 'well' && !b.built)) this.build('well', [dry.x + dry.w / 2, dry.y + dry.h / 2], 1, 5, true);
+    }
+    // livestock: buy a few head, bring captured sheep in, and let them fatten
+    const barn = mine.bld.find(b => b.type === 'barn' && b.built);
+    if (barn) {
+      const herd = this.m.units.filter(u => u.type === 'sheep' || u.type === 'cow');
+      if (herd.length < 6 && !barn.queue.length && P.res.food >= 250 && P.res.gold >= 120) command(W, { t: 'train', pid: this.pid, bid: barn.id, type: P.res.gold >= 260 ? 'cow' : 'sheep' });
+      const stray = herd.filter(u => !u.pen && !u.order && Math.hypot(u.x - barn.x, u.y - barn.y) < 45 && !this.m.units.some(v => v.order && v.order.id === u.id)).map(u => u.id);
+      if (stray.length) command(W, { t: 'smart', pid: this.pid, ids: stray, target: barn.id });
+    }
+    const go = (tech, at, spare = 150) => { const b = mine.bld.find(x => x.type === at && x.built && !x.queue.length); if (b && techOk(W, this.pid, tech, b) && this.afford(techCost(P, tech)) && P.res.food >= (techCost(P, tech).food || 0) + spare) command(W, { t: 'research', pid: this.pid, bid: b.id, tech }); };
+    go('brewery', 'tavern'); if (P.age >= 2) { go('minstrels', 'tavern'); go('herbalism', 'hospital'); if (L.sick >= 2) go('quarantine', 'hospital'); }
+    if (P.age >= 3) go('sanitation', 'hospital');
+    if (barn && (barn.herd || 0) >= 3) go('fodder', 'barn');
+  }
+  nearWater(x, y) {
+    const W = this.W, S = W.size;
+    for (let j = Math.floor(y) - 4; j <= y + 4; j++) for (let i = Math.floor(x) - 4; i <= x + 4; i++) if (i >= 0 && j >= 0 && i < S && j < S && W.terrain[j * S + i] === 3) return true;
+    return false;
   }
   // allies help each other: spare resources to a starving ally every few minutes
   diplomacy(P) {
@@ -730,6 +782,60 @@ export class AI {
     const W = this.W;
     for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner >= 0 && e.owner !== this.pid && pl(W, e.owner).team !== this.P.team && MILITARY(e.type) && Math.hypot(e.x - x, e.y - y) < r && this.P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) return e;
     return null;
+  }
+  // ---------------------------------------------------------------- the town watch
+  // A share of the army (more for defensive personalities, more after being raided) is kept at home. It walks the
+  // rounds between guard posts round the Town Center and meets raiders first. The field army only turns back when the
+  // attackers are clearly stronger than the watch and the towers; otherwise it carries on with its own campaign.
+  homeGuard(army, threat) {
+    const W = this.W, [bx, by] = this.base;
+    const G = this.guard = this.guard || new Set();
+    for (const id of G) if (!W.ents.has(id)) G.delete(id);
+    const fit = (u) => u.id !== this.explorer && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && !UNITS[u.type].hero && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert;
+    const cand = army.filter(fit);
+    const share = ({ eko: 0.28, serbu: 0.15, benteng: 0.4, ilmu: 0.3, laut: 0.25 }[this.style] ?? 0.25) + (this.attacked >= 2 && W.t - this.lastHit < 300 ? 0.12 : 0);
+    const want = cand.length < 5 ? 0 : Math.min(16, Math.max(2, Math.round(cand.length * share)));
+    if (G.size < want) {             // recruit from the soldiers at home: archers and spearmen first, then the rest
+      const sc = (u) => (stat(W, u.owner, u.type).range ? -3 : 0) + (['spearman', 'pikeman'].includes(u.type) ? -2 : 0) + Math.hypot(u.x - bx, u.y - by) / 10;
+      const pool = cand.filter(u => !G.has(u.id) && Math.hypot(u.x - bx, u.y - by) < 28 && (!u.order || u.order.t === 'patrol' || (!u.order.amove && u.order.t !== 'attack'))).sort((a, b) => sc(a) - sc(b));
+      for (const u of pool.slice(0, want - G.size)) G.add(u.id);
+    } else if (G.size > want + 2) {    // too many at home: the furthest go back to the field army
+      const ex = [...G].map(id => W.ents.get(id)).filter(Boolean).sort((a, b) => Math.hypot(b.x - bx, b.y - by) - Math.hypot(a.x - bx, a.y - by));
+      for (const u of ex.slice(0, G.size - want)) { G.delete(u.id); if (u.order && u.order.t === 'patrol') command(W, { t: 'stop', pid: this.pid, ids: [u.id] }); }
+    }
+    // the rounds: idle watchmen walk the ring of guard posts
+    if (!threat && G.size && W.t > (this.roundT || 0)) {
+      this.roundT = W.t + 8;
+      const idle = [...G].map(id => W.ents.get(id)).filter(u => u && (!u.order || (u.order.t !== 'patrol' && u.order.t !== 'attack')));
+      if (idle.length) {
+        if (!this.ringPts || W.t > (this.ringPtsT || 0)) { this.ringPts = townRing(W, this.pid, W.size >= 180 ? 15 : 13, 8); this.ringPtsT = W.t + 120; }
+        if (this.ringPts.length >= 3) command(W, { t: 'patrol', pid: this.pid, ids: idle.map(u => u.id), pts: this.ringPts, guard: true });
+      }
+    }
+    return G;
+  }
+  // how dangerous the raiders in town are (cavalry and siege count more)
+  threatPower() {
+    const W = this.W, [bx, by] = this.base; let p = 0;
+    for (const e of W.dyn.values()) {
+      if (e.kind !== 'unit' || e.owner < 0 || pl(W, e.owner).team === this.P.team || isAnimal(e) || e.nav) continue;
+      if (Math.hypot(e.x - bx, e.y - by) > 24 || !this.P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
+      const d = UNITS[e.type]; p += e.type === 'villager' ? 0.3 : d.cls === 'siege' ? 2.5 : d.cls === 'cavalry' ? 1.5 : 1;
+    }
+    return p;
+  }
+  defend(army, guard, threat) {
+    const W = this.W, [bx, by] = this.base;
+    const atHome = army.filter(u => u.id !== this.explorer && (guard.has(u.id) || Math.hypot(u.x - bx, u.y - by) < 28));
+    const respond = atHome.filter(u => !u.order || u.order.t !== 'attack').map(u => u.id);
+    if (respond.length) command(W, { t: 'move', pid: this.pid, ids: respond, x: threat.x, y: threat.y, amove: true });
+    // the field army comes home only when the town cannot hold on its own
+    const forts = this.m.bld.filter(b => b.built && (b.type === 'watch_tower' || b.type === 'castle' || b.type === 'town_center')).length * 1.5;
+    const away = army.filter(u => u.id !== this.explorer && !atHome.includes(u) && (!u.order || u.order.t !== 'attack'));
+    if (away.length && this.threatPower() > (atHome.length + forts) * 1.25 && W.t > (this.recallT || 0)) {
+      this.recallT = W.t + 20;
+      command(W, { t: 'move', pid: this.pid, ids: away.map(u => u.id), x: threat.x, y: threat.y, amove: true });
+    }
   }
   threat() {
     const W = this.W;
@@ -831,15 +937,109 @@ export class AI {
     for (const b of this.m.bld) if (b.type === 'farm' && b.built) { const f = b.farmer && alive(this.W, b.farmer); if (!f || !f.order || f.order.id !== b.id) return b; }
     return null;
   }
-  // ---------------------------------------------------------------- town planning
-  // Candidate spots in rings around `near` are scored instead of taking the first that fits: buildings keep to blocks
-  // between planned streets (every 7th row / column through the Town Center), houses line up in rows, military
-  // buildings face the enemy, and nothing is put on a road. The result reads as a planned town that grows outward.
+  // ---------------------------------------------------------------- town plan: districts
+  // The town grows in quarters around the Town Center (d = Chebyshev distance from its footprint):
+  //   centre      plaza (sim, d 1) ringed by the civic buildings (market, smithy, academy, monastery, d 2-8)
+  //   residential tidy blocks of houses on a 3-tile lattice with lanes between them (d 2-13, not on the front)
+  //   military    barracks, ranges, stables, workshop and castle on the side that faces the enemy (d 6-20)
+  //   fields      outside the town (d >= 12) on the sheltered side: a grid of 3x3 fields round their own mill
+  tcRect() { const W = this.W, tc = W.ents.get(W.players[this.pid].tc); return tc && tc.kind === 'building' && tc.type === 'town_center' ? tc : this.m.bld.find(b => b.type === 'town_center' && b.built && b.id); }
+  ringD(T, i, j, n) { const dx = Math.max(T.x - (i + n - 1), i - (T.x + T.w - 1), 0), dy = Math.max(T.y - (j + n - 1), j - (T.y + T.h - 1), 0); return Math.max(dx, dy); }
+  frontOff(T, x, y) {            // 0 = straight towards the enemy, PI = straight away from it
+    if (!this.toE || this.toE.t < this.W.t - 30) { const [ex, ey] = this.towardEnemy(30); this.toE = { a: Math.atan2(ey - (T.y + T.h / 2), ex - (T.x + T.w / 2)), t: this.W.t }; }
+    const a = Math.atan2(y - (T.y + T.h / 2), x - (T.x + T.w / 2)); return Math.abs(Math.atan2(Math.sin(a - this.toE.a), Math.cos(a - this.toE.a)));
+  }
+  // field districts: blocks of 3x3 fields round their own mill, outside the town on the sheltered side. A new block is
+  // opened when the others are full (up to 3); a failed search (unexplored land) is retried later.
+  newFieldDistrict(T) {
+    const W = this.W, cx = T.x + T.w / 2, cy = T.y + T.h / 2; this.frontOff(T, cx, cy); const back = this.toE.a + Math.PI;
+    const taken = (i, j) => (this.fds || []).some(F => i + 3 > F.mx - 6 && i < F.mx + 9 && j + 3 > F.my - 6 && j < F.my + 9);
+    let best = null;
+    for (const da of [0, 0.45, -0.45, 0.9, -0.9, 1.35, -1.35, 1.8, -1.8, 2.25, -2.25]) for (const R of [14, 17, 20, 24]) {
+      const a = back + da, ox = Math.round(cx + Math.cos(a) * R) - 1, oy = Math.round(cy + Math.sin(a) * R) - 1;     // mill cell origin
+      if (taken(ox - 1, oy - 1)) continue;
+      const cells = [];
+      for (let gy = -2; gy <= 2; gy++) for (let gx = -2; gx <= 2; gx++) {
+        if (!gx && !gy) continue; const i = ox + gx * 3, j = oy + gy * 3;
+        if (this.ringD(T, i, j, 3) < 10 || taken(i, j)) continue;
+        let free = true; for (let b = 0; b < 3 && free; b++) for (let c = 0; c < 3 && free; c++) { const ii = i + b, jj = j + c; if (!passable(W, ii, jj, this.pid) || W.terrain[idx(W, ii, jj)] === 3 || !this.P.exp[idx(W, ii, jj)]) free = false; }
+        if (free) cells.push({ i, j, k: Math.max(Math.abs(gx), Math.abs(gy)) * 10 + Math.hypot(gx, gy) });
+      }
+      const sc = cells.length * 10 - Math.abs(da) * 5 - R * 1.2;
+      if (cells.length >= 8 && placementOk(W, this.pid, 'mill', ox, oy) && (!best || sc > best.sc)) best = { sc, mx: ox, my: oy, cells };
+    }
+    if (!best) return null;
+    best.cells.sort((p, q) => p.k - q.k);
+    (this.fds = this.fds || []).push(best); return best;
+  }
+  fieldDistrict(T) {
+    if (this.fdTc !== T.id) { this.fdTc = T.id; this.fds = []; }
+    if (!this.fds.length && this.W.t >= (this.fdRetry || 0)) { if (!this.newFieldDistrict(T)) this.fdRetry = this.W.t + 45; }
+    return this.fds;
+  }
+  inFields(i, j, n) { return (this.fds || []).some(F => i + n > F.mx - 6 && i < F.mx + 9 && j + n > F.my - 6 && j < F.my + 9); }
+  placeFarm(T) {
+    const W = this.W, list = this.fieldDistrict(T); if (!list.length) return false;
+    for (let pass = 0; pass < 2; pass++) {
+      for (const F of this.fds) {
+        // each block has its own mill (food is carried there, not to the Town Center)
+        const mill = this.m.bld.find(b => b.type === 'mill' && Math.abs(b.x - F.mx) <= 1 && Math.abs(b.y - F.my) <= 1);
+        const cell = F.cells.find(c => placementOk(W, this.pid, 'farm', c.i, c.j)); if (!cell) continue;
+        if (!mill && !this.m.bld.some(b => b.type === 'mill' && !b.built) && canAfford(this.P, costOf(this.P, 'mill')) && placementOk(W, this.pid, 'mill', F.mx, F.my)) this.order('mill', F.mx, F.my);
+        if (canAfford(this.P, costOf(this.P, 'farm'))) this.order('farm', cell.i, cell.j);          // fields go in while their mill is still being raised
+        return true;
+      }
+      if (pass || this.fds.length >= 3 || W.t < (this.fdRetry || 0) || !this.newFieldDistrict(T)) { this.fdRetry = W.t + 45; break; }
+    }
+    return false;
+  }
+  order(type, i, j) {
+    const W = this.W;
+    const vils = this.m.units.filter(u => u.type === 'villager').sort((a1, b1) => Math.hypot(a1.x - i, a1.y - j) - Math.hypot(b1.x - i, b1.y - j));
+    const builders = restNow(W, this.P) ? [] : vils.filter(v => !v.order || v.order.t !== 'build').slice(0, type === 'house' || type === 'farm' ? 1 : type === 'castle' ? 5 : 2).map(v => v.id);
+    command(W, { t: 'place', pid: this.pid, type, i, j, ids: builders });
+    this.m.bld.push({ type, built: false, placedAt: W.t, x: i, y: j });
+  }
+  // a spot in the right quarter, on the 3-tile lattice anchored at the Town Center (null: no plan / nothing fits)
+  planSpot(type) {
+    const W = this.W, T = this.tcRect(); if (!T) return null;
+    this.fieldDistrict(T);
+    const d = BUILDINGS[type], n = d.n;
+    const mil = ['barracks', 'archery_range', 'stable', 'castle', 'siege_workshop'].includes(type);
+    const civic = ['market', 'blacksmith', 'academy', 'monastery', 'tavern', 'hospital'].includes(type), house = type === 'house', rural = type === 'barn';
+    const [r0, r1] = mil ? [6, 15] : civic ? [2, 10] : house ? [2, 15] : rural ? [8, 16] : [3, 15];
+    let best = null, bs = 1e9;
+    for (let j = T.y - 3 - 3 * 8; j <= T.y + T.h + 24; j += 3) for (let i = T.x - 3 - 3 * 8; i <= T.x + T.w + 24; i += 3) {
+      const r = this.ringD(T, i, j, n); if (r < r0 || r > r1) continue;
+      if (this.inFields(i, j, n) || !placementOk(W, this.pid, type, i, j)) continue;
+      const off = this.frontOff(T, i + n / 2, j + n / 2);
+      if (house && off < 0.75) continue;                               // nobody lives in the barracks quarter
+      if (mil && off > 1.5) continue;
+      let ok = true;               // a free lane all round, so nobody is ever walled in
+      if (d.block) for (let a = -1; a <= n && ok; a++) for (let c = -1; c <= n && ok; c++) { const ii = i + a, jj = j + c; if (ii < 0 || jj < 0 || ii >= W.size || jj >= W.size) continue; const o = W.occ[idx(W, ii, jj)]; if (o && W.ents.get(o)?.kind === 'building') ok = false; }
+      if (!ok) continue;
+      let sc = r;
+      if (mil) sc = r * 0.5 + off * 5;
+      else if (rural) sc = r * 0.3 + (Math.PI - off) * 2.5;
+      else if (civic) sc = r * 1.6;
+      else if (house) {
+        sc = r * 0.8 + (Math.PI - off) * 0.4;
+        for (const b of this.m.bld) if (b.type === 'house' && b.x !== undefined) { const md = Math.abs(b.x - i) + Math.abs(b.y - j); if (md === 3) sc -= 2.4; else if (md === 6 && (b.x === i || b.y === j)) sc -= 0.7; }   // blocks and rows
+      }
+      if (sc < bs) { bs = sc; best = [i, j]; }
+    }
+    return best;
+  }
   build(type, near, rMin, rMax, anywhere = false) {
     const W = this.W, P = this.P; if (!canBuild(W, this.pid, type) || !canAfford(P, costOf(P, type))) return false;
+    const Q = this.lifeNeed, c0 = costOf(P, type);          // the tavern / hospital the people need comes before other buildings
+    if (Q && !['house', 'farm', 'tavern', 'hospital', 'mill', 'town_center', 'dock', 'barn', 'well'].includes(type) && Object.keys(c0).some(k => P.res[k] < c0[k] + (Q[k] || 0))) return false;
     const d = BUILDINGS[type], n = d.n;
     // already placing one?
     if (this.m.bld.some(b => b.type === type && !b.built)) return false;
+    const T = !anywhere && this.tcRect();
+    if (T && type === 'farm') { if (this.placeFarm(T)) return true; }      // the field districts outside the town (when they are all full: anywhere near)
+    else if (T && !d.water && !['lumber_camp', 'mining_camp', 'mill', 'watch_tower', 'town_center', 'dock'].includes(type)) { const sp = this.planSpot(type); if (sp) { this.order(type, sp[0], sp[1]); return true; } }
     const [cx, cy] = near, [tx, ty] = this.base;
     const far = !d.water && ['house', 'farm', 'barracks', 'archery_range', 'stable', 'market', 'castle', 'watch_tower', 'town_center', 'blacksmith', 'academy'].includes(type) ? 9 : 0;
     const planned = !anywhere && !d.water && type !== 'farm' && !['lumber_camp', 'mining_camp', 'mill', 'watch_tower'].includes(type);
@@ -868,11 +1068,7 @@ export class AI {
       if (!planned) break rings;          // drop sites / farms: the first fit next to the resource is the right one
     }
     if (!best) return false;
-    const [i, j] = best;
-    const vils = this.m.units.filter(u => u.type === 'villager').sort((a1, b1) => Math.hypot(a1.x - i, a1.y - j) - Math.hypot(b1.x - i, b1.y - j));
-    const builders = restNow(W, this.P) ? [] : vils.filter(v => !v.order || v.order.t !== 'build').slice(0, type === 'house' || type === 'farm' ? 1 : type === 'castle' ? 5 : 2).map(v => v.id);
-    command(W, { t: 'place', pid: this.pid, type, i, j, ids: builders });
-    this.m.bld.push({ type, built: false, placedAt: W.t, x: i, y: j });
+    this.order(type, best[0], best[1]);
     return true;
   }
 }

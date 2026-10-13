@@ -363,3 +363,19 @@ table.diplo .trib { white-space: nowrap; } table.diplo .trib button { width: aut
 @media (max-width: 760px) { .ttcols { grid-template-columns: 1fr 1fr; } }
 .techp .sp-head button, #diploPanel .sp-head button { width: auto; flex: 0 0 auto; margin: 0; padding: 4px 10px; }
 .ttabs button i:not([style*=url]) { display: none; }
+
+/* ---- v10: daily life */
+.lifebar { display: flex; gap: 8px; font-size: 13px; font-weight: bold; padding: 0 6px; text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.lifebar .good { color: #9fe07a; } .lifebar .mid { color: #f0d060; } .lifebar .bad { color: #ff7a5a; }
+@media (max-width: 1100px) { .lifebar span:nth-child(n+4) { display: none; } }
+#info .who { font-size: 12px; opacity: 0.9; margin-top: 2px; }
+#info .needs { display: flex; gap: 6px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
+#info .nd { display: inline-flex; align-items: center; gap: 2px; font-style: normal; }
+#info .nd em { font-style: normal; font-size: 12px; }
+#info .nd .tr { display: inline-block; width: 34px; height: 6px; border-radius: 3px; background: #0007; box-shadow: 0 0 0 1px #0008; overflow: hidden; }
+#info .nd .tr b { display: block; height: 100%; }
+#info .wr { font-size: 12px; opacity: 0.9; }
+#info .nm small.role { display: block; font-size: 11px; opacity: 0.75; font-weight: normal; }
+#info .nm small.role { display: inline; margin-left: 8px; }
+#info .cs { font-size: 13px; opacity: 0.95; margin-top: 2px; }
+#info .one .stats { font-size: 13px; line-height: 1.3; }

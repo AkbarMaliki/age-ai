@@ -4,6 +4,7 @@ import { CIVS, RELICS, CIV_KEYS, VICTORY } from './data.js';
 import { openTechTree } from './techtree.js';
 import { Saves } from './saves.js';
 import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js';
+import { townRing } from './sim.js';
 import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js';
 import { generate } from './map.js';
 import { AI } from './ai.js';
@@ -32,7 +33,7 @@ class Game {
     this.me = rp && rp.mode === 'watch' ? setup.me || 0 : on ? (on.spectator ? 0 : on.me) : setup.me;
     this.watch = (rp && rp.mode === 'watch') || (on ? !!on.spectator : setup.watch);
     if (on) this.seats = on.seats;
-    this.W = generate({ size: setup.size, seed: setup.seed, type: setup.map, opts: { season: setup.season, night: setup.night, relicWin: setup.relicWin, victory: setup.victory, treaty: setup.treaty, popLimit: setup.popLimit, startRes: setup.startRes }, players: setup.players });
+    this.W = generate({ size: setup.size, seed: setup.seed, type: setup.map, opts: { season: setup.season, night: setup.night, relicWin: setup.relicWin, life: setup.life === undefined ? false : setup.life !== 'off', victory: setup.victory, treaty: setup.treaty, popLimit: setup.popLimit, startRes: setup.startRes }, players: setup.players });
     this.ais = setup.ais.map(a => new AI(this.W, a.pid, a.diff));
     // the command log (save / replay): commands keyed by the tick they were given at
     this.rec = { v: 2, setup, cmds: rp && rp.mode === 'load' ? [] : rp ? rp.rec.cmds : [] };
@@ -87,7 +88,7 @@ class Game {
     const players = colors.map((c, i) => { const ai = watch || i > 0; return { name: watch ? COLOR_NAME[c] : i ? PLAYER_NAMES[i] : (opts.name || PLAYER_NAMES[0]), color: c, ai, team: teamOf(i),
       deck: ai ? null : (opts.deck && opts.deck.length >= 8 ? [...opts.deck] : null), style: ai ? deckKeys[rnd(deckKeys.length)] : null, civ: civOf(ai ? null : opts.civ) }; });
     return { size: opts.size, seed: opts.seed || ((Math.random() * 1e9) | 0), map: opts.map, season: opts.season === 'random' ? null : opts.season, night: opts.night || 'full',
-      relicWin: opts.relicWin === 'on', victory: opts.victory || 'conquest', treaty: +opts.treaty || 0, popLimit: +opts.popLimit || 200, startRes: opts.startRes || 'standar', speed: +opts.speed || 1,
+      relicWin: opts.relicWin === 'on', life: opts.life || 'on', victory: opts.victory || 'conquest', treaty: +opts.treaty || 0, popLimit: +opts.popLimit || 200, startRes: opts.startRes || 'standar', speed: +opts.speed || 1,
       players, ais: players.map((p, i) => p.ai ? { pid: i, diff: opts.diff } : null).filter(Boolean), me: 0, watch };
   }
   // online: everything comes from the host's game record, so every client builds the identical world
@@ -95,7 +96,7 @@ class Game {
     const g = on.game || {}, cfg = g.cfg || {};
     const players = on.seats.map(s => ({ name: s.name, color: s.color, ai: !!s.bot, team: s.team, deck: !s.bot && s.deck && s.deck.length >= 8 ? [...s.deck] : null, style: s.style || null, civ: s.civ || null }));
     return { size: cfg.size, seed: cfg.seed, map: cfg.map, season: cfg.season === 'random' ? null : cfg.season, night: cfg.night || 'full', relicWin: !!cfg.relicWin, players,
-      victory: cfg.victory || 'conquest', treaty: +cfg.treaty || 0, popLimit: +cfg.popLimit || 200, startRes: cfg.startRes || 'standar', speed: +cfg.speed || 1,
+      life: cfg.life || 'on', victory: cfg.victory || 'conquest', treaty: +cfg.treaty || 0, popLimit: +cfg.popLimit || 200, startRes: cfg.startRes || 'standar', speed: +cfg.speed || 1,
       ais: on.seats.map((s, i) => s.bot ? { pid: i, diff: s.diff || 'normal' } : null).filter(Boolean), me: on.spectator ? 0 : on.me, watch: !!on.spectator, online: true };
   }
   // meta commands in a command log (online: a dropped player's AI takes over and hands back)
@@ -234,7 +235,7 @@ class Game {
         this.hud.notify(`${W.players[e.owner].name} ${e.resign ? 'menyerah' : e.regicide ? 'kalah — Rajanya tewas' : 'telah dikalahkan'}.`, e.owner === this.me ? 'bad' : 'age');
         if (e.owner === this.me && !this.lost && W.winner < 0) this.end(false);      // others may still be fighting (1 vs 2 / 1 vs 3)
         break;
-      case 'victory': if (e.relic) { this.relicWin = true; this.hud.notify('📿 Kemenangan Relik!', 'age'); } if (e.wonder) this.hud.notify('🏛 Kemenangan Keajaiban Dunia!', 'age'); if (e.koth) this.hud.notify('⛰ Kemenangan Raja Bukit!', 'age'); this.end(e.team === W.players[this.me].team); break;
+      case 'victory': if (e.relic) { this.relicWin = true; this.hud.notify('📿 Kemenangan Relik!', 'age'); } if (e.wonder) this.hud.notify('🏛 Kemenangan Keajaiban Dunia!', 'age'); if (e.koth) this.hud.notify('⛰ Kemenangan Raja Bukit!', 'age'); if (e.prosper) this.hud.notify('⭐ Kemenangan Kemakmuran!', 'age'); this.end(e.team === W.players[this.me].team); break;
       case 'shipready': if (mine) { this.snd.play('card'); this.hud.notify('Kiriman Kerajaan tersedia! Buka 🃏 Kiriman (K) dan pilih kartu.', 'age'); } break;
       case 'shipsent': if (mine) this.hud.notify(`Kiriman berangkat: ${CARDS[e.card].name} — tiba dalam ${XP.travel} detik.`); break;
       case 'shipment': if (mine) { this.snd.play('ship'); this.hud.notify(`Kiriman tiba di Pusat Kota: ${CARDS[e.card].name}!`, 'age'); this.view.fx({ k: 'age', x: e.x, y: e.y }); } break;
@@ -257,6 +258,15 @@ class Game {
       case 'treatyend': this.snd.play('alert'); this.hud.notify('⚔ Gencatan senjata berakhir! Serangan kini dimungkinkan.', 'bad'); break;
       case 'wonderbuilt': { const o = W.players[e.owner]; this.snd.play('age'); this.hud.notify(o.team === P.team ? `🏛 Keajaiban ${o.name} berdiri! Pertahankan ${Math.round(e.secs / 60)} menit untuk menang.` : `🏛 ${o.name} menyelesaikan Keajaiban Dunia! Hancurkan dalam ${Math.round(e.secs / 60)} menit atau kalah!`, o.team === P.team ? 'age' : 'bad'); break; }
       case 'wonderlost': this.hud.notify('🏛 Sebuah Keajaiban Dunia runtuh!', 'age'); break;
+      case 'birth': if (mine) { this.snd.play('trainedVil'); this.hud.notify(`👶 Bayi lahir di keluarga ${e.fam}: ${e.name.split(' ')[0]}!`, 'age'); } break;
+      case 'grownup': if (mine) this.hud.notify(`🧑 ${e.name} kini dewasa dan siap bekerja.`); break;
+      case 'outbreak': if (mine) { this.snd.play('alert'); this.hud.notify(`🤒 Wabah! ${e.name} jatuh sakit — penyakit menular ke yang berdekatan. Bangun Balai Pengobatan dan Sumur.`, 'bad'); } break;
+      case 'contagion': if (mine && W.t - (this.lastContagion || -99) > 60) { this.lastContagion = W.t; this.hud.notify('🤒 Penyakit tertular dari orang asing!', 'bad'); } break;
+      case 'lifedeath': if (mine && W.t - (this.lastLifeDeath || -99) > 8) { this.lastLifeDeath = W.t; this.snd.play('alert'); this.hud.notify(`💀 ${e.name} meninggal karena ${e.why}.`, 'bad'); } break;
+      case 'desert': if (mine) { this.snd.play('alert'); this.hud.notify(`🚶 ${e.name} meninggalkan kerajaan karena tidak bahagia. Warga butuh hiburan — bangun Kedai!`, 'bad'); } break;
+      case 'penned': if (mine && W.t - (this.lastPenned || -99) > 30) { this.lastPenned = W.t; this.hud.notify('🐑 Ternak masuk padang kandang — akan bertambah gemuk dan menghasilkan susu.'); } break;
+      case 'prosperhold': { const o = W.players[e.owner]; this.snd.play('alert'); this.hud.notify(o.team === P.team ? `⭐ Kerajaan ${o.name} makmur! Pertahankan 10 menit untuk menang.` : `⭐ ${o.name} mencapai kemakmuran — menang dalam 10 menit kecuali dihentikan!`, o.team === P.team ? 'age' : 'bad'); break; }
+      case 'prosperlost': if (mine) this.hud.notify('⭐ Kemakmuran turun di bawah batas — hitungan mundur berhenti.', 'bad'); break;
       case 'kothcapture': { const o = W.players[e.owner]; if (!o) break; this.snd.play('alert'); this.hud.notify(o.team === P.team ? `⛰ Monumen dikuasai ${o.name}! Pertahankan ${Math.round(e.secs / 60)} menit.` : `⛰ ${o.name} merebut Monumen! Rebut kembali dalam ${Math.round(e.secs / 60)} menit!`, o.team === P.team ? 'age' : 'bad'); break; }
     }
   }
@@ -317,6 +327,9 @@ class Game {
       case 'tech': if (TECHS[e.tech].group || e.tech === 'gunpowder') this.hud.notify(`${W.players[e.owner].name} memilih ${TECHS[e.tech].name}.`, 'enemy'); break;
       case 'hungry': this.hud.notify(`${W.players[e.owner].name} kelaparan!`, 'bad'); break;
       case 'wonderbuilt': this.snd.play('age'); this.hud.notify(`🏛 ${W.players[e.owner].name} menyelesaikan Keajaiban Dunia!`, 'age'); break;
+      case 'outbreak': this.hud.notify(`🤒 Wabah di kerajaan ${W.players[e.owner].name}!`, 'bad'); break;
+      case 'birth': if (Math.random() < 0.3) this.hud.notify(`👶 Kelahiran di ${W.players[e.owner].name}: ${e.name}`); break;
+      case 'desert': this.hud.notify(`🚶 Warga ${W.players[e.owner].name} pergi karena tidak bahagia.`); break;
       case 'kothcapture': if (W.players[e.owner]) this.hud.notify(`⛰ ${W.players[e.owner].name} menguasai Monumen!`, 'age'); break;
       case 'treatyend': this.hud.notify('⚔ Gencatan senjata berakhir!', 'bad'); break;
       case 'tribute': this.hud.notify(`🎁 ${W.players[e.owner].name} → ${W.players[e.to].name}: ${e.n} ${RES_NAME[e.res]}`); break;
@@ -368,6 +381,13 @@ class Game {
     for (const s of ships) { const f = nearestFree(this.W, s.x, s.y, this.me, 6); if (f) this.send({ t: 'unload', pid: this.me, ids: [s.id], x: f[0] + 0.5, y: f[1] + 0.5 }); }
   }
   startTarget(kind) { this.targeting = kind; this.placing = null; this.view.setGhost(null); this.hud.notify({ patrol: 'Klik titik tujuan patroli (Esc batal).', follow: 'Klik unit yang ingin dikawal (Esc batal).', ground: 'Klik titik yang ingin dibombardir (Esc batal).', flare: 'Klik titik di peta atau minimap untuk memberi tanda ke sekutu (Esc batal).' }[kind]); this.snd.play('click'); }
+  townWatch() {
+    const ids = this.ownUnits().filter(u => MILITARY(u.type) && !u.nav).map(u => u.id); if (!ids.length) return;
+    const pts = townRing(this.W, this.me, this.W.size >= 180 ? 15 : 13, 8);
+    if (pts.length < 3) { this.hud.notify('Tidak ada Pusat Kota untuk dijaga.', 'bad'); return; }
+    this.send({ t: 'patrol', pid: this.me, ids, pts, guard: true }); this.snd.play('click');
+    this.hud.notify(`🏰 ${ids.length} prajurit kini berjaga keliling kota.`);
+  }
   sendFlare(x, y) { if (this.watch || this.lost) return; this.send({ t: 'flare', pid: this.me, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }); this.snd.play('click'); }
   // diplomacy: who is with whom, tribute, flares
   toggleDiplo(on = $('diploPanel').classList.contains('hidden')) {
@@ -752,7 +772,7 @@ async function boot() {
   if (!opts.night) opts.night = 'full';
   if (!opts.civ) opts.civ = 'random';
   if (!opts.relicWin) opts.relicWin = 'off';
-  for (const [k, v] of Object.entries({ victory: 'conquest', teams: 'ffa', treaty: 0, popLimit: 200, startRes: 'standar', speed: 1 })) if (opts[k] === undefined) opts[k] = v;
+  for (const [k, v] of Object.entries({ life: 'on', victory: 'conquest', teams: 'ffa', treaty: 0, popLimit: 200, startRes: 'standar', speed: 1 })) if (opts[k] === undefined) opts[k] = v;
   if (![112, 144, 180, 220, 280].includes(opts.size)) opts.size = 144;
   const segs = document.querySelectorAll('.seg');
   segs.forEach(s => { const k = s.dataset.k; s.querySelectorAll('button').forEach(b => { b.classList.toggle('on', String(opts[k]) === b.dataset.v); b.onclick = () => { opts[k] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); store.set('opts', opts); Sound.ui(); }; }); });

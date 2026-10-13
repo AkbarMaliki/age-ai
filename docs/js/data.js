@@ -57,7 +57,9 @@ export const UNITS = {
 // Gaia (nature): animals and bandits. animal: herd = sheep (convertible), flee = deer, fight = boar (strikes back),
 // predator = wolf (hunts villagers), guard = bear/bandit (protects a treasure). food = meat left on the carcass.
 Object.assign(UNITS, {
-  sheep: { name: 'Domba', hp: 7, atk: 0, ma: 0, pa: 0, speed: 0.7, range: 0, reload: 2, los: 3, animal: 'herd', food: 100, cls: 'animal', desc: 'Bisa digiring. Sembelih untuk 100 makanan.' },
+  sheep: { name: 'Domba', hp: 7, atk: 0, ma: 0, pa: 0, speed: 0.7, range: 0, reload: 2, los: 3, animal: 'herd', food: 100, fat: 220, milk: 0.12, cls: 'animal', cost: { food: 60, gold: 20 }, time: 12, age: 1, from: 'barn', key: 'Q', desc: 'Bisa digiring. Sembelih untuk 100 makanan — atau gemukkan di Kandang (sampai 220) sambil menghasilkan susu dan wol.' },
+  cow: { name: 'Sapi', hp: 25, atk: 0, ma: 0, pa: 1, speed: 0.55, range: 0, reload: 2, los: 3, animal: 'herd', food: 200, fat: 450, milk: 0.25, cls: 'animal', cost: { food: 80, gold: 60 }, time: 18, age: 1, from: 'barn', key: 'W', desc: 'Ternak besar. Di Kandang menghasilkan susu dan bertambah gemuk (sampai 450 makanan).' },
+  child: { name: 'Anak', hp: 14, atk: 0, ma: 0, pa: 0, speed: 0.95, range: 0, reload: 2, los: 3, cls: 'child', civil: true, age: 9, scale: 0.7, sprite: 'villager_m', desc: 'Anak sebuah keluarga. Bermain di dekat rumah dan tumbuh menjadi penduduk desa.' },
   deer: { name: 'Rusa', hp: 5, atk: 0, ma: 0, pa: 0, speed: 1.35, range: 0, reload: 2, los: 4, animal: 'flee', food: 140, cls: 'animal', desc: 'Lari saat didekati. Buru untuk 140 makanan.' },
   boar: { name: 'Babi Hutan', hp: 75, atk: 7, ma: 0, pa: 1, speed: 0.95, range: 0, reload: 2.0, los: 4, animal: 'fight', food: 340, cls: 'animal', desc: 'Melawan balik! Buru bersama-sama untuk 340 makanan.' },
   wolf: { name: 'Serigala', hp: 25, atk: 3, ma: 0, pa: 0, speed: 1.2, range: 0, reload: 1.5, los: 6, animal: 'predator', cls: 'animal', desc: 'Pemangsa. Menyerang penduduk desa.' },
@@ -65,7 +67,7 @@ Object.assign(UNITS, {
   bandit: { name: 'Bandit', hp: 55, atk: 6, ma: 1, pa: 1, speed: 0.9, range: 0, reload: 2.0, los: 5, guard: true, cls: 'infantry', desc: 'Perampok yang menjaga harta jarahan.' },
 });
 for (const [k, u] of Object.entries(UNITS)) { u.id = k; u.cls = u.cls || (k === 'villager' ? 'villager' : u.range ? 'archer' : 'infantry'); u.sprite = u.sprite || k; }
-export const MILITARY = (t) => { const u = UNITS[t]; return !!u && !u.animal && t !== 'villager' && !u.fisher && t !== 'transport_ship'; };
+export const MILITARY = (t) => { const u = UNITS[t]; return !!u && !u.animal && !u.civil && t !== 'villager' && !u.fisher && t !== 'transport_ship'; };
 export const GAIA = -1;   // owner id of nature / bandits
 export const TREASURES = {
   gold: { name: 'Peti Emas', res: 'gold', amount: [150, 300] }, food: { name: 'Gerobak Makanan', res: 'food', amount: [200, 350] },
@@ -86,6 +88,10 @@ export const BUILDINGS = {
   stable: { name: 'Istal', n: 3, hp: 1500, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 6, trains: ['scout', 'knight'], needs: ['barracks'], techs: ['light_cav', 'hussar', 'cavalier', 'paladin', 'husbandry', 'flank_tactics'] },
   blacksmith: { name: 'Pandai Besi', n: 3, hp: 1800, ma: 1, pa: 7, cost: { wood: 150 }, time: 40, age: 2, los: 6, needs: ['barracks'], techs: ['forging', 'iron_casting', 'scale_mail', 'chain_mail', 'scale_barding', 'chain_barding', 'fletching', 'bodkin', 'padded_archer', 'doc_legion', 'doc_cavalry', 'doc_archers'] },
   academy: { name: 'Akademi', n: 4, hp: 2100, ma: 1, pa: 8, cost: { wood: 225, stone: 75 }, time: 60, age: 2, los: 7, needs: ['blacksmith'], trains: ['cannon', 'healer'], techs: ['medicine', 'spy_network', 'masonry', 'ballistics', 'gunpowder', 'spec_samurai', 'spec_ninja', 'spec_fire', 'spec_crossbow', 'spec_cataphract', 'spec_lancer', 'doc_fortress', 'doc_blitz', 'doc_formation'], ability: 'spy' },
+  well: { name: 'Sumur', n: 1, hp: 300, ma: 0, pa: 6, cost: { wood: 40, stone: 15 }, time: 12, age: 1, los: 3, well: 10, desc: 'Air bersih: warga dalam 10 petak tidak kehausan.' },
+  tavern: { name: 'Kedai', n: 3, hp: 1300, ma: 1, pa: 5, cost: { wood: 175 }, time: 40, age: 1, los: 5, tavern: 12, techs: ['brewery', 'minstrels'], desc: 'Hiburan, makan dan minum. Warga mampir saat senja.' },
+  hospital: { name: 'Balai Pengobatan', n: 3, hp: 1500, ma: 2, pa: 6, cost: { wood: 175, gold: 75 }, time: 50, age: 2, los: 6, hospital: 11, techs: ['herbalism', 'quarantine', 'sanitation'], desc: 'Menyembuhkan yang sakit dan menahan wabah.' },
+  barn: { name: 'Kandang', n: 5, pen: 3, hp: 1100, ma: 0, pa: 5, cost: { wood: 140 }, time: 35, age: 1, los: 5, drop: ['food'], trains: ['sheep', 'cow'], techs: ['fodder'], penCap: 10, desc: 'Ternak di padang kandang bertambah gemuk dan menghasilkan susu.' },
   monastery: { name: 'Biara', n: 3, hp: 2100, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 2, los: 7, needs: ['barracks'], trains: ['monk'], techs: ['fervor', 'sanctity', 'illumination'], relics: true },
   siege_workshop: { name: 'Bengkel Pengepungan', n: 3, hp: 1500, ma: 0, pa: 7, cost: { wood: 200 }, time: 50, age: 3, los: 6, needs: ['blacksmith'], trains: ['ram', 'mangonel', 'scorpion'], techs: ['capped_ram', 'onager', 'heavy_scorpion'] },
   wonder: { name: 'Keajaiban Dunia', n: 5, hp: 4800, ma: 8, pa: 12, cost: { wood: 1000, stone: 1000, gold: 1000 }, time: 360, age: 4, los: 10, wonder: true },
@@ -130,6 +136,12 @@ export const TECHS = {
   husbandry: { name: 'Peternakan Kuda', cost: { food: 150 }, time: 40, age: 2, at: 'stable', key: 'E', glyph: '🐎', desc: 'Kavaleri dan Pemanah Berkuda +10% kecepatan.' },
   flank_tactics: { name: 'Taktik Sayap', cost: { food: 250, gold: 150 }, time: 50, age: 3, at: 'stable', key: 'R', glyph: '🌀', desc: 'Serangan kavaleri dari samping atau belakang +50% (biasanya +25%).' },
   medicine: { name: 'Ilmu Pengobatan', cost: { food: 200, gold: 200 }, time: 50, age: 3, at: 'academy', key: 'V', glyph: '⚕', desc: 'Tabib menyembuhkan 50% lebih cepat; semua tentara memulihkan HP sendiri bila tidak diserang 8 detik.' },
+  brewery: { name: 'Pembuatan Bir', cost: { food: 120, wood: 80 }, time: 35, age: 1, at: 'tavern', key: 'Q', glyph: '🍺', desc: 'Kunjungan ke Kedai memulihkan hiburan 50% lebih banyak.' },
+  minstrels: { name: 'Pemusik Keliling', cost: { food: 150, gold: 75 }, time: 40, age: 2, at: 'tavern', key: 'W', glyph: '🎶', desc: 'Rasa bosan warga datang 35% lebih lambat.' },
+  herbalism: { name: 'Ramuan Herbal', cost: { food: 150, gold: 60 }, time: 40, age: 2, at: 'hospital', key: 'Q', glyph: '🌿', desc: 'Sakit sembuh 40% lebih cepat; warga pulih lebih cepat.' },
+  quarantine: { name: 'Karantina', cost: { food: 200, gold: 100 }, time: 45, age: 2, at: 'hospital', key: 'W', glyph: '🚧', desc: 'Penularan penyakit 60% lebih kecil.' },
+  sanitation: { name: 'Sanitasi', cost: { wood: 200, gold: 120 }, time: 50, age: 3, at: 'hospital', key: 'E', glyph: '🧼', desc: 'Wabah baru 50% lebih jarang.' },
+  fodder: { name: 'Pakan Ternak', cost: { food: 100, wood: 100 }, time: 35, age: 1, at: 'barn', key: 'A', glyph: '🌾', desc: 'Ternak di kandang gemuk dan memerah susu 50% lebih cepat.' },
   fervor: { name: 'Semangat', cost: { gold: 140 }, time: 35, age: 2, at: 'monastery', key: 'W', glyph: '🏃', desc: 'Biarawan +15% kecepatan.' },
   sanctity: { name: 'Kesucian', cost: { gold: 120 }, time: 35, age: 2, at: 'monastery', key: 'E', glyph: '✨', desc: 'Biarawan +50% HP.' },
   illumination: { name: 'Pencerahan', cost: { gold: 120 }, time: 45, age: 3, at: 'monastery', key: 'R', glyph: '🕯', desc: 'Iman Biarawan pulih 50% lebih cepat (konversi lebih sering).' },
@@ -201,10 +213,24 @@ export const START_PRESETS = {
   tinggi: { name: 'Tinggi', res: { food: 1000, wood: 1000, gold: 1000, stone: 1000, iron: 300 } },
   deathmatch: { name: 'Deathmatch', res: { food: 20000, wood: 20000, gold: 10000, stone: 5000, iron: 3000 } },
 };
+// ---- daily life: every person has needs (0..100); they drive behaviour, work speed, health, births and morale
+export const LIFE = {
+  hunger: 0.11, thirst: 0.17, energyWork: 0.34, energyIdle: 0.12, fun: 0.055, funSoldier: 0.04,     // per second
+  sleep: 1.1, sleepRough: 0.55,                // energy regained per second indoors (own home / any shelter)
+  tavernFun: 45, tavernTime: 22, tavernMeal: 3, drinkTime: 3, sickTime: 150, cureTime: 25,
+  outbreak: 0.012, spread: 0.035, birthEvery: 75, birthP: 0.22, growUp: 300, desertFun: 6,
+  prosperWin: 78,
+};
+export const NAMES = {
+  m: ['Arya', 'Bima', 'Dimas', 'Gilang', 'Hendra', 'Joko', 'Raka', 'Sena', 'Wira', 'Bayu', 'Candra', 'Danu', 'Galih', 'Jaya', 'Panji', 'Rangga', 'Satria', 'Tirta', 'Yudha', 'Agus', 'Budi', 'Eko', 'Fajar', 'Harun', 'Indra', 'Krisna', 'Lingga', 'Made', 'Nanda', 'Oka'],
+  f: ['Ayu', 'Dewi', 'Fitri', 'Gita', 'Indah', 'Kirana', 'Laras', 'Mega', 'Nadia', 'Putri', 'Ratna', 'Sari', 'Sekar', 'Tari', 'Wulan', 'Citra', 'Dian', 'Intan', 'Melati', 'Nila', 'Asih', 'Bunga', 'Cahya', 'Dara', 'Endah', 'Hesti', 'Kemuning', 'Lestari', 'Maya', 'Rara'],
+  fam: ['Wijaya', 'Pratama', 'Kusuma', 'Santoso', 'Hadinata', 'Saputra', 'Nugroho', 'Wibowo', 'Purnama', 'Setiawan', 'Halim', 'Gunawan', 'Prasetyo', 'Suryadi', 'Mahendra', 'Rahardjo', 'Utomo', 'Anggara', 'Permana', 'Basuki', 'Darmawan', 'Hartono', 'Irawan', 'Kartika', 'Laksana', 'Mulyadi', 'Pranata', 'Sasongko', 'Tanjung', 'Wardana'],
+};
 export const VICTORY = {
   conquest: { name: 'Penaklukan', desc: 'Hancurkan semua musuh, atau bangun Keajaiban Dunia dan pertahankan 10 menit.' },
   regicide: { name: 'Regicide', desc: 'Setiap kerajaan punya Raja. Bunuh Raja musuh untuk mengalahkannya.' },
   koth: { name: 'Raja Bukit', desc: 'Kuasai Monumen di tengah peta selama 10 menit (atau taklukkan semua musuh).' },
+  prosper: { name: 'Kemakmuran', desc: 'Jaga Indeks Kemakmuran kerajaanmu (kesehatan, kebahagiaan, makanan, air, fasilitas, penduduk) di atas 78 selama 10 menit — atau taklukkan semua musuh.' },
 };
 export const WONDER_TIME = 600, KOTH_TIME = 600;     // game-seconds a wonder / the monument must be held
 

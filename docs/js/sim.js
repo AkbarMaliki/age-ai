@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013133425';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES } from './data.js?v=20261013161223';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -21,7 +21,7 @@ export function createWorld({ size, terrain, players, seed = 1, opts = {} }) {
       xp: 0, nextXp: XP.first, ships: 0, shipsEarned: 0, cards: [], shipment: null, mods: newMods(), sv: 0, spec: {}, hungry: false, spyUntil: 0, spyCd: 0, civ: CIVS[p.civ] ? p.civ : null })),
     cmds: [], ev: [], rnd: rng(seed), seed, paths: 0, nodes: 0, winner: -1, unreach: new Map(),
     market: { ...MARKET.base },
-    opts: { night: opts.night || 'full', season, relicWin: !!opts.relicWin, victory: opts.victory || 'conquest', treaty: (+opts.treaty || 0) * 60, popLimit: +opts.popLimit || POP_LIMIT },
+    opts: { night: opts.night || 'full', season, relicWin: !!opts.relicWin, life: opts.life !== false && opts.life !== 'off', victory: opts.victory || 'conquest', treaty: (+opts.treaty || 0) * 60, popLimit: +opts.popLimit || POP_LIMIT },
     wonders: new Map(), reseed: {}, season: SEASONS[season], frozen: !!SEASONS[season].frozen,
     night: false, day: 1, rainUntil: 0, weatherT: 90,
   };
@@ -200,10 +200,10 @@ export function addBuilding(W, owner, type, i, j, built = false, opts = {}) {
   const b = add(W, { kind: 'building', type, owner, x: i, y: j, w, h, axis: opts.axis || 'x', hp: built ? bs.hp : 1, maxHp: bs.hp, progress: built ? 1 : 0, built,
     queue: [], rally: null, cool: 0, nb: 0, food: type === 'farm' && W.players[owner] ? farmFood(W.players[owner]) : d.food || 0, placedAt: W.t, age: W.players[owner] ? W.players[owner].age : 1 });
   if (d.block) {
-    for (let a = 0; a < w; a++) for (let c = 0; c < h; c++) { const k = idx(W, i + a, j + c); W.occ[k] = b.id; if (W.road[k]) { W.road[k] = 0; W.roadVer++; } }
+    for (let a = 0; a < w; a++) for (let c = 0; c < h; c++) { const k = idx(W, i + a, j + c); if (d.pen && c >= h - d.pen) { W.focc[k] = b.id; continue; } W.occ[k] = b.id; if (W.road[k]) { W.road[k] = 0; W.roadVer++; } }   // a barn's yard stays walkable
     W.regionDirty = W.regionDirtyW = true;
     // units standing on the new footprint step out of it (they used to get trapped inside and jitter forever)
-    for (const u of W.dyn.values()) if (u.kind === 'unit' && u.x >= i - 0.3 && u.x < i + w + 0.3 && u.y >= j - 0.3 && u.y < j + h + 0.3) { unstick(W, u); u.path = null; }
+    for (const u of W.dyn.values()) if (u.kind === 'unit' && u.x >= i - 0.3 && u.x < i + w + 0.3 && u.y >= j - 0.3 && u.y < j + h - (d.pen || 0) + 0.3) { unstick(W, u); u.path = null; }
   } else for (let a = 0; a < w; a++) for (let c = 0; c < h; c++) W.focc[idx(W, i + a, j + c)] = b.id;   // walkable footprints (farms) on their own grid
   if (built) onBuilt(W, b, true);
   return b;
@@ -231,6 +231,17 @@ function onBuilt(W, b, silent) {
   if (d.wonder && !silent) { W.wonders.set(b.id, W.t); W.ev.push({ k: 'wonderbuilt', owner: b.owner, secs: WONDER_TIME }); }
   if (!silent) { P.stats.built++; addXp(W, P, costVal(d.cost) * XP.build); W.ev.push({ k: 'built', x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }
   if (!silent || b.type !== 'town_center') buildRoad(W, b);
+  if (b.type === 'town_center') plaza(W, b);
+}
+// a paved square right round a Town Center (the heart of the town plan; also a road for speed)
+function plaza(W, b) {
+  let n = 0;
+  for (let j = b.y - 1; j <= b.y + b.h; j++) for (let i = b.x - 1; i <= b.x + b.w; i++) {
+    if (!inb(W, i, j) || (i >= b.x && i < b.x + b.w && j >= b.y && j < b.y + b.h)) continue;
+    const k = idx(W, i, j); if (W.occ[k] || W.road[k] || W.terrain[k] === TER.WATER || W.terrain[k] === TER.ROCK) continue;
+    W.road[k] = b.owner + 1; n++;
+  }
+  if (n) W.roadVer++;
 }
 
 // ---------------------------------------------------------------- roads: every finished building gets a lane to the town
@@ -452,8 +463,12 @@ function applyCmd0(W, c) {
     }
     case 'form': { for (const u of own(W, c.pid, c.ids)) u.form = FORMATIONS[c.f] ? c.f : null; break; }
     case 'smart': {
-      const us = own(W, c.pid, c.ids); const tgt = c.target ? alive(W, c.target) : null;
+      let us = own(W, c.pid, c.ids); const tgt = c.target ? alive(W, c.target) : null;
       if (!us.length) break;
+      if (tgt && tgt.kind === 'building' && BUILDINGS[tgt.type].pen && tgt.owner === c.pid && tgt.built) {      // livestock into the barn's yard
+        for (const u of us.filter(u => UNITS[u.type].animal === 'herd')) { const [x, y] = penSpot(W, tgt, u.id); setOrder(W, u, { t: 'move', x, y }); u.toPen = tgt.id; }
+        us = us.filter(u => UNITS[u.type].animal !== 'herd'); if (!us.length) break;
+      }
       if (!tgt) {
         const ships = us.filter(u => u.cargo && u.cargo.length && !passable(W, Math.floor(c.x), Math.floor(c.y), u.owner, true));
         for (const s of ships) setOrder(W, s, { t: 'unload', x: c.x, y: c.y });
@@ -594,7 +609,12 @@ function applyCmd0(W, c) {
     }
     case 'flare': W.ev.push({ k: 'flare', owner: c.pid, x: +c.x, y: +c.y }); break;
     // patrol between where each unit stands and the point; guard (follow) a friendly unit; bombard a spot
-    case 'patrol': for (const u of own(W, c.pid, c.ids)) if (MILITARY(u.type) && stat(W, u.owner, u.type).atk > 0) setOrder(W, u, { t: 'patrol', ax: u.x, ay: u.y, bx: c.x, by: c.y, leg: 1 }); break;
+    case 'patrol': {
+      const us = own(W, c.pid, c.ids).filter(u => MILITARY(u.type) && stat(W, u.owner, u.type).atk > 0);
+      const pts = Array.isArray(c.pts) ? c.pts.slice(0, 16).map(p => [+p[0], +p[1]]).filter(p => isFinite(p[0]) && isFinite(p[1])) : null;
+      us.forEach((u, k) => setOrder(W, u, pts && pts.length >= 2 ? { t: 'patrol', pts, i: Math.floor(k * pts.length / us.length), guard: !!c.guard } : { t: 'patrol', ax: u.x, ay: u.y, bx: c.x, by: c.y, leg: 1 }));
+      break;
+    }
     case 'follow': { const t = alive(W, c.target); if (!t || t.kind !== 'unit') break; for (const u of own(W, c.pid, c.ids)) if (u !== t && !u.nav) setOrder(W, u, enemies(W, t.owner, u.owner) ? { t: 'attack', id: t.id } : { t: 'follow', id: t.id }); break; }
     case 'ground': for (const u of own(W, c.pid, c.ids)) if (stat(W, u.owner, u.type).splash) setOrder(W, u, { t: 'ground', x: c.x, y: c.y }); break;
     // stance: agresif (default: chase what it sees) | bertahan (fight, then return to its post) | diam (stand ground) | pasif (never auto-attack)
@@ -680,6 +700,7 @@ export function step(W) {
   if (W.tick % 4 === 0) updateVision(W);
   if (W.tick % 10 === 0) checkVictory(W);
   if (W.tick % 10 === 5) { relicTick(W); ruleTick(W); }
+  if (W.tick % 10 === 7) { barnTick(W); if (W.opts.life) lifeTick(W); }
 }
 
 // ---------------------------------------------------------------- day / night, food upkeep, weather
@@ -712,6 +733,7 @@ function upkeep(W, P) {
   const need = Math.ceil(P.pop * per);
   if (P.res.food >= need) { P.res.food -= need; P.hungry = false; W.ev.push({ k: 'upkeep', owner: P.id, food: need }); }
   else { P.res.food = 0; P.hungry = true; P.stats.hungryDays++; W.ev.push({ k: 'hungry', owner: P.id, food: need }); }
+  for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && u.hu !== undefined) u.hu = P.hungry ? Math.min(u.hu, 35) : 100;     // breakfast (or not)
 }
 // torches (tech or card): a late shift — villagers keep working by torchlight until midnight, then go in too
 const worksAtNight = (W, P) => P.mods.nightWork || P.techs.has('torches');
@@ -727,11 +749,14 @@ function restVillagers(W, P, all = false) {
   if (!homes.length) return;
   const used = new Map();
   for (const u of W.dyn.values()) {
-    if (u.kind !== 'unit' || u.owner !== P.id || u.type !== 'villager' || u.inside || (u.order && u.order.t === 'rest') || (u.order && !all && !['gather', 'drop', 'build', 'repair'].includes(u.order.t))) continue;
+    if (u.kind !== 'unit' || u.owner !== P.id || (u.type !== 'villager' && u.type !== 'child') || u.inside || (u.order && u.order.t === 'rest') || (u.order && !all && !['gather', 'drop', 'build', 'repair'].includes(u.order.t))) continue;
     let h = null, hd = 1e9, any = null, ad = 1e9;
     for (const b of homes) { const dd = distTo(b, u.x, u.y); if (dd < ad) { ad = dd; any = b; } if ((used.get(b.id) || 0) < ROOM[b.type] && dd < hd) { hd = dd; h = b; } }
+    const own = u.homeId && W.ents.get(u.homeId); if (own && own.built && !P.bell) h = own;          // families sleep at home
     h = h || any; used.set(h.id, (used.get(h.id) || 0) + 1);
-    u.saved = u.order && u.order.t !== 'attack' && u.order.t !== 'move' ? u.order : { t: 'idle' }; setOrder(W, u, { t: 'rest', id: h.id }); if (P.bell) u.bell = true;
+    u.saved = u.order && u.order.t !== 'attack' && u.order.t !== 'move' ? u.order : { t: 'idle' };
+    const tav = !P.bell && u.type === 'villager' && (u.fu ?? 100) < 70 && tavernFor(W, u);      // a drink at the tavern on the way home
+    setOrder(W, u, tav ? { t: 'visit', id: tav.id, why: 'tavern', then: { t: 'rest', id: h.id } } : { t: 'rest', id: h.id }); if (P.bell) u.bell = true;
   }
 }
 function goHome(W, u) {
@@ -864,7 +889,9 @@ function unitTick(W, u) {
   const k = tileAt(W, u.x, u.y);
   if ((W.occ[k] || (u.nav ? W.terrain[k] !== TER.WATER : W.terrain[k] === TER.WATER && !W.frozen)) && !passable(W, Math.floor(u.x), Math.floor(u.y), u.owner, u.nav)) { unstick(W, u); u.path = null; }   // never stay inside a footprint (or in the water)
   if (!u.order && u.oq && u.oq.length) { u.order = u.oq.shift(); u.path = null; }     // next shift-queued order
-  if (u.inside && (!u.order || (u.order.t !== 'rest' && u.order.t !== 'garrison'))) leaveHome(W, u);
+  if (u.inside && (!u.order || (u.order.t !== 'rest' && u.order.t !== 'garrison' && u.order.t !== 'visit'))) leaveHome(W, u);
+  if (u.type === 'child' && !u.order && (W.tick + u.id) % 15 === 0) childTick(W, u);
+  if (u.order && u.order.wander && u.order.t === 'move' && (u.stuck > 12 || (u.order.t0w ??= W.t) < W.t - 25)) { u.order = null; u.path = null; u.anim = 'idle'; }      // a stroll that leads nowhere ends
   if (d.packs) {          // trebuchet: 4 s to pack / unpack; it fires only unpacked and moves only packed
     if (u.packT > 0) { u.packT -= TICK; u.anim = 'idle'; u.path = null; if (u.packT <= 0) { u.type = u.packTo; u.anim = 'idle'; W.ev.push({ k: 'pack', x: u.x, y: u.y, owner: u.owner }); } return; }
     const o = u.order, t = o && o.id ? alive(W, o.id) : null, tx = t ? center(t)[0] : o && o.x, ty = t ? center(t)[1] : o && o.y;
@@ -874,7 +901,7 @@ function unitTick(W, u) {
     if (u.type === 'trebuchet' && !o) { u.anim = u.anim === 'attack' && u.aT < 1 ? 'attack' : 'idle'; }
   }
   if (s.convert && u.faith < 1) u.faith = Math.min(1, u.faith + TICK / s.faith);
-  if (!u.order && u.type === 'villager' && (W.tick + u.id) % 20 === 0 && restNow(W, W.players[u.owner])) goHome(W, u);   // idle or just trained after dusk
+  if (!u.order && (u.type === 'villager' || u.type === 'child') && (W.tick + u.id) % 20 === 0 && restNow(W, W.players[u.owner])) goHome(W, u);   // idle or just trained after dusk
   if (u.hp < u.maxHp && u.owner >= 0 && W.t - (u.hitT ?? -99) > 8 && MILITARY(u.type) && W.players[u.owner].techs.has('medicine')) u.hp = Math.min(u.maxHp, u.hp + 0.4 * TICK);
   const o = u.order;
   if (!o) {
@@ -996,8 +1023,8 @@ function unitTick(W, u) {
     }
     case 'patrol': {
       if (u.scan === undefined || (u.scan -= TICK) <= 0) { u.scan = 0.6; const t = findEnemy(W, u, Math.max(losOf(W, u), s.range || 0)); if (t) { u.order = { t: 'attack', id: t.id, resume: o, auto: true }; u.path = null; return; } }
-      const [px, py] = o.leg ? [o.bx, o.by] : [o.ax, o.ay];
-      if (Math.hypot(u.x - px, u.y - py) < 0.8 || moveAlong(W, u, px, py, (i, j) => Math.abs(i + 0.5 - px) < 0.8 && Math.abs(j + 0.5 - py) < 0.8, true) || (u.path && u.path.exhausted && u.pi >= u.path.pts.length - 1)) { o.leg = 1 - o.leg; u.path = null; }
+      const [px, py] = o.pts ? o.pts[o.i % o.pts.length] : o.leg ? [o.bx, o.by] : [o.ax, o.ay];
+      if (Math.hypot(u.x - px, u.y - py) < 0.8 || moveAlong(W, u, px, py, (i, j) => Math.abs(i + 0.5 - px) < 0.8 && Math.abs(j + 0.5 - py) < 0.8, true) || (u.path && u.path.exhausted && u.pi >= u.path.pts.length - 1)) { if (o.pts) o.i = (o.i + 1) % o.pts.length; else o.leg = 1 - o.leg; u.path = null; }
       break;
     }
     case 'follow': {       // stay close to a friend and fight whatever comes near it
@@ -1040,6 +1067,28 @@ function unitTick(W, u) {
       if (u.inside) { u.anim = 'idle'; u.path = null; break; }
       if (distTo(h, u.x, u.y) <= NEAR + SLACK + 0.6) { u.path = null; u.anim = 'idle'; u.inside = h.id; W.ev.push({ k: 'enter', owner: u.owner, x: u.x, y: u.y }); }
       else moveAlong(W, u, ...center(h), goalNear(W, h, NEAR));
+      break;
+    }
+    case 'visit': {      // a well or water to drink, the tavern, the hospital; then carry on with what they were doing
+      const b = o.id ? alive(W, o.id) : null;
+      const done = () => { leaveHome(W, u); u.order = null; u.anim = 'idle'; if (o.then && (!o.then.id || W.ents.has(o.then.id))) setOrder(W, u, o.then); };
+      if (o.id && !b) { done(); break; }
+      if (!o.at) {
+        const reached = b ? distTo(b, u.x, u.y) <= NEAR + SLACK + 0.6 : Math.hypot(o.x - u.x, o.y - u.y) <= 1.6;
+        if (reached) { o.at = W.t; u.path = null; u.anim = 'idle'; if (b && o.why !== 'drink') { u.inside = b.id; W.ev.push({ k: 'enter', owner: u.owner, x: u.x, y: u.y }); } }
+        else { if (b) moveAlong(W, u, ...center(b), goalNear(W, b, NEAR)); else moveAlong(W, u, o.x, o.y, (i, j) => Math.hypot(i + 0.5 - o.x, j + 0.5 - o.y) <= 1.5); if (u.stuck > 30) done(); }
+        break;
+      }
+      u.anim = 'idle'; u.path = null; const P = W.players[u.owner], stay = W.t - o.at;
+      if (o.why === 'drink') { if (stay >= LIFE.drinkTime) { u.th = 100; done(); } }
+      else if (o.why === 'tavern') {
+        if (stay >= LIFE.tavernTime) {
+          u.fu = Math.min(100, (u.fu ?? 50) + LIFE.tavernFun * (P.techs.has('brewery') ? 1.5 : 1)); u.lastTavern = W.t;
+          if (P.res.food >= LIFE.tavernMeal) { P.res.food -= LIFE.tavernMeal; u.hu = Math.min(100, (u.hu ?? 50) + 30); }
+          u.th = 100; done();
+        }
+      } else if (o.why === 'cure') { if ((!u.sick && (u.he ?? 100) >= 70) || stay > 240) done(); }
+      else done();
       break;
     }
     case 'board': {      // walk to a transport and climb aboard
@@ -1187,7 +1236,7 @@ function findEnemy(W, u, r) {
 // damage of one hit: attack - armour (with formation, high ground, class bonuses, charges)
 export function dmgOf(W, a, t) {
   const s = stat(W, a.owner, a.type); const rg = s.range || hunting(a, t);
-  let atk = s.atk;
+  let atk = s.atk * (a.wr !== undefined ? 0.8 + 0.2 * Math.min(1, a.wr) : 1);       // tired, sick or miserable soldiers hit softer
   let arm;
   if (t.kind === 'unit') {
     const ts = stat(W, t.owner, t.type), fb = t.fb;
@@ -1266,7 +1315,7 @@ export function damage(W, t, dmg, src) {
   if (t.kind === 'unit') {
     if (!UNITS[t.type].animal && t.owner !== GAIA) P.pop--;
     if (t.cargo && t.cargo.length) { for (const c of t.cargo) { P.pop--; P.stats.lost++; } t.cargo = []; }     // the transport went down with everyone aboard
-    const food = UNITS[t.type].food;
+    const food = t.meat ? Math.round(t.meat) : UNITS[t.type].food;
     if (food) add(W, { kind: 'res', type: 'carcass', animal: t.type, x: t.x - 0.5, y: t.y - 0.5, w: 1, h: 1, amount: food, max: food, dir: t.dir, variant: 0 });
     else add(W, { kind: 'corpse', type: t.type, owner: t.owner, x: t.x, y: t.y, dir: t.dir, t: 0, skin: skinOf(t), sk: t.id % 2 });
     W.ev.push({ k: 'die', x: t.x, y: t.y, owner: t.owner, type: t.type });
@@ -1302,7 +1351,7 @@ function rateOf(W, u, kind, src) {
   if (kind === 'carcass' && S.hunt) r *= S.hunt;
   if (P.hungry) r *= DAY.hungry;
   if (W.night && W.opts.night === 'full' && u.type === 'villager') r *= P.mods.nightWork ? 1 : 0.7;      // working by torchlight
-  return r * (1 + P.mods.gather[RES_TYPE[kind]]);
+  return r * (1 + P.mods.gather[RES_TYPE[kind]]) * (u.wr ?? 1);
 }
 export function openSide(W, e, nav = false) {
   if (e.type === 'carcass') return true;
@@ -1426,7 +1475,7 @@ function villagerBuild(W, u, o) {
     u.path = null; faceTo(u, b); u.anim = 'build';
     b.builders = (b.builders || 0) + 1;
     const n = Math.max(1, b.nb || 1);
-    const rate = (n + 2) / (3 * d.time) / n * (1 + W.players[u.owner].mods.buildSpeed);
+    const rate = (n + 2) / (3 * d.time) / n * (1 + W.players[u.owner].mods.buildSpeed) * (u.wr ?? 1);
     const before = b.progress;
     b.progress = Math.min(1, b.progress + rate * TICK);
     b.hp = Math.min(b.maxHp, b.hp + (b.progress - before) * b.maxHp);
@@ -1507,7 +1556,11 @@ function nearestEnemyUnit(W, b, r) {
   return best;
 }
 function spawn(W, b, type) {
-  const nav = !!UNITS[type].naval;
+  const nav = !!UNITS[type].naval, bdef = BUILDINGS[b.type];
+  if (bdef.pen && UNITS[type].animal) {        // bought livestock appears in the yard
+    const [x, y] = penSpot(W, b, b.id * 7 + W.tick); const u = addUnit(W, b.owner, type, x, y); u.pen = b.id; u.home = [x, y];
+    W.ev.push({ k: 'trained', x: u.x, y: u.y, owner: b.owner, type }); return;
+  }
   const rx = b.rally ? b.rally.x : b.x + b.w / 2, ry = b.rally ? b.rally.y : b.y + b.h + 1;
   // free tile on the perimeter nearest to the rally point
   let best = null, bd = 1e9;
@@ -1625,6 +1678,10 @@ function ruleTick(W) {
     P.alive = false; W.ev.push({ k: 'defeated', owner: P.id, regicide: true });
     for (const e of [...W.dyn.values()]) if (e.owner === P.id && (e.kind === 'unit' || e.kind === 'building')) damage(W, e, 1e9, null);
   }
+  if (W.opts.victory === 'prosper') for (const P of W.players) if (P.alive) {     // Prosperity: a thriving kingdom wins
+    if ((P.prosper || 0) >= LIFE.prosperWin) { if (!P.prosperSince) { P.prosperSince = W.t; W.ev.push({ k: 'prosperhold', owner: P.id, secs: KOTH_TIME }); } if (W.t - P.prosperSince >= KOTH_TIME) return win(P.team, 'prosper'); }
+    else if (P.prosperSince) { P.prosperSince = 0; W.ev.push({ k: 'prosperlost', owner: P.id }); }
+  }
   const m = W.monument;
   if (m) {                                          // king of the hill: units of one team alone around the monument take it
     const teams = new Set();
@@ -1633,6 +1690,182 @@ function ruleTick(W) {
     if (m.team !== undefined && m.team >= 0 && W.t - m.since >= KOTH_TIME) return win(m.team, 'koth');
   }
 }
+// ================================================================ daily life
+// Every person (villagers, children, soldiers, monks) has needs from 0 to 100: hunger (fed at dawn from the granary,
+// meals at the tavern), thirst (wells, rivers and lakes, the Town Center), energy (sleep at home at night), fun
+// (the tavern, the monastery, the market) and health (falls when starving, parched, exhausted or sick; at 0 they die).
+// Needs set the work rate `u.wr`; the thirsty walk to water, the sick to the hospital, the bored to the tavern.
+// Plagues break out in crowded, dry towns and spread person to person. Couples in a house have children who grow up
+// into villagers. The miserable may leave the kingdom. All of it feeds the Prosperity index (and its victory).
+const isPerson = (u) => { const d = UNITS[u.type]; return !!d && !d.animal && !d.naval && d.cls !== 'siege' && d.cls !== 'trade' && !d.packs && u.owner >= 0; };
+const SHELTER = { house: 5 };
+function initLife(W, u) {
+  const h = (u.id * 2654435761) >>> 0, vil = u.type === 'villager' || u.type === 'child';
+  u.sex = vil ? (u.id % 2 ? 'f' : 'm') : 'm';
+  u.nm = h % NAMES[u.sex].length; if (u.fam === undefined) u.fam = (h >>> 7) % NAMES.fam.length;
+  u.ag0 = u.type === 'child' ? 0 : vil ? 16 + (h >>> 3) % 26 : 18 + (h >>> 4) % 20; u.born = W.t;
+  u.hu = 100; u.th = 100; u.en = 100; u.fu = 80; u.he = 100; u.sick = 0; u.wr = 1;
+}
+export const personName = (u) => u.nm === undefined ? '' : `${NAMES[u.sex][u.nm]} ${NAMES.fam[u.fam]}`;
+export const personAge = (W, u) => Math.floor((u.ag0 ?? 20) + (W.t - (u.born ?? W.t)) / DAY.len);
+function waterGrid(W) {
+  if (W.waterNear) return W.waterNear;
+  const S = W.size, g = new Uint8Array(S * S);
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) if (W.terrain[j * S + i] === TER.WATER) for (let b = -3; b <= 3; b++) for (let a = -3; a <= 3; a++) { const ii = i + a, jj = j + b; if (ii >= 0 && jj >= 0 && ii < S && jj < S && W.terrain[jj * S + ii] !== TER.WATER) g[jj * S + ii] = 1; }
+  return (W.waterNear = g);
+}
+function tavernFor(W, u) {
+  let best = null, bd = 1e9; const cnt = W.tavernUse || {};
+  for (const b of W.dyn.values()) if (b.kind === 'building' && b.owner === u.owner && b.built && BUILDINGS[b.type].tavern && (cnt[b.id] || 0) < BUILDINGS[b.type].tavern) { const dd = distTo(b, u.x, u.y); if (dd < bd && dd < 45) { bd = dd; best = b; } }
+  if (best) (W.tavernUse ||= {})[best.id] = (cnt[best.id] || 0) + 1;
+  return best;
+}
+// the nearest drinking place: a well, the Town Center, or the shore of a river / lake
+function waterFor(W, u, wells) {
+  let best = null, bd = 1e9;
+  for (const b of wells) { const dd = distTo(b, u.x, u.y); if (dd < bd) { bd = dd; best = { id: b.id }; } }
+  const g = waterGrid(W), S = W.size, ui = Math.floor(u.x), uj = Math.floor(u.y);
+  for (let r = 1; r < Math.min(bd, 18); r++) for (let k = 0; k < r * 8; k++) {
+    const a = k / (r * 8) * Math.PI * 2, i = Math.round(ui + Math.cos(a) * r), j = Math.round(uj + Math.sin(a) * r);
+    if (i >= 0 && j >= 0 && i < S && j < S && g[j * S + i] && passable(W, i, j, u.owner)) { if (r < bd) return { x: i + 0.5, y: j + 0.5 }; }
+  }
+  return best;
+}
+// guard posts round a player's Town Center (the town watch walks them in turn)
+export function townRing(W, pid, R = 13, n = 8) {
+  const P = W.players[pid], tc = P && (W.ents.get(P.tc) || [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === pid && e.type === 'town_center'));
+  if (!tc) return [];
+  const cx = tc.x + tc.w / 2, cy = tc.y + tc.h / 2, out = [];
+  for (let k = 0; k < n; k++) {
+    const a = k / n * Math.PI * 2, f = nearestFree(W, cx + Math.cos(a) * R, cy + Math.sin(a) * R, pid, 4);
+    if (f && regionAt(W, f[0] + 0.5, f[1] + 0.5) === regionAt(W, cx, cy + tc.h / 2 + 1)) out.push([f[0] + 0.5, f[1] + 0.5]);
+  }
+  return out;
+}
+export function penSpot(W, b, seed) {
+  const d = BUILDINGS[b.type], h = (seed * 2654435761) >>> 0;
+  return [b.x + 0.6 + (h % 100) / 100 * (b.w - 1.2), b.y + b.h - d.pen + 0.5 + ((h >>> 8) % 100) / 100 * (d.pen - 1)];
+}
+function childTick(W, u) {
+  const P = W.players[u.owner];
+  if (W.t - (u.born ?? W.t) >= LIFE.growUp) {        // grown up: a new villager of the family
+    u.type = 'villager'; const s = stat(W, u.owner, 'villager'); u.hp = u.maxHp = s.hp; u.ag0 = 16; u.born = W.t;
+    W.ev.push({ k: 'grownup', owner: u.owner, x: u.x, y: u.y, name: personName(u) }); return;
+  }
+  if (restNow(W, P)) return;
+  const h = u.homeId && W.ents.get(u.homeId), [hx, hy] = h ? [h.x + h.w / 2, h.y + h.h + 1] : u.home;
+  if (W.rnd() < 0.5) for (let k = 0; k < 4; k++) { const x = hx + (W.rnd() - 0.5) * 6, y = hy + (W.rnd() - 0.5) * 6; if (passable(W, Math.floor(x), Math.floor(y), u.owner) && regionAt(W, x, y) === regionAt(W, u.x, u.y)) { setOrder(W, u, { t: 'move', x, y, wander: true }); return; } }      // only where they can walk to
+}
+// livestock: animals in a barn yard fatten and give milk / wool (with or without the daily-life rules)
+function barnTick(W) {
+  for (const P of W.players) {
+    if (!P.alive) continue;
+    const T = P.techs, barns = [];
+    for (const b of W.dyn.values()) if (b.kind === 'building' && b.owner === P.id && b.built && BUILDINGS[b.type].pen) barns.push(b);
+    const fod = T.has('fodder') ? 1.5 : 1;
+    for (const b of barns) {
+      let inPen = 0; const d = BUILDINGS[b.type];
+      for (const a of W.dyn.values()) {
+        if (a.kind !== 'unit' || a.owner !== P.id || UNITS[a.type].animal !== 'herd') continue;
+        if (!a.pen && a.x >= b.x && a.x < b.x + b.w && a.y >= b.y + b.h - d.pen && a.y < b.y + b.h && inPen < d.penCap) { a.pen = b.id; a.home = [a.x, a.y]; W.ev.push({ k: 'penned', owner: P.id, x: a.x, y: a.y }); }
+        if (a.pen !== b.id) continue; inPen++;
+        const A = UNITS[a.type]; a.meat = Math.min(A.fat, (a.meat || A.food) + (A.fat - A.food) / 240 * fod);
+        const milk = A.milk * fod; P.res.food += milk; P.stats.gathered += milk; P.stats.gres.food += milk;
+      }
+      b.herd = inPen;
+    }
+  }
+}
+function lifeTick(W) {
+  W.tavernUse = {};
+  for (const P of W.players) {
+    if (!P.alive) continue;
+    const T = P.techs, nightFull = W.opts.night === 'full';
+    const wells = [], taverns = [], hospitals = [], houses = [], barns = [], monas = [], markets = [], tcs = [];
+    for (const b of W.dyn.values()) if (b.kind === 'building' && b.owner === P.id && b.built) {
+      const d = BUILDINGS[b.type];
+      if (d.well) wells.push(b); if (d.tavern) taverns.push(b); if (d.hospital) hospitals.push(b); if (SHELTER[b.type]) houses.push(b);
+      if (d.pen) barns.push(b); if (b.type === 'monastery') monas.push(b); if (d.market) markets.push(b); if (b.type === 'town_center') { tcs.push(b); wells.push(b); }
+    }
+    const near = (list, u, r) => list.some(b => distTo(b, u.x, u.y) <= r);
+    const wg = waterGrid(W), people = [], residents = new Map();
+    for (const u of W.dyn.values()) if (u.kind === 'unit' && u.owner === P.id && isPerson(u)) { if (u.nm === undefined) initLife(W, u); people.push(u); }
+    // homes: every villager / child belongs to a house with room (5 each)
+    for (const u of people) if (u.homeId) { const h = W.ents.get(u.homeId); if (h && h.built && h.owner === P.id) residents.set(h.id, (residents.get(h.id) || 0) + 1); else u.homeId = 0; }
+    for (const u of people) if (!u.homeId && (u.type === 'villager' || u.type === 'child')) {
+      let best = null, bd = 1e9; for (const h of houses) if ((residents.get(h.id) || 0) < SHELTER.house) { const dd = distTo(h, u.x, u.y); if (dd < bd) { bd = dd; best = h; } }
+      if (best) { u.homeId = best.id; residents.set(best.id, (residents.get(best.id) || 0) + 1); }
+    }
+    let sumFu = 0, sumHe = 0, sumNeed = 0, sick = 0, homeless = 0, n = 0;
+    const funRate = LIFE.fun * (T.has('minstrels') ? 0.65 : 1), herb = T.has('herbalism');
+    for (const u of people) {
+      const vil = u.type === 'villager', o = u.order, working = o && ['gather', 'drop', 'build', 'repair'].includes(o.t), resting = u.inside && o && o.t === 'rest';
+      // energy: sleep restores it (best in your own home); work drains it. Without a night cycle nobody tires.
+      if (!nightFull) u.en = 100;
+      else if (resting) u.en = Math.min(100, u.en + (u.inside === u.homeId ? LIFE.sleep : LIFE.sleepRough));
+      else u.en = Math.max(0, u.en - (working ? LIFE.energyWork : LIFE.energyIdle) * (vil ? 1 : 0.5));
+      u.hu = Math.max(0, u.hu - LIFE.hunger);
+      // water: near a well, the Town Center or a shore they drink as they go
+      if (near(wells, u, BUILDINGS.well.well) || wg[idx(W, Math.min(W.size - 1, Math.floor(u.x)), Math.min(W.size - 1, Math.floor(u.y)))] || u.inside) u.th = Math.min(100, u.th + 8);
+      else u.th = Math.max(0, u.th - LIFE.thirst * (W.season.snow ? 0.7 : W.opts.season === 'kemarau' ? 1.35 : 1));
+      u.fu = Math.max(0, u.fu - (vil || u.type === 'child' ? funRate : LIFE.funSoldier) + (near(monas, u, 7) ? 0.12 : 0) + (near(markets, u, 6) ? 0.06 : 0) + (u.type === 'child' ? 0.06 : 0));
+      // health
+      const cured = near(hospitals, u, BUILDINGS.hospital.hospital) || (o && o.why === 'cure' && u.inside);
+      let dh = 0;
+      if (u.hu < 15) dh -= 0.3; if (u.th < 15) dh -= 0.35; if (u.en < 8) dh -= 0.08;
+      if (u.sick) { dh -= cured ? -0.5 : herb ? 0.07 : 0.13; u.sick = Math.max(0, u.sick - (cured ? 3 : 1) * (herb ? 1.4 : 1)); if (!u.sick) { u.immune = W.t + 900; W.ev.push({ k: 'cured', owner: P.id, x: u.x, y: u.y }); } }
+      else if (u.hu > 45 && u.th > 45 && u.en > 25) dh += cured ? 0.4 : 0.08;
+      u.he = Math.max(0, Math.min(100, u.he + dh));
+      if (u.he <= 0) { const why = u.sick ? 'sakit' : u.hu < 15 ? 'kelaparan' : u.th < 15 ? 'kehausan' : 'kelelahan'; W.ev.push({ k: 'lifedeath', owner: P.id, x: u.x, y: u.y, name: personName(u), why }); damage(W, u, 1e6, null); continue; }
+      // how well they work / fight
+      u.wr = Math.max(0.35, Math.min(1.08, 1 - (u.en < 25 ? 0.25 : 0) - (u.hu < 25 ? 0.2 : 0) - (u.th < 25 ? 0.2 : 0) - (u.fu < 20 ? 0.15 : 0) - (u.sick ? 0.4 : 0) + (u.fu > 80 && u.he > 80 ? 0.08 : 0)));
+      // behaviour: drink, get cured, have a drink at the tavern (when there is no night to do it at dusk)
+      const busy = o && (o.t === 'visit' || o.t === 'rest' || o.t === 'garrison' || o.t === 'attack' || o.t === 'board' || o.t === 'trade');
+      if (!busy && !restNow(W, P) && u.type !== 'child' && !u.inside) {
+        const keep = o && !o.auto && !o.wander ? o : null;
+        if (u.th < 22) { const w = waterFor(W, u, wells); if (w) setOrder(W, u, { t: 'visit', id: w.id, x: w.x, y: w.y, why: 'drink', then: keep }); }
+        else if (u.sick && hospitals.length && u.he < 85) { let hb = hospitals[0]; for (const b of hospitals) if (distTo(b, u.x, u.y) < distTo(hb, u.x, u.y)) hb = b; setOrder(W, u, { t: 'visit', id: hb.id, why: 'cure', then: keep }); }
+        else if (u.fu < (nightFull ? 15 : 30) && W.t - (u.lastTavern || -999) > 150) { const tv = tavernFor(W, u); if (tv) setOrder(W, u, { t: 'visit', id: tv.id, why: 'tavern', then: keep }); }
+      }
+      // desertion: deeply unhappy villagers may leave the kingdom
+      if (vil && u.fu < LIFE.desertFun) { u.low = (u.low || 0) + 1; if (u.low > 120 && (P.life ? P.life.fun : 50) < 30 && W.rnd() < 0.008) { W.ev.push({ k: 'desert', owner: P.id, x: u.x, y: u.y, name: personName(u) }); P.pop--; P.stats.lost++; del(W, u.id); continue; } } else u.low = 0;
+      if (!u.homeId && (vil || u.type === 'child')) homeless++;
+      if (u.sick) sick++;
+      sumFu += u.fu; sumHe += u.he; sumNeed += Math.min(u.hu, u.th); n++;
+    }
+    // disease: outbreaks in crowded, dry towns; contagion between people standing close (any kingdom)
+    if (W.tick % 300 === 7 && n >= 8) {
+      const covered = houses.length ? houses.filter(h => near(wells, h, BUILDINGS.well.well + 1) || wg[idx(W, h.x, h.y)]).length / houses.length : 1;
+      const p = LIFE.outbreak * (1 + homeless / 6 + (1 - covered) * 1.5 + (W.season.snow ? 0.4 : 0)) * (T.has('sanitation') ? 0.5 : 1) * (hospitals.length ? 0.7 : 1) * 30 / 30;
+      if (W.rnd() < p) { const v = people[Math.floor(W.rnd() * people.length)]; if (v && !v.sick && !(v.immune > W.t)) { v.sick = LIFE.sickTime; W.ev.push({ k: 'outbreak', owner: P.id, x: v.x, y: v.y, name: personName(v) }); } }
+    }
+    for (const u of people) if (u.sick && W.ents.has(u.id) && !u.inside) {
+      if (W.rnd() < LIFE.spread * (T.has('quarantine') ? 0.4 : 1)) {
+        let tgt = null; unitsNear(W, u.x, u.y, 2.2, (e) => { if (!tgt && e !== u && e.owner >= 0 && isPerson(e) && !e.sick && !e.inside && e.nm !== undefined && !(e.immune > W.t) && Math.hypot(e.x - u.x, e.y - u.y) <= 2.2) tgt = e; });
+        if (tgt) { tgt.sick = LIFE.sickTime; if (tgt.owner !== u.owner) W.ev.push({ k: 'contagion', owner: tgt.owner, x: tgt.x, y: tgt.y }); }
+      }
+    }
+    // families: a couple at home has a child now and then (needs room, food, health and some joy)
+    if (W.tick % (LIFE.birthEvery * 10) === 7) for (const h of houses) {
+      const fam = people.filter(u => u.homeId === h.id); if (fam.length >= SHELTER.house || P.pop + 1 > P.popCap || P.res.food < 50) continue;
+      const adults = fam.filter(u => u.type === 'villager' && personAge(W, u) >= 18 && personAge(W, u) <= 45);
+      const dad = adults.find(u => u.sex === 'm'), mom = adults.find(u => u.sex === 'f');
+      if (!dad || !mom || dad.he < 50 || mom.he < 50 || (dad.fu + mom.fu) / 2 < 40 || dad.sick || mom.sick) continue;
+      if (W.rnd() >= LIFE.birthP) continue;
+      const f = nearestFree(W, h.x + h.w / 2, h.y + h.h + 0.5, P.id, 3); if (!f) continue;
+      P.res.food -= 50;
+      const c = addUnit(W, P.id, 'child', f[0] + 0.5, f[1] + 0.5); c.fam = dad.fam; initLife(W, c); c.homeId = h.id; c.home = [c.x, c.y];
+      if (!mom.inside) mom.fam = dad.fam;
+      P.stats.births = (P.stats.births || 0) + 1;
+      W.ev.push({ k: 'birth', owner: P.id, x: c.x, y: c.y, name: personName(c), fam: NAMES.fam[dad.fam] });
+    }
+    // the state of the kingdom
+    const amen = Math.min(1, (houses.length ? houses.filter(h => near(wells, h, BUILDINGS.well.well + 1) || wg[idx(W, h.x, h.y)]).length / houses.length : 0.5) * 0.4 + (taverns.length ? 0.2 : 0) + (hospitals.length ? 0.15 : 0) + (barns.length ? 0.1 : 0) + (markets.length ? 0.1 : 0) + (monas.length ? 0.05 : 0));
+    const L = P.life = { n, fun: n ? sumFu / n : 0, health: n ? sumHe / n : 0, need: n ? sumNeed / n : 0, sick, homeless, amen, births: P.stats.births || 0 };
+    P.prosper = Math.round(L.fun * 0.22 + L.health * 0.22 + L.need * 0.16 + amen * 100 * 0.2 + Math.min(1, P.pop / (0.6 * (W.opts.popLimit || POP_LIMIT))) * 100 * 0.1 + (P.age - 1) / 3 * 100 * 0.1);
+  }
+}
+
 function relicTick(W) {
   const held = new Map(); let total = 0;
   for (const r of W.dyn.values()) {
@@ -1732,6 +1965,11 @@ function gaiaTick(W, u, d) {
   u.scan -= TICK; if (u.scan > 0) return;
   u.scan = 0.5 + W.rnd() * 0.4;
   const kind = d.animal || (d.guard ? 'guard' : null);
+  if (kind === 'herd' && u.pen) {        // in a barn yard: graze inside the fence
+    const b = alive(W, u.pen); if (!b || b.owner !== u.owner) { u.pen = 0; return; }
+    if (!u.order && W.rnd() < 0.12) { const [x, y] = penSpot(W, b, u.id * 13 + W.tick); setOrder(W, u, { t: 'move', x, y, wander: true }); }
+    return;
+  }
   if (kind === 'herd') {                 // sheep: taken by whoever comes near (unless its owner is close too)
     let best = null, bd = 4, ownNear = false;
     unitsNear(W, u.x, u.y, 5, (e) => {

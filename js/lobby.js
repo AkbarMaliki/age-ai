@@ -11,13 +11,14 @@ const CFG = {
   size: [[112, 'Kecil'], [144, 'Sedang'], [180, 'Besar'], [220, 'Raksasa'], [280, 'Kolosal']],
   season: [['random', 'Acak'], ['semi', 'Semi'], ['kemarau', 'Kemarau'], ['gugur', 'Gugur'], ['salju', 'Salju']],
   night: [['full', 'Penuh'], ['visual', 'Visual'], ['off', 'Mati']],
-  victory: [['conquest', 'Penaklukan'], ['regicide', 'Regicide (Raja)'], ['koth', 'Raja Bukit']],
+  life: [['on', 'Aktif'], ['off', 'Mati (klasik)']],
+  victory: [['conquest', 'Penaklukan'], ['regicide', 'Regicide (Raja)'], ['koth', 'Raja Bukit'], ['prosper', 'Kemakmuran']],
   treaty: [[0, 'Tidak ada'], [10, '10 menit'], [20, '20 menit']],
   startRes: [['standar', 'Standar'], ['sedang', 'Sedang'], ['tinggi', 'Tinggi'], ['deathmatch', 'Deathmatch']],
   popLimit: [[200, '200'], [125, '125'], [75, '75']],
   speed: [[1, '1x'], [1.5, '1.5x'], [2, '2x']],
 };
-const CFG_NAME = { map: 'Peta', size: 'Ukuran', season: 'Musim', night: 'Siang-malam', relicWin: 'Menang Relik', victory: 'Kemenangan', treaty: 'Gencatan', startRes: 'Sumber awal', popLimit: 'Batas populasi', speed: 'Kecepatan' };
+const CFG_NAME = { life: 'Kehidupan warga', map: 'Peta', size: 'Ukuran', season: 'Musim', night: 'Siang-malam', relicWin: 'Menang Relik', victory: 'Kemenangan', treaty: 'Gencatan', startRes: 'Sumber awal', popLimit: 'Batas populasi', speed: 'Kecepatan' };
 const NUM_CFG = ['size', 'treaty', 'popLimit', 'speed'];
 const DIFFS = [['easy', 'Mudah'], ['normal', 'Normal'], ['hard', 'Sulit']];
 
@@ -135,7 +136,7 @@ export class Lobby {
     const seats = net.seated().map(([pid, p]) => ({ pid, name: p.name, color: p.color, team: p.team, deck: p.bot ? null : (p.deck || null), bot: !!p.bot, diff: p.diff || 'normal', style: p.bot ? deckKeys[(Math.random() * deckKeys.length) | 0] : null,
       civ: CIVS[p.civ] ? p.civ : CIV_KEYS[(Math.random() * CIV_KEYS.length) | 0] }));      // 'random' is settled here, once, by the host
     const game = { cfg: { seed: (Math.random() * 1e9) | 0, map: cfg.map || 'random', size: cfg.size || 144, season: cfg.season || 'random', night: cfg.night || 'full', relicWin: !!cfg.relicWin,
-      victory: cfg.victory || 'conquest', treaty: +cfg.treaty || 0, startRes: cfg.startRes || 'standar', popLimit: +cfg.popLimit || 200, speed: +cfg.speed || 1 }, seats, run: Date.now() };
+      life: cfg.life || 'on', victory: cfg.victory || 'conquest', treaty: +cfg.treaty || 0, startRes: cfg.startRes || 'standar', popLimit: +cfg.popLimit || 200, speed: +cfg.speed || 1 }, seats, run: Date.now() };
     try { await net.startGame(game); } catch (e) { this.note('Gagal memulai: ' + e.message, true); $('olStartBtn').disabled = false; }
   }
 }

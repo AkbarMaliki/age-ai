@@ -2,7 +2,8 @@
 // day / season indicator and the advisor ("!") with counter-strategy advice.
 import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js';
 import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost } from './sim.js';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge } from './sim.js';
+import { NAMES, LIFE } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -10,13 +11,17 @@ const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', '
 const VIL_PAGES = [
   [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['dock', 5], ['market', 6], ['blacksmith', 7], ['academy', 8], ['monastery', 10], ['wonder', 11]],
   [['barracks', 0], ['archery_range', 1], ['stable', 2], ['siege_workshop', 3], ['castle', 4], ['watch_tower', 5], ['palisade', 6], ['stone_wall', 7], ['gate', 8]],
+  [['house', 0], ['well', 1], ['tavern', 2], ['hospital', 3], ['barn', 4], ['market', 5], ['monastery', 6], ['farm', 7], ['mill', 8]],
 ];
+const PAGE_NAME = ['🏠 Ekonomi', '⚔ Militer & Pertahanan', '🍺 Kehidupan Warga'];
 const BLD_DESC = { house: '+5 populasi', mill: 'Tempat setor makanan, membuka ladang', lumber_camp: 'Tempat setor kayu', mining_camp: 'Tempat setor emas, batu & besi', farm: 'Sumber makanan tak terbatas (perlu ditanam ulang)',
   barracks: 'Melatih infanteri dan Pendobrak', archery_range: 'Melatih pemanah dan penembak mesiu', stable: 'Melatih kavaleri', watch_tower: 'Menembakkan panah ke musuh', stone_wall: 'Tarik garis untuk membangun tembok',
   gate: 'Gerbang untuk pasukanmu', castle: 'Benteng kuat, melatih ksatria', market: 'Jual-beli makanan, kayu, batu dan besi dengan emas', dock: 'Dibangun di tepi air: kapal nelayan, angkut dan perang',
   blacksmith: 'Peningkatan senjata & zirah, dan memilih DOKTRIN perang pertama', academy: 'Riset: mata-mata, mesiu, pasukan khusus dan DOKTRIN kedua',
   monastery: 'Melatih Biarawan; simpan relik di sini untuk emas', palisade: 'Pagar kayu murah dan cepat (Zaman Kegelapan). Tarik garis seperti tembok.', siege_workshop: 'Melatih Pendobrak, Mangonel dan Skorpion',
-  wonder: `Keajaiban Dunia: pertahankan ${WONDER_TIME / 60} menit untuk MENANG` };
+  wonder: `Keajaiban Dunia: pertahankan ${WONDER_TIME / 60} menit untuk MENANG`,
+  well: 'Air bersih untuk warga dalam 10 petak. Warga yang haus bekerja lambat dan bisa jatuh sakit.', tavern: 'Kedai: hiburan, makan dan minum — warga mampir saat senja. Tanpa hiburan warga bosan, malas, lalu pergi.',
+  hospital: 'Balai Pengobatan: menyembuhkan yang sakit dan menahan wabah.', barn: 'Kandang dengan padang: domba/sapi di sini bertambah gemuk dan menghasilkan susu. Bisa membeli ternak.' };
 // fixed slots per building (some have more commands than keys follow from the data)
 const SLOTS = {
   town_center: { villager: 0, torches: 1, hand_cart: 2, loom: 3, wheelbarrow: 4, feudal: 5, feudal_war: 6, feudal_wall: 7, castle: 5, castle_war: 6, castle_trade: 7, imperial: 5, imperial_war: 6, imperial_lore: 7, civic_defense: 8, $bell: 10, $out: 11 },
@@ -28,6 +33,7 @@ const SLOTS = {
   stable: { scout: 0, knight: 1, light_cav: 5, hussar: 5, cavalier: 6, paladin: 6, husbandry: 10, flank_tactics: 11 },
   dock: { fishing_boat: 0, transport_ship: 1, war_ship: 2, fire_ship: 3, demo_ship: 4, cannon_galleon: 5, trade_cog: 6, $trap: 7, gillnets: 10, careening: 11, galleon: 12 },
   siege_workshop: { ram: 0, mangonel: 1, scorpion: 2, capped_ram: 5, onager: 6, heavy_scorpion: 7 },
+  tavern: { brewery: 5, minstrels: 6 }, hospital: { herbalism: 5, quarantine: 6, sanitation: 7 }, barn: { sheep: 0, cow: 1, fodder: 5 },
   castle: { knight: 0, unique: 1, trebuchet_p: 2, conscription: 5, $out: 11 }, monastery: { monk: 0, fervor: 5, sanctity: 6, illumination: 7 },
   mill: { horse_collar: 0, heavy_plow: 0, crop_rotation: 0, granary: 1, $reseed: 5 }, mining_camp: { gold_mining: 0, gold_shaft: 0, iron_smelting: 1, stone_mining: 2, stone_shaft: 2 },
   lumber_camp: { double_bit_axe: 0, bow_saw: 0, two_man_saw: 0 }, market: { trade_cart: 8, guilds: 3, trade_route: 4 }, watch_tower: { guard_tower: 0, keep: 0, $out: 11 }, gate: { $lock: 0 },
@@ -45,7 +51,7 @@ const GLYPH = { loom: '🧵', wheelbarrow: '🛒', torches: '🔥', double_bit_a
   spec_samurai: '⛩', spec_ninja: '🥷', spec_fire: '🔥', spec_crossbow: '🏹', spec_cataphract: '🛡', spec_lancer: '🔱',
   hand_cart: '🛞', bow_saw: '🪚', two_man_saw: '🪚', heavy_plow: '🌾', crop_rotation: '🔄', gold_shaft: '⛏', stone_mining: '🪨', stone_shaft: '🪨', man_at_arms: '🗡', long_sword: '⚔', champion: '🏆', halberdier: '🔱',
   arbalest: '🏹', elite_skirm: '🎯', heavy_ha: '🐎', light_cav: '🐴', hussar: '🐴', cavalier: '🏇', paladin: '👑', capped_ram: '🪵', onager: '🪨', heavy_scorpion: '🏹', guard_tower: '🗼', keep: '🏯', galleon: '⛵' };
-const UGLYPH = { fishing_boat: '⛵', transport_ship: '🚢', war_ship: '⛴', ram: '🪵', cannon: '💣', mangonel: '🪨', scorpion: '🏹', trebuchet_p: '🏗', trebuchet: '🏗', trade_cart: '🛒', trade_cog: '⛵', fire_ship: '🔥', demo_ship: '💥', galleon: '⛴', cannon_galleon: '💣', king: '👑' };
+const UGLYPH = { sheep: '🐑', cow: '🐄', child: '🧒', fishing_boat: '⛵', transport_ship: '🚢', war_ship: '⛴', ram: '🪵', cannon: '💣', mangonel: '🪨', scorpion: '🏹', trebuchet_p: '🏗', trebuchet: '🏗', trade_cart: '🛒', trade_cog: '⛵', fire_ship: '🔥', demo_ship: '💥', galleon: '⛴', cannon_galleon: '💣', king: '👑' };
 const RES_GLYPH = { food: '🍖', wood: '🪵', gold: '🪙', stone: '🪨', iron: '⛓' };
 const garrisonCapOf = (W, b) => { const d = BUILDINGS[b.type]; return d && d.garrison ? d.garrison : 0; };
 const insideOf = (W, b) => { let soldiers = 0, vils = 0; for (const u of W.dyn.values()) if (u.kind === 'unit' && u.inside === b.id) { if (u.order && u.order.t === 'garrison') soldiers++; else vils++; } return { soldiers, vils }; };
@@ -116,7 +122,7 @@ export class HUD {
     const de = $('dayInfo'); if (de.textContent !== di) de.textContent = di;
     de.title = `${SEASONS[W.opts.season].name}: ${SEASONS[W.opts.season].desc}\n` + (W.opts.night === 'off' ? 'Siklus siang-malam mati.' : night ? 'Malam: jarak pandang berkurang' + (W.opts.night === 'full' ? ', penduduk desa beristirahat di rumah (kecuali sudah riset Obor Kerja).' : '.') : `Malam tiba dalam ${Math.ceil(toNight / 60)} menit. Saat fajar setiap warga makan ${DAY.upkeep} makanan.`);
     de.classList.toggle('hungry', !!P.hungry);
-    this.goals(W, P);
+    this.goals(W, P); this.lifeBar(W, P);
     let idle = 0; for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner === G.me && e.type === 'villager' && !e.order) idle++;
     $('idleVil').classList.toggle('has', idle > 0); $('idleN').textContent = idle || '';
     const sel = G.sel.map(id => W.ents.get(id)).filter(Boolean);
@@ -126,11 +132,28 @@ export class HUD {
     this.miniT -= dt; if (this.miniT <= 0) { this.miniT = 0.4; this.drawMiniBase(); }
     this.drawMini();
   }
+  // the people at a glance: happiness, health, the sick, newborns, prosperity
+  lifeBar(W, P) {
+    const L = W.opts.life && P.life, el = $('lifeInfo'); if (!el) return; if (!L) { if (el.innerHTML) el.innerHTML = ''; return; }
+    // a word from the steward when the people suffer (at most every few minutes per topic)
+    if (!this.g.watch && W.t > 120) {
+      const has = (t) => { for (const b of W.dyn.values()) if (b.kind === 'building' && b.owner === P.id && b.type === t) return true; return false; };
+      const say = (k, msg) => { this.hints = this.hints || {}; if (W.t - (this.hints[k] || -999) > 240) { this.hints[k] = W.t; this.notify(msg, 'bad'); } };
+      if (L.fun < 35) say('fun', has('tavern') ? '🎭 Warga bosan dan malas bekerja. Bangun Kedai kedua atau riset Pemusik Keliling.' : '🎭 Warga mulai bosan dan malas bekerja — bangun Kedai (halaman 🍺 Kehidupan Warga).');
+      if (L.need < 30) say('need', '💧 Warga lapar atau kehausan — pastikan lumbung cukup dan bangun Sumur dekat tempat kerja.');
+      if (L.sick >= 3 && !has('hospital')) say('sick', '🤒 Banyak yang sakit — Balai Pengobatan (Zaman Feodal) menyembuhkan dan menahan wabah.');
+      if (L.homeless >= 3) say('home', '🏚 Ada warga tanpa rumah — mereka tidur di luar dan tidak bisa berkeluarga.');
+    }
+    const col = (v) => v >= 65 ? 'good' : v >= 35 ? 'mid' : 'bad';
+    const html = `<span class="${col(L.fun)}" title="Kebahagiaan rata-rata (hiburan): Kedai, Biara, Pasar">😊 ${Math.round(L.fun)}</span><span class="${col(L.health)}" title="Kesehatan rata-rata">❤ ${Math.round(L.health)}</span><span class="${col(L.need)}" title="Makan & minum (yang paling kurang)">🍞 ${Math.round(L.need)}</span>${L.sick ? `<span class="bad" title="Warga sakit — Balai Pengobatan menyembuhkan dan menahan wabah">🤒 ${L.sick}</span>` : ''}${L.homeless ? `<span class="mid" title="Tanpa rumah">🏚 ${L.homeless}</span>` : ''}<span title="Kelahiran">👶 ${L.births}</span><span class="${col(P.prosper)}" title="Indeks Kemakmuran${W.opts.victory === 'prosper' ? ` — pertahankan di atas ${LIFE.prosperWin} selama 10 menit untuk menang` : ''}">⭐ ${P.prosper}</span>`;
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
   // top bar countdowns: wonders standing, the monument held, the treaty still running
   goals(W, P) {
     const out = [], mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
     if (W.opts.treaty && W.t < W.opts.treaty) out.push(`<span title="Gencatan senjata: tidak ada yang bisa menyerang">🕊 ${mmss(W.opts.treaty - W.t)}</span>`);
     for (const [id, t0] of W.wonders || []) { const b = W.ents.get(id); if (!b) continue; const o = W.players[b.owner]; out.push(`<span title="Keajaiban ${o.name}: menang bila bertahan" style="color:rgb(${PLAYER_RGB[o.color]})">🏛 ${mmss(Math.max(0, WONDER_TIME - (W.t - t0)))}</span>`); }
+    if (W.opts.victory === 'prosper') for (const Q of W.players) if (Q.prosperSince) out.push(`<span title="Kemakmuran ${Q.name} di atas ${LIFE.prosperWin}" style="color:rgb(${PLAYER_RGB[Q.color]})">⭐ ${mmss(Math.max(0, 600 - (W.t - Q.prosperSince)))}</span>`);
     const m = W.monument; if (m && m.team >= 0) { const o = W.players[m.owner] || W.players.find(q => q.team === m.team); if (o) out.push(`<span title="Monumen dikuasai ${o.name}" style="color:rgb(${PLAYER_RGB[o.color]})">⛰ ${mmss(Math.max(0, KOTH_TIME - (W.t - m.since)))}</span>`); }
     const html = out.join(' '), el = $('goalInfo'); if (el && el.innerHTML !== html) { el.innerHTML = html; el.classList.toggle('hidden', !html); }
   }
@@ -146,9 +169,10 @@ export class HUD {
           const d = BUILDINGS[type]; const ok = canBuild(W, G.me, type), cost = costOf(P, type);
           let why = P.age < d.age ? `Butuh ${AGES[d.age]}` : (d.needs || []).filter(n => !G.hasBuilt(n)).map(n => 'Butuh ' + BUILDINGS[n].name).join(', ');
           if (ok && !canAfford(P, cost)) why = 'Sumber daya kurang';
-          this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
+          this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵', well: '🪣', tavern: '🍺', hospital: '⚕', barn: '🐄' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
         }
-        this.setBtn(9, { glyph: this.page ? '🏠' : '⚔', name: this.page ? 'Bangunan Ekonomi' : 'Bangunan Militer & Pertahanan', desc: 'Ganti halaman bangunan', act: () => { this.page = 1 - this.page; this.lastSig = ''; } });
+        const nx = (this.page + 1) % VIL_PAGES.length;
+        this.setBtn(9, { glyph: PAGE_NAME[nx].split(' ')[0], name: 'Halaman: ' + PAGE_NAME[nx].slice(3), desc: 'Ganti halaman bangunan (Ekonomi → Militer → Kehidupan Warga)', act: () => { this.page = nx; this.lastSig = ''; } });
       } else {
         // soldiers: formations (and ships: unload)
         const mil = units.filter(u => MILITARY(u.type) && !u.nav);
@@ -156,6 +180,7 @@ export class HUD {
         if (mil.length) STANCES.forEach((st, k) => this.setBtn(5 + k, { glyph: STANCE[st][0], name: 'Sikap: ' + STANCE[st][1], desc: STANCE[st][2], active: (mil[0].stance || 'agresif') === st, act: () => G.setStance(st) }));
         if (mil.length) {
           this.setBtn(10, { glyph: '🔁', name: 'Patroli', desc: 'Bolak-balik antara posisi sekarang dan titik yang kamu klik, menyerang musuh yang terlihat. (Shift: tambahkan ke antrean)', act: () => G.startTarget('patrol') });
+          this.setBtn(9, { glyph: '🏰', name: 'Jaga Kota', desc: 'Pasukan terpilih menjadi penjaga kota: berpatroli keliling pos-pos jaga di sekitar Pusat Kota dan menyerang musuh yang masuk. Sisanya bebas berperang di luar.', act: () => G.townWatch() });
           this.setBtn(11, { glyph: '🛡', name: 'Kawal', desc: 'Klik unit kawan untuk dikawal: mengikuti dan menyerang musuh yang mendekatinya (mis. kawal Biarawan atau Pendobrak).', act: () => G.startTarget('follow') });
           if (mil.some(u => stat(W, u.owner, u.type).splash)) this.setBtn(12, { glyph: '🎯', name: 'Serang Tanah', desc: 'Mesin pengepung menembaki titik tertentu (ledakan area), misalnya kerumunan di balik tembok.', act: () => G.startTarget('ground') });
         }
@@ -241,7 +266,7 @@ export class HUD {
     }
     const e = sel[0];
     const k = 'one' + e.id + e.type + (e.kind === 'building' ? e.queue.map(q => q.unit || q.tech).join() + e.built : '');
-    const name = e.kind === 'monument' ? 'Monumen Raja Bukit' : e.kind === 'unit' && stat(W, e.owner, e.type).name ? stat(W, e.owner, e.type).name : e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
+    const name = e.kind === 'unit' && e.nm !== undefined ? `${personName(e)} <small class="role">${stat(W, e.owner, e.type).name || UNITS[e.type].name}</small>` : e.kind === 'monument' ? 'Monumen Raja Bukit' : e.kind === 'unit' && stat(W, e.owner, e.type).name ? stat(W, e.owner, e.type).name : e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
       : e.type === 'carcass' ? 'Bangkai ' + UNITS[e.animal].name : e.trap ? 'Perangkap Ikan' : { tree: 'Pohon', gold: 'Tambang Emas', stone: 'Tambang Batu', iron: 'Tambang Besi', berry: 'Semak Berry', fish: 'Kawanan Ikan' }[e.type];
     const owner = e.owner >= 0 ? W.players[e.owner] : null;
     if (el.dataset.k !== k) {
@@ -257,7 +282,7 @@ export class HUD {
     if (hp) { hpEl.style.display = ''; hpEl.firstChild.style.width = (hp.hp / hp.maxHp * 100) + '%'; hpEl.lastChild.textContent = `${Math.ceil(hp.hp)}/${hp.maxHp}`; } else hpEl.style.display = 'none';
     let st = '';
     if (e.kind === 'treasure') st = `+${e.amount} ${RES_NAME[TREASURES[e.type].res]} · ${e.guarded ? '<b class="warn">Dijaga! Kalahkan penjaganya.</b>' : 'Sentuh dengan unit untuk mengambil.'}`;
-    if (e.kind === 'unit' && UNITS[e.type].animal) { const d = UNITS[e.type]; st = (d.atk ? `⚔ ${d.atk} · ` : '') + d.desc; }
+    if (e.kind === 'unit' && UNITS[e.type].animal) { const d = UNITS[e.type]; st = (d.atk ? `⚔ ${d.atk} · ` : '') + (d.fat ? `🍖 ${Math.round(e.meat || d.food)}/${d.fat}${e.pen ? ' · di padang kandang' : ''} · ` : '') + d.desc; }
     else if (e.kind === 'unit') {
       const s = stat(W, e.owner, e.type);
       st = `⚔ ${Math.round(s.atk)}${s.range ? ' · 🏹 ' + s.range : ''} · 🛡 ${s.ma}/${s.pa}`;
@@ -275,6 +300,12 @@ export class HUD {
       if (UNITS[e.type].hero) st += ' · 👑 Raja — jika tewas, kerajaan kalah!';
       { const n = insideOf(W, e).soldiers; if (n) st += ` · ⛑ ${n} penumpang`; }
     }
+    if (e.kind === 'unit' && e.nm !== undefined) {
+      const bar = (v, g, t) => `<i class="nd" title="${t}: ${Math.round(v)}"><em>${g}</em><span class="tr"><b style="width:${Math.max(0, Math.min(100, v))}%;background:${v >= 60 ? '#5fbf4a' : v >= 30 ? '#d9b23a' : '#d0402a'}"></b></span></i>`;
+      const home = e.homeId && W.ents.get(e.homeId), mates = home ? [...W.dyn.values()].filter(u => u.homeId === home.id && u !== e).length : 0;
+      st = `<div class="who">${e.sex === 'f' ? '♀' : '♂'} ${personAge(W, e)} th · keluarga ${NAMES.fam[e.fam]}${home ? ` · rumah bersama ${mates} orang` : e.type === 'villager' || e.type === 'child' ? ' · <b class="warn">tanpa rumah</b>' : ''}${e.sick ? ' · <b class="warn">🤒 sakit</b>' : ''}${e.type === 'child' ? ` · dewasa dalam ${Math.max(0, Math.ceil((LIFE.growUp - (W.t - e.born)) / 60))} mnt` : ''}</div>`
+        + `<div class="needs">${bar(e.hu, '🍞', 'Kenyang')}${bar(e.th, '💧', 'Minum')}${bar(e.en, '⚡', 'Energi')}${bar(e.fu, '🎭', 'Hiburan')}${bar(e.he, '❤', 'Kesehatan')}<span class="wr" title="Kecepatan kerja">⚒ ${Math.round((e.wr ?? 1) * 100)}%</span></div><div class="cs">${st}</div>`;
+    }
     if (e.kind === 'unit' && e.faith !== undefined) st += ` · ✝ iman ${Math.round(e.faith * 100)}%${e.relic ? ' · 📿 membawa relik' : ''}`;
     if (e.kind === 'relic') st = e.carrier ? 'Sedang dibawa seorang Biarawan.' : 'Relik suci. Hanya Biarawan yang bisa membawanya ke Biara (+30 emas/menit). Klik kanan dengan Biarawan.';
     if (e.kind === 'building' && BUILDINGS[e.type].relics && e.built) { let n = 0; for (const r of W.dyn.values()) if (r.kind === 'relic' && r.inBld === e.id) n++; st += ` · 📿 ${n} relik (+${Math.round(n * RELICS.gold * 60)} emas/menit)`; }
@@ -291,8 +322,12 @@ export class HUD {
       else if (d.pop) st = `Populasi +${d.pop}`;
       if (e.built && e.hp < e.maxHp && e.owner === G.me) st += ' · <b class="warn">Rusak</b> — klik kanan dengan penduduk desa untuk memperbaiki';
       if (e.burn && e.burn > W.t) st += ' · <b class="warn">🔥 terbakar!</b>';
-      if (e.owner === this.g.me) { const { soldiers, vils } = insideOf(W, e); if (vils) st += ` · 🌙 ${vils} penduduk di dalam`; if (soldiers) st += ` · ⛑ garnisun ${soldiers}/${garrisonCapOf(W, e)}`; }
+      if (e.owner === this.g.me && !d.tavern && !d.hospital) { const { soldiers, vils } = insideOf(W, e); if (vils) st += ` · 🌙 ${vils} penduduk di dalam`; if (soldiers) st += ` · ⛑ garnisun ${soldiers}/${garrisonCapOf(W, e)}`; }
       if (d.gate && e.locked) st += ' · 🔒 terkunci';
+      if (d.tavern || d.hospital) { let n = 0; for (const u of W.dyn.values()) if (u.inside === e.id) n++; st += d.tavern ? ` · 🍺 ${n} pengunjung (maks ${d.tavern})` : ` · ⚕ ${n} pasien`; }
+      if (d.pen) st += ` · 🐑 ${e.herd || 0}/${d.penCap} ternak di padang — klik kanan domba/sapi ke sini`;
+      if (d.well) st += ' · 💧 air untuk warga dalam 10 petak';
+      if (e.type === 'house' && e.owner === this.g.me) { const fam = [...W.dyn.values()].filter(u => u.homeId === e.id); if (fam.length) st += `<div class="who">🏠 ${fam.map(u => personName(u).split(' ')[0] + (u.type === 'child' ? ' (anak)' : '')).join(', ')}</div>`; }
       if (d.reseed && e.owner === this.g.me) st += ` · 🌱 antrean tanam ulang: ${W.reseed[e.owner] || 0}`;
       if (d.wonder && W.wonders && W.wonders.has(e.id)) st += ` · 🏛 menang dalam ${Math.ceil((WONDER_TIME - (W.t - W.wonders.get(e.id))) / 60)} menit`;
       const qi = el.querySelectorAll('.queue i');

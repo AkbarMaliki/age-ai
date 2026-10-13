@@ -14,10 +14,10 @@ export const UNIT_BOX = { villager: [15, 62], militia: [15, 66], spearman: [15, 
   sheep: [13, 32], deer: [16, 46], boar: [16, 36], wolf: [15, 36], bear: [20, 56],
   gunner: [15, 66], samurai: [16, 72], ninja: [15, 66], fire_archer: [15, 66], crossbow: [15, 66], cataphract: [24, 94], lancer: [24, 92],
   ram: [30, 62], cannon: [26, 48], fishing_boat: [30, 52], transport_ship: [44, 96], war_ship: [48, 96],
-  mangonel: [28, 60], scorpion: [24, 48], trebuchet: [34, 110], trebuchet_p: [32, 56], trade_cart: [26, 56], king: [16, 74],
+  child: [11, 44], cow: [20, 46], mangonel: [28, 60], scorpion: [24, 48], trebuchet: [34, 110], trebuchet_p: [32, 56], trade_cart: [26, 56], king: [16, 74],
   fire_ship: [46, 96], demo_ship: [40, 80], galleon: [52, 110], cannon_galleon: [52, 110], trade_cog: [48, 100] };
 // stand-ins while a sprite set is missing from the atlases
-const SPRITE_FALLBACK = { mangonel: 'cannon', scorpion: 'cannon', trebuchet: 'ram', trebuchet_p: 'ram', fire_ship: 'war_ship', demo_ship: 'fishing_boat', galleon: 'war_ship', cannon_galleon: 'war_ship', trade_cart: 'ram', trade_cog: 'transport_ship', king: 'knight' };
+const SPRITE_FALLBACK = { cow: 'sheep', mangonel: 'cannon', scorpion: 'cannon', trebuchet: 'ram', trebuchet_p: 'ram', fire_ship: 'war_ship', demo_ship: 'fishing_boat', galleon: 'war_ship', cannon_galleon: 'war_ship', trade_cart: 'ram', trade_cog: 'transport_ship', king: 'knight' };
 const BLD_FALLBACK = { siege_workshop: 'barracks', wonder: 'castle' };
 // nearest rendered direction for a screen angle; returns [dir, mirrored]
 export function pickDir(a) {
@@ -342,7 +342,7 @@ export class View {
   colorOf(owner) { return this.W.players[owner]?.color || 'none'; }
   // sprite set + animation for a unit (or a corpse / carcass of one)
   unitSet(e) {
-    if (e.type === 'villager') return (e.kind === 'corpse' ? e.sk : e.id % 2) ? 'villager_f' : 'villager_m';
+    if (e.type === 'villager' || e.type === 'child') return (e.kind === 'corpse' ? e.sk : e.id % 2) ? 'villager_f' : 'villager_m';
     const base = UNITS[e.type] ? UNITS[e.type].sprite : e.type;
     const up = e.owner >= 0 && UNITS[e.type] && !UNITS[e.type].animal ? stat(this.W, e.owner, e.type).sprite : null;      // upgraded line: its new look
     const set = up && this.A.units.meta.anims[up] ? up : base;
@@ -409,7 +409,12 @@ export class View {
     if ((e.kind === 'building' && e.type === 'farm') || (e.kind === 'res' && e.type === 'fish')) this.flat.addChildAt(v.spr, 0); else if (e.kind === 'proj') this.sky.addChild(v.spr); else if (e.kind === 'rubble') this.flat.addChildAt(v.spr, 0); else this.objs.addChild(v.spr);
     this.views.set(e.id, v); return v;
   }
-  dropView(id, v) { v.spr.destroy(); if (v.extra) v.extra.destroy({ children: true }); if (v.sail) v.sail.destroy(); this.views.delete(id); }
+  moodTex(k) {
+    this.moods = this.moods || {};
+    if (!this.moods[k]) { const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.fillStyle = 'rgba(20,14,8,0.55)'; g.beginPath(); g.arc(16, 16, 14, 0, 6.283); g.fill(); g.font = '20px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText({ sick: '🤢', thirst: '💧', hunger: '🍞', tired: '💤', sad: '☁' }[k], 16, 17); this.moods[k] = Texture.from(c); }
+    return this.moods[k];
+  }
+  dropView(id, v) { if (v.badge) v.badge.destroy(); v.spr.destroy(); if (v.extra) v.extra.destroy({ children: true }); if (v.sail) v.sail.destroy(); this.views.delete(id); }
 
   wallSprites(e, v) {
     const W = this.W, col = this.colorOf(e.owner), A = this.A;
@@ -453,7 +458,7 @@ export class View {
       }
       else { x = e.x; y = e.y; }
       const [sx, sy] = iso(x, y);
-      if (sx < vx0 || sx > vx1 || sy < vy0 || sy > vy1) { const v = this.views.get(e.id); if (v) { v.spr.visible = false; if (v.extra) v.extra.visible = false; if (v.sail) v.sail.visible = false; } seen.add(e.id); continue; }
+      if (sx < vx0 || sx > vx1 || sy < vy0 || sy > vy1) { const v = this.views.get(e.id); if (v) { v.spr.visible = false; if (v.extra) v.extra.visible = false; if (v.sail) v.sail.visible = false; if (v.badge) v.badge.visible = false; } seen.add(e.id); continue; }
       const ti = Math.min(W.size - 1, Math.max(0, Math.floor(x))), tj = Math.min(W.size - 1, Math.max(0, Math.floor(y)));
       const k = tj * W.size + ti;
       const visible = this.reveal || P.vis[k], explored = this.reveal || P.exp[k];
@@ -462,7 +467,7 @@ export class View {
       if ((e.kind === 'unit' || e.kind === 'proj' || e.kind === 'corpse') && !mineE && !visible) show = false;
       if (e.kind === 'unit' && !mineE && !this.reveal && e.owner >= 0 && hiddenFrom(W, e, this.me)) show = false;       // a hidden ninja
       if (e.inside) show = false;                                                                                  // asleep indoors
-      if (!show) { const v = this.views.get(e.id); if (v) { v.spr.visible = false; if (v.extra) v.extra.visible = false; if (v.sail) v.sail.visible = false; } seen.add(e.id); continue; }
+      if (!show) { const v = this.views.get(e.id); if (v) { v.spr.visible = false; if (v.extra) v.extra.visible = false; if (v.sail) v.sail.visible = false; if (v.badge) v.badge.visible = false; } seen.add(e.id); continue; }
       seen.add(e.id);
       let v = this.views.get(e.id); if (!v) v = this.makeView(e);
       if (e.kind === 'proj') {
@@ -486,6 +491,11 @@ export class View {
       const us = e.kind === 'unit' && UNITS[e.type] ? UNITS[e.type] : null, sc = us && us.scale || 1;
       s.scale.set((mir ? -1 : 1) * sc, sc);
       s.x = sx; s.y = sy;
+      if (e.kind === 'unit' && e.nm !== undefined) {
+        const mood = e.sick ? 'sick' : e.th < 20 ? 'thirst' : e.hu < 15 ? 'hunger' : e.en < 12 ? 'tired' : e.fu < 15 ? 'sad' : null;
+        if (mood && (visible || mineE)) { if (!v.badge) { v.badge = new Sprite(); v.badge.anchor.set(0.5); this.sky.addChild(v.badge); } v.badge.texture = this.moodTex(mood); v.badge.visible = true; v.badge.x = sx; v.badge.y = sy - (UNIT_BOX[e.type] || [15, 62])[1] * sc - 10 + Math.sin(this.t * 3 + e.id) * 2; v.badge.zIndex = sy + 999; }
+        else if (v.badge) v.badge.visible = false;
+      }
       if (e.kind === 'relic' && e.carrier) { s.scale.set(0.45); s.y = sy - 46; }        // carried high by its monk
       s.zIndex = e.kind === 'building' ? sy - (e.w + e.h) * 6 : sy;
       if (e.kind === 'building' && e.type !== 'farm' && BUILDINGS[e.type].n > 1) s.zIndex = iso(e.x + e.w * 0.75, e.y + e.h * 0.75)[1] - 2;
