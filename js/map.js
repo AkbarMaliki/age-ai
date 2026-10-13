@@ -2,7 +2,7 @@
 // rotation and a random seat for each player. Fairness: each player's home resources follow one shared, randomly rolled
 // layout (relative to the direction of the map centre), the map-wide features are copied around the centre once per
 // seat (rotational symmetry), and a final pass tops up any player that still ends up short of wood, gold, stone or food.
-import { createWorld, addResource, addBuilding, addUnit, addTreasure, addRelic, rng, idx, del } from './sim.js';
+import { createWorld, addResource, addBuilding, addUnit, addTreasure, addRelic, addMonument, rng, idx, del } from './sim.js';
 import { GAIA, TREASURES, RESOURCES, UNITS, TER, SEASONS, CIVS } from './data.js';
 
 export const T_GRASS = TER.GRASS, T_DIRT = TER.DIRT, T_FOREST = TER.FOREST, T_WATER = TER.WATER, T_GRASS2 = TER.GRASS2, T_HILL = TER.HILL, T_ROCK = TER.ROCK;
@@ -214,6 +214,7 @@ export function generate({ size = 80, players, seed = 7, type = 'random', opts =
     const cv = W.players[p].civ && CIVS[W.players[p].civ], nv = 3 + ((cv && cv.start && cv.start.villagers) || 0);
     for (let k = 0; k < nv; k++) addUnit(W, p, 'villager', sx - 1.5 + (k % 3) * 1.2, sy + 3.0 + Math.floor(k / 3) * 1.1);
     addUnit(W, p, 'scout', sx + 3.2, sy + 1.0);
+    if (W.opts.victory === 'regicide') W.players[p].king = addUnit(W, p, 'king', sx - 3.2, sy + 1.0).id;      // Regicide: protect him
     W.players[p].start = [sx, sy]; W.players[p].tc = tc.id;
   });
   // ---- wildlife (AoE2): sheep to herd, boar + deer to hunt, wolves to fear
@@ -266,6 +267,19 @@ export function generate({ size = 80, players, seed = 7, type = 'random', opts =
     break;
   }
   if (M.water !== 'islands') relicAt(size / 2, size / 2);
+  // ---- King of the Hill: the monument on the dry ground nearest the middle
+  if (W.opts.victory === 'koth') {
+    let mp = null;
+    for (let rr = 0; rr < size / 3 && !mp; rr++) for (let k = 0; k < Math.max(1, rr * 6) && !mp; k++) {
+      const a = k / Math.max(1, rr * 6) * Math.PI * 2, i = Math.round(size / 2 + Math.cos(a) * rr) - 1, j = Math.round(size / 2 + Math.sin(a) * rr) - 1;
+      let ok = true; for (let dj = -1; dj <= 3 && ok; dj++) for (let di = -1; di <= 3 && ok; di++) ok = free(i + di, j + dj);
+      if (ok) mp = [i, j];
+    }
+    if (mp) {
+      addMonument(W, mp[0], mp[1]);
+      for (const P of W.players) for (let dj = -5; dj <= 7; dj++) for (let di = -5; di <= 7; di++) { const i = mp[0] + di, j = mp[1] + dj; if (i >= 0 && j >= 0 && i < size && j < size && (di - 1) ** 2 + (dj - 1) ** 2 <= 36) P.exp[j * size + i] = 1; }   // everyone knows where the hill is
+    }
+  }
 
   if (M.water !== 'islands') connect(W, starts, terrain);
   else for (const P of W.players) P.res.wood += 200;               // islands: timber for the first dock

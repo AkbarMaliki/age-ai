@@ -8,12 +8,14 @@ A browser RTS in the style of Age of Empires II. It uses pre-rendered 3D sprites
 ```
 start.bat            (or: node server.cjs 8772)
 http://localhost:8772
-npm test             (map fairness, headless AI-vs-AI game, naval checks, online lockstep)
+npm test             (map fairness, headless AI-vs-AI game, naval, tactics, v7 rules, online lockstep)
+node tests/imperial.test.js 70 5   (2v2 AI late game: Imperial Age, unit lines, siege, trade)
 node tests/stuck.test.js 40 5 144 4   (stuck-unit detector, slower)
 ```
 
 ## Highlights
 6 civilizations with unique units, monks (conversion, relics, relic victory), age paths, stances, formations, town bell, shift-queued orders, patrol / guard, autosave + saved games + replays, online multiplayer.
+v7: Imperial Age with unit upgrade lines, Siege Workshop (mangonel, scorpion, trebuchet that packs/unpacks), garrisons (towers, TC, castle, rams), palisades, tower upgrades and gate locks, trade carts/cogs, economy techs + farm reseed queue + fish traps, fire/demolition ships and cannon galleons, game modes (Regicide, Wonder, King of the Hill, treaty, Deathmatch), teams/diplomacy (tribute, flares, shared vision), lobby rules (pop limit, start resources, speed) and a tech tree viewer.
 
 ## Online (play with friends)
 Menu → **🌐 Main Online** → *Buat Room* → *Salin Link*. A friend who opens the link (`?room=CODE`) joins the room. The host can add AIs, set teams and the map, then start. Up to 4 kingdoms, plus any number of spectators.

@@ -1,27 +1,36 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS } from './data.js?v=20261013073348';
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261013073348';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost } from './sim.js?v=20261013073348';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013113946';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261013113946';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost } from './sim.js?v=20261013113946';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
 // villager build menu, two pages
 const VIL_PAGES = [
-  [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['dock', 5], ['market', 6], ['blacksmith', 7], ['academy', 8]],
-  [['barracks', 0], ['archery_range', 1], ['stable', 2], ['watch_tower', 3], ['castle', 4], ['stone_wall', 5], ['gate', 6]],
+  [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['dock', 5], ['market', 6], ['blacksmith', 7], ['academy', 8], ['monastery', 10], ['wonder', 11]],
+  [['barracks', 0], ['archery_range', 1], ['stable', 2], ['siege_workshop', 3], ['castle', 4], ['watch_tower', 5], ['palisade', 6], ['stone_wall', 7], ['gate', 8]],
 ];
 const BLD_DESC = { house: '+5 populasi', mill: 'Tempat setor makanan, membuka ladang', lumber_camp: 'Tempat setor kayu', mining_camp: 'Tempat setor emas, batu & besi', farm: 'Sumber makanan tak terbatas (perlu ditanam ulang)',
   barracks: 'Melatih infanteri dan Pendobrak', archery_range: 'Melatih pemanah dan penembak mesiu', stable: 'Melatih kavaleri', watch_tower: 'Menembakkan panah ke musuh', stone_wall: 'Tarik garis untuk membangun tembok',
   gate: 'Gerbang untuk pasukanmu', castle: 'Benteng kuat, melatih ksatria', market: 'Jual-beli makanan, kayu, batu dan besi dengan emas', dock: 'Dibangun di tepi air: kapal nelayan, angkut dan perang',
-  blacksmith: 'Peningkatan senjata & zirah, dan memilih DOKTRIN perang pertama', academy: 'Riset: mata-mata, mesiu, pasukan khusus dan DOKTRIN kedua' };
+  blacksmith: 'Peningkatan senjata & zirah, dan memilih DOKTRIN perang pertama', academy: 'Riset: mata-mata, mesiu, pasukan khusus dan DOKTRIN kedua',
+  monastery: 'Melatih Biarawan; simpan relik di sini untuk emas', palisade: 'Pagar kayu murah dan cepat (Zaman Kegelapan). Tarik garis seperti tembok.', siege_workshop: 'Melatih Pendobrak, Mangonel dan Skorpion',
+  wonder: `Keajaiban Dunia: pertahankan ${WONDER_TIME / 60} menit untuk MENANG` };
 // fixed slots per building (some have more commands than keys follow from the data)
 const SLOTS = {
-  town_center: { villager: 0, torches: 1, loom: 3, wheelbarrow: 4, feudal: 5, feudal_war: 6, feudal_wall: 7, castle: 5, castle_war: 6, castle_trade: 7, civic_defense: 8, $bell: 10 },
+  town_center: { villager: 0, torches: 1, hand_cart: 2, loom: 3, wheelbarrow: 4, feudal: 5, feudal_war: 6, feudal_wall: 7, castle: 5, castle_war: 6, castle_trade: 7, imperial: 5, imperial_war: 6, imperial_lore: 7, civic_defense: 8, $bell: 10, $out: 11 },
   blacksmith: { forging: 0, scale_mail: 1, scale_barding: 2, fletching: 3, padded_archer: 4, iron_casting: 5, chain_mail: 6, chain_barding: 7, bodkin: 8, doc_legion: 10, doc_cavalry: 11, doc_archers: 12 },
   academy: { spy_network: 0, masonry: 1, ballistics: 2, gunpowder: 3, cannon: 4, healer: 5, medicine: 6, doc_fortress: 10, doc_blitz: 11, doc_formation: 12, $spy: 13 },
-  barracks: { militia: 0, spearman: 1, ram: 2, drill: 5, pikes: 6 }, archery_range: { archer: 0, skirmisher: 1, horse_archer: 2, gunner: 3, thumb_ring: 5, parthian: 6 }, stable: { scout: 0, knight: 1, husbandry: 5, flank_tactics: 6 }, dock: { fishing_boat: 0, transport_ship: 1, war_ship: 2, gillnets: 3, careening: 4 },
-  castle: { knight: 0, unique: 1, conscription: 2 }, monastery: { monk: 0, fervor: 5, sanctity: 6, illumination: 7 }, mill: { horse_collar: 0, granary: 1 }, mining_camp: { gold_mining: 0, iron_smelting: 1 }, lumber_camp: { double_bit_axe: 0 }, market: { guilds: 3, trade_route: 4 },
+  // upgrade chains share one slot: only the next step of a line is shown
+  barracks: { militia: 0, spearman: 1, man_at_arms: 5, long_sword: 5, champion: 5, pikes: 6, halberdier: 6, drill: 7 },
+  archery_range: { archer: 0, skirmisher: 1, horse_archer: 2, gunner: 3, arbalest: 5, elite_skirm: 6, heavy_ha: 7, thumb_ring: 10, parthian: 11 },
+  stable: { scout: 0, knight: 1, light_cav: 5, hussar: 5, cavalier: 6, paladin: 6, husbandry: 10, flank_tactics: 11 },
+  dock: { fishing_boat: 0, transport_ship: 1, war_ship: 2, fire_ship: 3, demo_ship: 4, cannon_galleon: 5, trade_cog: 6, $trap: 7, gillnets: 10, careening: 11, galleon: 12 },
+  siege_workshop: { ram: 0, mangonel: 1, scorpion: 2, capped_ram: 5, onager: 6, heavy_scorpion: 7 },
+  castle: { knight: 0, unique: 1, trebuchet_p: 2, conscription: 5, $out: 11 }, monastery: { monk: 0, fervor: 5, sanctity: 6, illumination: 7 },
+  mill: { horse_collar: 0, heavy_plow: 0, crop_rotation: 0, granary: 1, $reseed: 5 }, mining_camp: { gold_mining: 0, gold_shaft: 0, iron_smelting: 1, stone_mining: 2, stone_shaft: 2 },
+  lumber_camp: { double_bit_axe: 0, bow_saw: 0, two_man_saw: 0 }, market: { trade_cart: 8, guilds: 3, trade_route: 4 }, watch_tower: { guard_tower: 0, keep: 0, $out: 11 }, gate: { $lock: 0 },
 };
 // buildings with more commands than fit: extra pages (slot 14 flips)
 const PAGES = { academy: [null, { $name: 'Pasukan Khusus', spec_samurai: 0, spec_ninja: 1, spec_fire: 5, spec_crossbow: 6, spec_cataphract: 10, spec_lancer: 11 }] };
@@ -33,7 +42,13 @@ const STANCE = {
 };
 const GLYPH = { loom: '🧵', wheelbarrow: '🛒', torches: '🔥', double_bit_axe: '🪓', gold_mining: '⛏', iron_smelting: '⚒', horse_collar: '🐴', granary: '🏚', guilds: '⚖', trade_route: '🐫', gillnets: '🎣', careening: '⚓', conscription: '📯',
   forging: '🗡', iron_casting: '⚔', scale_mail: '🦺', chain_mail: '⛓', scale_barding: '🐎', chain_barding: '🏇', fletching: '🪶', bodkin: '🎯', padded_archer: '🧥', spy_network: '🕵', masonry: '🧱', ballistics: '📐', gunpowder: '💥',
-  spec_samurai: '⛩', spec_ninja: '🥷', spec_fire: '🔥', spec_crossbow: '🏹', spec_cataphract: '🛡', spec_lancer: '🔱' };
+  spec_samurai: '⛩', spec_ninja: '🥷', spec_fire: '🔥', spec_crossbow: '🏹', spec_cataphract: '🛡', spec_lancer: '🔱',
+  hand_cart: '🛞', bow_saw: '🪚', two_man_saw: '🪚', heavy_plow: '🌾', crop_rotation: '🔄', gold_shaft: '⛏', stone_mining: '🪨', stone_shaft: '🪨', man_at_arms: '🗡', long_sword: '⚔', champion: '🏆', halberdier: '🔱',
+  arbalest: '🏹', elite_skirm: '🎯', heavy_ha: '🐎', light_cav: '🐴', hussar: '🐴', cavalier: '🏇', paladin: '👑', capped_ram: '🪵', onager: '🪨', heavy_scorpion: '🏹', guard_tower: '🗼', keep: '🏯', galleon: '⛵' };
+const UGLYPH = { fishing_boat: '⛵', transport_ship: '🚢', war_ship: '⛴', ram: '🪵', cannon: '💣', mangonel: '🪨', scorpion: '🏹', trebuchet_p: '🏗', trebuchet: '🏗', trade_cart: '🛒', trade_cog: '⛵', fire_ship: '🔥', demo_ship: '💥', galleon: '⛴', cannon_galleon: '💣', king: '👑' };
+const RES_GLYPH = { food: '🍖', wood: '🪵', gold: '🪙', stone: '🪨', iron: '⛓' };
+const garrisonCapOf = (W, b) => { const d = BUILDINGS[b.type]; return d && d.garrison ? d.garrison : 0; };
+const insideOf = (W, b) => { let soldiers = 0, vils = 0; for (const u of W.dyn.values()) if (u.kind === 'unit' && u.inside === b.id) { if (u.order && u.order.t === 'garrison') soldiers++; else vils++; } return { soldiers, vils }; };
 
 const P_BELL = (W, e) => !!(W.players[e.owner] && W.players[e.owner].bell);
 export class HUD {
@@ -58,7 +73,7 @@ export class HUD {
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
   // k: scale of a 64 px icon (small boxes shrink the whole sheet, so the offsets must shrink too)
-  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261013073348);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261013113946);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
 
   notify(msg, cls = '') {
@@ -99,6 +114,7 @@ export class HUD {
     const de = $('dayInfo'); if (de.textContent !== di) de.textContent = di;
     de.title = `${SEASONS[W.opts.season].name}: ${SEASONS[W.opts.season].desc}\n` + (W.opts.night === 'off' ? 'Siklus siang-malam mati.' : night ? 'Malam: jarak pandang berkurang' + (W.opts.night === 'full' ? ', penduduk desa beristirahat di rumah (kecuali sudah riset Obor Kerja).' : '.') : `Malam tiba dalam ${Math.ceil(toNight / 60)} menit. Saat fajar setiap warga makan ${DAY.upkeep} makanan.`);
     de.classList.toggle('hungry', !!P.hungry);
+    this.goals(W, P);
     let idle = 0; for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner === G.me && e.type === 'villager' && !e.order) idle++;
     $('idleVil').classList.toggle('has', idle > 0); $('idleN').textContent = idle || '';
     const sel = G.sel.map(id => W.ents.get(id)).filter(Boolean);
@@ -107,6 +123,14 @@ export class HUD {
     this.buildInfo(sel);
     this.miniT -= dt; if (this.miniT <= 0) { this.miniT = 0.4; this.drawMiniBase(); }
     this.drawMini();
+  }
+  // top bar countdowns: wonders standing, the monument held, the treaty still running
+  goals(W, P) {
+    const out = [], mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    if (W.opts.treaty && W.t < W.opts.treaty) out.push(`<span title="Gencatan senjata: tidak ada yang bisa menyerang">🕊 ${mmss(W.opts.treaty - W.t)}</span>`);
+    for (const [id, t0] of W.wonders || []) { const b = W.ents.get(id); if (!b) continue; const o = W.players[b.owner]; out.push(`<span title="Keajaiban ${o.name}: menang bila bertahan" style="color:rgb(${PLAYER_RGB[o.color]})">🏛 ${mmss(Math.max(0, WONDER_TIME - (W.t - t0)))}</span>`); }
+    const m = W.monument; if (m && m.team >= 0) { const o = W.players[m.owner] || W.players.find(q => q.team === m.team); if (o) out.push(`<span title="Monumen dikuasai ${o.name}" style="color:rgb(${PLAYER_RGB[o.color]})">⛰ ${mmss(Math.max(0, KOTH_TIME - (W.t - m.since)))}</span>`); }
+    const html = out.join(' '), el = $('goalInfo'); if (el && el.innerHTML !== html) { el.innerHTML = html; el.classList.toggle('hidden', !html); }
   }
   buildCommands(sel) {
     const G = this.g, W = G.W, P = W.players[G.me];
@@ -120,7 +144,7 @@ export class HUD {
           const d = BUILDINGS[type]; const ok = canBuild(W, G.me, type), cost = costOf(P, type);
           let why = P.age < d.age ? `Butuh ${AGES[d.age]}` : (d.needs || []).filter(n => !G.hasBuilt(n)).map(n => 'Butuh ' + BUILDINGS[n].name).join(', ');
           if (ok && !canAfford(P, cost)) why = 'Sumber daya kurang';
-          this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
+          this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
         }
         this.setBtn(9, { glyph: this.page ? '🏠' : '⚔', name: this.page ? 'Bangunan Ekonomi' : 'Bangunan Militer & Pertahanan', desc: 'Ganti halaman bangunan', act: () => { this.page = 1 - this.page; this.lastSig = ''; } });
       } else {
@@ -133,6 +157,10 @@ export class HUD {
           this.setBtn(11, { glyph: '🛡', name: 'Kawal', desc: 'Klik unit kawan untuk dikawal: mengikuti dan menyerang musuh yang mendekatinya (mis. kawal Biarawan atau Pendobrak).', act: () => G.startTarget('follow') });
           if (mil.some(u => stat(W, u.owner, u.type).splash)) this.setBtn(12, { glyph: '🎯', name: 'Serang Tanah', desc: 'Mesin pengepung menembaki titik tertentu (ledakan area), misalnya kerumunan di balik tembok.', act: () => G.startTarget('ground') });
         }
+        const treb = units.filter(u => UNITS[u.type].packs);
+        if (treb.length) { const packed = treb.some(u => u.type === 'trebuchet_p'); this.setBtn(12, { glyph: '🏗', name: packed ? 'Pasang Trebuchet' : 'Bongkar Trebuchet', desc: packed ? 'Pasang di tempat (4 detik) agar bisa menembak. Trebuchet juga memasang diri otomatis saat diperintah menyerang.' : 'Bongkar (4 detik) agar bisa berjalan. Terjadi otomatis saat diperintah bergerak.', act: () => G.send({ t: 'pack', pid: G.me, ids: treb.map(u => u.id) }) }); }
+        const rams = units.filter(u => insideOf(W, u).soldiers);
+        if (rams.length) this.setBtn(12, { glyph: '⏏', name: 'Keluarkan Pasukan', desc: `${rams.reduce((a, r) => a + insideOf(W, r).soldiers, 0)} infanteri di dalam Pendobrak (tiap penumpang +8% kecepatan).`, act: () => rams.forEach(r => G.send({ t: 'ungarrison', pid: G.me, bid: r.id })) });
         const ships = units.filter(u => u.cargo && u.cargo.length);
         if (ships.length) this.setBtn(12, { glyph: '⚓', name: 'Turunkan pasukan', desc: `Muatan: ${ships.reduce((s, u) => s + u.cargo.length, 0)} unit. Klik kanan di daratan dekat pantai, atau tekan untuk menurunkan di pantai terdekat.`, act: () => G.unloadHere() });
       }
@@ -157,13 +185,15 @@ export class HUD {
       if (!shown(u0)) return;
       const u = trainType(P, u0), ud = UNITS[u]; const slot = slots[u0] ?? k; if (!ud) return;
       const why = P.age < ud.age ? `Butuh ${AGES[ud.age]}` : ud.needsTech && !P.techs.has(ud.needsTech) ? 'Butuh riset ' + TECHS[ud.needsTech].name : !canAfford(P, unitCost(P, u)) ? 'Sumber daya kurang' : '';
-      this.setBtn(slot, { icon: ud.sprite === u ? u : ud.sprite, badge: u !== u0 ? '★' : '', badgeCls: 'spec', glyph: { fishing_boat: '⛵', transport_ship: '🚢', war_ship: '⛴', ram: '🪵', cannon: '💣' }[u], name: ud.name, cost: unitCost(P, u), desc: this.unitDesc(P, u), why, disabled: !!why || b.queue.length >= 5, act: () => G.train(b, u0) });
+      const sn = stat(W, G.me, u).name;
+      this.setBtn(slot, { icon: ud.sprite === u ? u : ud.sprite, badge: u !== u0 ? '★' : '', badgeCls: 'spec', glyph: UGLYPH[u], name: sn || ud.name, cost: unitCost(P, u), desc: this.unitDesc(P, u), why, disabled: !!why || b.queue.length >= 5, act: () => G.train(b, u0) });
     });
     (d.techs || []).forEach((t) => {
       if (!shown(t)) return;
       const td = TECHS[t], slot = slots[t] ?? 'QWERTASDFG'.indexOf(td.key);
+      if (td.after && !P.techs.has(td.after) && (d.techs || []).includes(td.after)) return;          // a later step of a line waits for the earlier one
       const groupDone = td.group && [...P.techs].find(x => TECHS[x].group === td.group);
-      if (P.techs.has(t)) { if (td.toAge) return; if (td.group || td.spec) this.setBtn(slot, { glyph: td.glyph || GLYPH[t] || '📜', name: td.name + ' ✔', desc: td.desc, chosen: true, disabled: true, why: 'Pilihan ini sudah diambil.' }); return; }
+      if (P.techs.has(t)) { if (td.toAge || (d.techs || []).some(x => TECHS[x].after === t)) return; if (td.group || td.spec) this.setBtn(slot, { glyph: td.glyph || GLYPH[t] || '📜', name: td.name + ' ✔', desc: td.desc, chosen: true, disabled: true, why: 'Pilihan ini sudah diambil.' }); return; }
       if (td.toAge && td.toAge !== P.age + 1) return;
       if (td.toAge && b.queue.some(q => q.tech && TECHS[q.tech].toAge && q.tech !== t)) return;      // one path already chosen and in progress
       if (groupDone) { this.setBtn(slot, { glyph: td.glyph || GLYPH[t] || '📜', name: td.name, desc: td.desc, disabled: true, why: `Tertutup: kamu sudah memilih ${TECHS[groupDone].name}.` }); return; }
@@ -178,6 +208,20 @@ export class HUD {
     if (d.ability === 'bell') {
       const on = !!P.bell, n = W.garr ? [...W.garr.values()].reduce((a, k) => a + k, 0) : 0;
       this.setBtn(slots.$bell ?? 10, { glyph: '🔔', name: on ? 'Bunyikan lagi: kembali bekerja' : 'Lonceng Kota', active: on, desc: on ? `${n} penduduk sedang berlindung. Tekan untuk mengembalikan mereka ke pekerjaan.` : 'Semua penduduk desa lari berlindung ke Pusat Kota, Kastil, menara dan rumah terdekat. Di Pusat Kota, Kastil dan menara mereka menambah anak panah (1 per 4 penduduk, Pertahanan Rakyat: 1 per 2; maks +5). Hotkey: B (tanpa pilihan).', act: () => G.ringBell(!on) });
+    }
+    if (shown('$out') && garrisonCapOf(W, b)) {
+      const n = insideOf(W, b).soldiers;
+      this.setBtn(slots.$out ?? 11, { glyph: '⏏', name: 'Keluarkan Garnisun', desc: `${n} / ${garrisonCapOf(W, b)} tentara di dalam. Tentara di dalam menambah panah bangunan dan sembuh perlahan. Masukkan tentara: pilih lalu klik kanan bangunan ini.`, disabled: !n, why: n ? '' : 'Tidak ada garnisun', act: () => G.send({ t: 'ungarrison', pid: G.me, bid: b.id }) });
+    }
+    if (d.gate && shown('$lock')) this.setBtn(slots.$lock ?? 0, { glyph: b.locked ? '🔒' : '🔓', name: b.locked ? 'Buka Kunci Gerbang' : 'Kunci Gerbang', active: !!b.locked, desc: b.locked ? 'Gerbang terkunci: tidak ada yang bisa lewat, termasuk pasukanmu.' : 'Kunci gerbang agar tidak bisa dilewati siapa pun (pasukan sendiri dan sekutu biasanya bisa lewat).', act: () => G.send({ t: 'lock', pid: G.me, bid: b.id }) });
+    if (d.reseed && shown('$reseed')) {
+      const q = W.reseed[G.me] || 0, fc = costOf(P, 'farm');
+      this.setBtn(slots.$reseed ?? 5, { glyph: '🌱', badge: q ? String(q) : '', name: 'Antre Tanam Ulang (+1)', cost: fc, desc: `Bayar di muka: ladang yang habis langsung ditanam ulang di tempat oleh petaninya. Antrean: <b>${q}</b>. (Shift+klik: +5)`, disabled: !canAfford(P, fc), why: canAfford(P, fc) ? '' : 'Kayu kurang', act: () => G.send({ t: 'reseed', pid: G.me, bid: b.id, n: G.keys && G.keys.Shift ? 5 : 1 }) });
+      this.setBtn((slots.$reseed ?? 5) + 1, { glyph: '➖', name: 'Batalkan 1 Antrean Tanam', desc: 'Kayunya dikembalikan.', disabled: !q, act: () => G.send({ t: 'reseed', pid: G.me, bid: b.id, n: -1 }) });
+    }
+    if (d.fishtrap && shown('$trap')) {
+      const ok = P.age >= 2 && P.res.wood >= 100;
+      this.setBtn(slots.$trap ?? 7, { glyph: '🪤', name: 'Perangkap Ikan', cost: { wood: 100 }, desc: 'Pasang perangkap ikan (700 makanan) di air dekat Dermaga — dijala Kapal Nelayan seperti kawanan ikan.', why: P.age < 2 ? `Butuh ${AGES[2]}` : !ok ? 'Kayu kurang' : '', disabled: !ok, act: () => G.send({ t: 'fishtrap', pid: G.me, bid: b.id }) });
     }
     if (d.ability === 'spy' && shown('$spy')) {
       const cd = Math.max(0, P.spyCd - W.t), has = P.techs.has('spy_network');
@@ -195,18 +239,18 @@ export class HUD {
     }
     const e = sel[0];
     const k = 'one' + e.id + e.type + (e.kind === 'building' ? e.queue.map(q => q.unit || q.tech).join() + e.built : '');
-    const name = e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
-      : e.type === 'carcass' ? 'Bangkai ' + UNITS[e.animal].name : { tree: 'Pohon', gold: 'Tambang Emas', stone: 'Tambang Batu', iron: 'Tambang Besi', berry: 'Semak Berry', fish: 'Kawanan Ikan' }[e.type];
+    const name = e.kind === 'monument' ? 'Monumen Raja Bukit' : e.kind === 'unit' && stat(W, e.owner, e.type).name ? stat(W, e.owner, e.type).name : e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
+      : e.type === 'carcass' ? 'Bangkai ' + UNITS[e.animal].name : e.trap ? 'Perangkap Ikan' : { tree: 'Pohon', gold: 'Tambang Emas', stone: 'Tambang Batu', iron: 'Tambang Besi', berry: 'Semak Berry', fish: 'Kawanan Ikan' }[e.type];
     const owner = e.owner >= 0 ? W.players[e.owner] : null;
     if (el.dataset.k !== k) {
       el.dataset.k = k;
-      const icon = e.kind === 'relic' ? 'relic' : e.kind === 'treasure' ? 'treasure_' + e.type : e.type === 'carcass' ? e.animal : e.kind === 'res' ? 'res_' + { tree: 'wood', gold: 'gold', stone: 'stone', iron: 'iron', berry: 'food', fish: 'food' }[e.type] : e.type === 'stone_wall' ? 'wall_post' : e.type === 'gate' ? 'gate_x' : e.kind === 'unit' ? UNITS[e.type].sprite : e.type;
-      el.innerHTML = `<div class="one"><div class="por" style="${this.iconStyle(icon)}"></div><div class="nm"><b>${name}</b>${owner ? `<small style="color:rgb(${PLAYER_RGB[owner.color]})">${owner.name}</small>` : e.kind === 'unit' ? '<small class="gaia">Alam liar</small>' : ''}</div>
+      const icon = e.kind === 'monument' ? 'monument' : e.type === 'palisade' ? 'pal_post' : e.kind === 'relic' ? 'relic' : e.kind === 'treasure' ? 'treasure_' + e.type : e.type === 'carcass' ? e.animal : e.kind === 'res' ? 'res_' + { tree: 'wood', gold: 'gold', stone: 'stone', iron: 'iron', berry: 'food', fish: 'food' }[e.type] : e.type === 'stone_wall' ? 'wall_post' : e.type === 'gate' ? 'gate_x' : e.kind === 'unit' ? UNITS[e.type].sprite : e.type;
+      el.innerHTML = `<div class="one"><div class="por" style="${this.iconStyle(icon)}">${this.icons.icons[icon] ? '' : UGLYPH[e.type] || ''}</div><div class="nm"><b>${name}</b>${owner ? `<small style="color:rgb(${PLAYER_RGB[owner.color]})">${owner.name}</small>` : e.kind === 'unit' ? '<small class="gaia">Alam liar</small>' : ''}</div>
         <div class="hp"><i></i><span></span></div><div class="stats"></div><div class="queue"></div></div>`;
       if (e.kind === 'building') el.querySelector('.queue').innerHTML = e.queue.map((q, i) => `<i data-i="${i}" style="${q.unit ? this.iconStyle(UNITS[q.unit].sprite, 42 / 64) : ''}">${q.tech ? (GLYPH[q.tech] || '📜') : ''}<b></b></i>`).join('');
       el.querySelectorAll('.queue i').forEach(i => i.onclick = () => G.cancel(e, +i.dataset.i));
     }
-    const hp = e.kind === 'res' || e.kind === 'treasure' ? null : e;
+    const hp = e.kind === 'res' || e.kind === 'treasure' || e.kind === 'monument' ? null : e;
     const hpEl = el.querySelector('.hp');
     if (hp) { hpEl.style.display = ''; hpEl.firstChild.style.width = (hp.hp / hp.maxHp * 100) + '%'; hpEl.lastChild.textContent = `${Math.ceil(hp.hp)}/${hp.maxHp}`; } else hpEl.style.display = 'none';
     let st = '';
@@ -224,12 +268,17 @@ export class HUD {
       if (e.stance) st += ` · ${STANCE[e.stance][0]} ${STANCE[e.stance][1]}`;
       if (s.heal) st += ` · ⚕ ${s.heal.toFixed(1)} HP/dtk`;
       if (s.kite) st += ' · ↩ lari-tembak';
+      if (UNITS[e.type].trade) st += e.order && e.order.t === 'trade' ? ` · 🪙 rute dagang (${e.goldLoad ? 'membawa ' + e.goldLoad + ' emas' : 'menuju pasar tujuan'})` : ' · klik kanan Pasar' + (UNITS[e.type].naval ? '/Dermaga' : '') + ' lain (sendiri atau sekutu) untuk berdagang';
+      if (UNITS[e.type].packs) st += e.type === 'trebuchet_p' ? ' · 🏗 terbongkar (bisa berjalan)' : ' · 🏗 terpasang (bisa menembak)';
+      if (UNITS[e.type].hero) st += ' · 👑 Raja — jika tewas, kerajaan kalah!';
+      { const n = insideOf(W, e).soldiers; if (n) st += ` · ⛑ ${n} penumpang`; }
     }
     if (e.kind === 'unit' && e.faith !== undefined) st += ` · ✝ iman ${Math.round(e.faith * 100)}%${e.relic ? ' · 📿 membawa relik' : ''}`;
     if (e.kind === 'relic') st = e.carrier ? 'Sedang dibawa seorang Biarawan.' : 'Relik suci. Hanya Biarawan yang bisa membawanya ke Biara (+30 emas/menit). Klik kanan dengan Biarawan.';
     if (e.kind === 'building' && BUILDINGS[e.type].relics && e.built) { let n = 0; for (const r of W.dyn.values()) if (r.kind === 'relic' && r.inBld === e.id) n++; st += ` · 📿 ${n} relik (+${Math.round(n * RELICS.gold * 60)} emas/menit)`; }
     if (e.kind === 'building' && e.type === 'town_center' && owner && owner.civ && CIVS[owner.civ]) st += ` · ${CIVS[owner.civ].glyph} ${CIVS[owner.civ].name}`;
-    if (e.kind === 'res') st = `Sisa: <b>${Math.ceil(e.amount)}</b>` + (e.type === 'fish' ? ' · dijala dari tepi atau Kapal Nelayan' : '');
+    if (e.kind === 'res') st = `Sisa: <b>${Math.ceil(e.amount)}</b>` + (e.type === 'fish' ? (e.trap ? ' · perangkap ikan' : ' · dijala dari tepi atau Kapal Nelayan') : '');
+    if (e.kind === 'monument') { const o = W.players[e.owner]; st = (o ? `Dikuasai <b style="color:rgb(${PLAYER_RGB[o.color]})">${o.name}</b> · ` : 'Belum dikuasai · ') + `Kuasai sendirian (tanpa musuh dalam 5 petak) selama ${KOTH_TIME / 60} menit untuk menang.`; }
     if (e.kind === 'building') {
       const d = BUILDINGS[e.type], bs = bstat(W, e.owner, e.type);
       if (!e.built) st = `Membangun… ${Math.floor(e.progress * 100)}%` + (e.progress <= 0.001 ? ' · <i>fondasi belum dikerjakan (tak bisa diserang)</i>' : '');
@@ -240,7 +289,10 @@ export class HUD {
       else if (d.pop) st = `Populasi +${d.pop}`;
       if (e.built && e.hp < e.maxHp && e.owner === G.me) st += ' · <b class="warn">Rusak</b> — klik kanan dengan penduduk desa untuk memperbaiki';
       if (e.burn && e.burn > W.t) st += ' · <b class="warn">🔥 terbakar!</b>';
-      if (e.owner === this.g.me) { let n = 0; for (const u of W.dyn.values()) if (u.inside === e.id) n++; if (n) st += ` · 🌙 ${n} penduduk tidur di dalam`; }
+      if (e.owner === this.g.me) { const { soldiers, vils } = insideOf(W, e); if (vils) st += ` · 🌙 ${vils} penduduk di dalam`; if (soldiers) st += ` · ⛑ garnisun ${soldiers}/${garrisonCapOf(W, e)}`; }
+      if (d.gate && e.locked) st += ' · 🔒 terkunci';
+      if (d.reseed && e.owner === this.g.me) st += ` · 🌱 antrean tanam ulang: ${W.reseed[e.owner] || 0}`;
+      if (d.wonder && W.wonders && W.wonders.has(e.id)) st += ` · 🏛 menang dalam ${Math.ceil((WONDER_TIME - (W.t - W.wonders.get(e.id))) / 60)} menit`;
       const qi = el.querySelectorAll('.queue i');
       e.queue.forEach((q, i) => { if (qi[i]) { const T = q.unit ? stat(W, e.owner, q.unit).time : TECHS[q.tech].time; qi[i].lastChild.style.width = (i === 0 ? q.t / T * 100 : 0) + '%'; } });
     }
@@ -268,6 +320,7 @@ export class HUD {
       if (e.owner !== G.me && !P.vis[k] && !G.seeAll) continue; const col = e.owner >= 0 ? PLAYER_RGB[W.players[e.owner].color] : UNITS[e.type].animal && !['wolf', 'bear'].includes(e.type) ? [235, 235, 220] : [150, 40, 30];
       for (const kk of [k, k + 1, k + S]) if (kk < S * S) { d[kk * 4] = col[0]; d[kk * 4 + 1] = col[1]; d[kk * 4 + 2] = col[2]; }
     }
+    if (W.monument) { const m = W.monument, col = m.owner >= 0 ? PLAYER_RGB[W.players[m.owner].color] : [255, 255, 255]; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const k = idx(W, Math.floor(m.x) + di, Math.floor(m.y) + dj); d[k * 4] = col[0]; d[k * 4 + 1] = col[1]; d[k * 4 + 2] = col[2]; } }
     c.putImageData(img, 0, 0);
   }
   miniXform() {
@@ -284,12 +337,15 @@ export class HUD {
     const V = this.g.view, scr = this.g.app.screen;
     const corners = [[0, 0], [scr.width, 0], [scr.width, scr.height - 150], [0, scr.height - 150]].map(([px, py]) => V.screenToWorld(px, py)).map(([x, y]) => [(x - y) * sx + w / 2, (x + y) * sy]);
     g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.beginPath(); corners.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.stroke();
+    const now = performance.now(); this.flares = (this.flares || []).filter(f => now - f.t < 6000);       // flares: pulsing rings
+    for (const f of this.flares) { const k = ((now - f.t) / 1000) % 1, x = (f.x - f.y) * sx + w / 2, y = (f.x + f.y) * sy; g.strokeStyle = f.color; g.lineWidth = 2; g.globalAlpha = 1 - k; g.beginPath(); g.arc(x, y, 3 + k * 12, 0, 6.283); g.stroke(); g.globalAlpha = 1; }
   }
   miniClick(e) {
     e.preventDefault();
     const r = this.mini.getBoundingClientRect(), { sx, sy, w } = this.miniXform();
     const mx = (e.clientX - r.left) * this.mini.width / r.width, my = (e.clientY - r.top) * this.mini.height / r.height;
     const a = (mx - w / 2) / sx, b = my / sy; const x = (a + b) / 2, y = (b - a) / 2;
+    if (e.button === 0 && e.altKey) { this.g.sendFlare(x, y); return; }
     if (e.button === 2) this.g.rightClickWorld(x, y); else this.g.centerOn(x, y);
     const move = (ev) => { const mx2 = (ev.clientX - r.left) * this.mini.width / r.width, my2 = (ev.clientY - r.top) * this.mini.height / r.height; const a2 = (mx2 - w / 2) / sx, b2 = my2 / sy; this.g.centerOn((a2 + b2) / 2, (b2 - a2) / 2); };
     if (e.button === 0) { const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); }; addEventListener('pointermove', move); addEventListener('pointerup', up); }

@@ -4,9 +4,9 @@
 //   ticks of turns they have. Every HASH_EVERY turns the host attaches a state hash; a mismatch means a desync.
 //   AIs run on every client (they are deterministic). Meta commands ('_ai' / '_human') hand a dropped player's
 //   kingdom to an AI and back. A client that (re)joins late replays every turn from 0 at full speed.
-import { step, command, TICK } from './sim.js?v=20261013073348';
-import { GAME_SPEED } from './data.js?v=20261013073348';
-import { AI } from './ai.js?v=20261013073348';
+import { step, command, TICK } from './sim.js?v=20261013113946';
+import { GAME_SPEED } from './data.js?v=20261013113946';
+import { AI } from './ai.js?v=20261013113946';
 
 export const TPT = 2, LEAD = 3, HASH_EVERY = 25;
 const MAX_LAG = 40;          // turns the host lets a player fall behind before it waits (~5 s)
@@ -98,7 +98,7 @@ export class Lockstep {
     this.catching = !this.host && behind > 300;
     if (wasCatching && !this.catching && !this.spectator) { this.net.ack(this.next); this.g.hud.notify('Tersinkron dengan permainan.', 'age'); }
     if (this.catching && !wasCatching && !this.spectator) this.net.ack(-1);
-    G.acc += dt * GAME_SPEED;
+    G.acc += dt * GAME_SPEED * ((G.setup && G.setup.speed) || 1);
     if (!this.host && behind > normal + 2 * TPT) G.acc += (behind - normal) * TICK * Math.min(1, dt * 3);   // drifted behind: ease back
     const t0 = performance.now(); let ran = 0, blocked = false;
     while (G.acc >= TICK || this.catching) {

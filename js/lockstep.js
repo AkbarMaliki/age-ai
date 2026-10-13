@@ -98,7 +98,7 @@ export class Lockstep {
     this.catching = !this.host && behind > 300;
     if (wasCatching && !this.catching && !this.spectator) { this.net.ack(this.next); this.g.hud.notify('Tersinkron dengan permainan.', 'age'); }
     if (this.catching && !wasCatching && !this.spectator) this.net.ack(-1);
-    G.acc += dt * GAME_SPEED;
+    G.acc += dt * GAME_SPEED * ((G.setup && G.setup.speed) || 1);
     if (!this.host && behind > normal + 2 * TPT) G.acc += (behind - normal) * TICK * Math.min(1, dt * 3);   // drifted behind: ease back
     const t0 = performance.now(); let ran = 0, blocked = false;
     while (G.acc >= TICK || this.catching) {

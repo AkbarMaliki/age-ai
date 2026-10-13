@@ -13,7 +13,12 @@ const CARRY_ANIM = { tree: 'carry_wood', gold: 'carry_gold', stone: 'carry_stone
 export const UNIT_BOX = { villager: [15, 62], militia: [15, 66], spearman: [15, 70], archer: [15, 66], bandit: [15, 66], scout: [24, 88], knight: [24, 92],
   sheep: [13, 32], deer: [16, 46], boar: [16, 36], wolf: [15, 36], bear: [20, 56],
   gunner: [15, 66], samurai: [16, 72], ninja: [15, 66], fire_archer: [15, 66], crossbow: [15, 66], cataphract: [24, 94], lancer: [24, 92],
-  ram: [30, 62], cannon: [26, 48], fishing_boat: [30, 52], transport_ship: [44, 96], war_ship: [48, 96] };
+  ram: [30, 62], cannon: [26, 48], fishing_boat: [30, 52], transport_ship: [44, 96], war_ship: [48, 96],
+  mangonel: [28, 60], scorpion: [24, 48], trebuchet: [34, 110], trebuchet_p: [32, 56], trade_cart: [26, 56], king: [16, 74],
+  fire_ship: [46, 96], demo_ship: [40, 80], galleon: [52, 110], cannon_galleon: [52, 110], trade_cog: [48, 100] };
+// stand-ins while a sprite set is missing from the atlases
+const SPRITE_FALLBACK = { mangonel: 'cannon', scorpion: 'cannon', trebuchet: 'ram', trebuchet_p: 'ram', fire_ship: 'war_ship', demo_ship: 'fishing_boat', galleon: 'war_ship', cannon_galleon: 'war_ship', trade_cart: 'ram', trade_cog: 'transport_ship', king: 'knight' };
+const BLD_FALLBACK = { siege_workshop: 'barracks', wonder: 'castle' };
 // nearest rendered direction for a screen angle; returns [dir, mirrored]
 export function pickDir(a) {
   const d8 = (Math.round(a / 45) * 45 + 360) % 360;
@@ -304,7 +309,8 @@ export class View {
   // sprite set + animation for a unit (or a corpse / carcass of one)
   unitSet(e) {
     if (e.type === 'villager') return (e.kind === 'corpse' ? e.sk : e.id % 2) ? 'villager_f' : 'villager_m';
-    return UNITS[e.type] ? UNITS[e.type].sprite : e.type;
+    const set = UNITS[e.type] ? UNITS[e.type].sprite : e.type;
+    return this.A.units.meta.anims[set] || this.A.fauna.meta.anims[set] || !SPRITE_FALLBACK[set] ? set : SPRITE_FALLBACK[set];     // art not packed yet: a stand-in
   }
   unitAnim(e) {
     let a = e.anim || 'idle';
@@ -321,10 +327,12 @@ export class View {
     if (e.type === 'house') { const a = e.age || 1, v = e.id % 3; key = a === 1 ? (v === 0 ? 'house' : 'house_c') : a === 2 ? ['house', 'house_b', 'house_c'][v] : (v === 0 ? 'house' : 'house_b'); }
     if (e.type === 'town_center' && e.built) key = age === 1 ? 'town_center_dark' : age === 3 ? 'town_center_castle' : 'town_center';      // the town grows with the ages
     if (e.type === 'mill' && e.built && A.buildings.has('mill_body')) key = 'mill_body';
+    if (e.type === 'watch_tower' && e.built && P) key = P.techs.has('keep') ? 'keep' : P.techs.has('guard_tower') ? 'guard_tower' : key;
     if (key !== e.type && !A.buildings.has(key)) key = e.type;
     if (e.type === 'gate') key = e.axis === 'y' ? 'gate_y' : 'gate_x';
     if (e.type === 'farm') key = e.food > d.food * 0.45 || !e.built ? 'farm' : 'farm_seed';
     if (!e.built) { const base = e.type === 'house' ? key : e.type; key = A.buildings.has(base + '_c0') ? base + '_c' + Math.min(2, Math.floor(e.progress * 3)) : base; }
+    if (!A.buildings.has(key) && BLD_FALLBACK[e.type]) key = BLD_FALLBACK[e.type];
     return key;
   }
   frameFor(e) {
@@ -346,8 +354,10 @@ export class View {
     }
     if (e.kind === 'treasure') return [A.nature.get('treasure_' + e.type), false];
     if (e.kind === 'relic') return [A.nature.get('relic'), false];
+    if (e.kind === 'monument') return [A.buildings.get('monument', col) || A.buildings.get('wonder', col), false];
     if (e.kind === 'building') return [A.buildings.get(this.buildingKey(e), col), false];
     if (e.kind === 'res') {
+      if (e.type === 'fish' && e.trap && A.buildings.has('fish_trap')) return [A.buildings.get('fish_trap', col), false];
       if (e.type === 'fish') return [{ tex: this.fishT[Math.floor(this.t * 0.8 + e.id) % 2], ax: 0.5, ay: 0.5 }, false];
       const key = e.type === 'tree' ? (e.felled ? 'stump' : ['oak_a', 'oak_b', 'oak_c'][e.variant % 3]) : e.type === 'berry' ? 'berry' : `${e.type}_${'ab'[e.variant % 2]}`;
       return [A.nature.get(key) || (e.type === 'iron' ? A.nature.get('stone_' + 'ab'[e.variant % 2]) : null), false];
@@ -370,11 +380,11 @@ export class View {
     const sig = [key(e.x + 1, e.y), key(e.x - 1, e.y), key(e.x, e.y + 1), key(e.x, e.y - 1), e.built ? 1 : 0].join();
     if (v.sig === sig) return; v.sig = sig;
     v.extra.removeChildren().forEach(c => c.destroy());
-    const parts = [];
+    const parts = [], pre = e.type === 'palisade' && A.buildings.has('pal_post') ? 'pal_' : 'wall_';
     const [s0, s1, s2, s3] = sig.split(',').map(x => x === 'true');
-    if (s3) parts.push('wall_yp'); if (s1) parts.push('wall_xn');
-    parts.push('wall_post');
-    if (s0) parts.push('wall_xp'); if (s2) parts.push('wall_yn');
+    if (s3) parts.push(pre + 'yp'); if (s1) parts.push(pre + 'xn');
+    parts.push(pre + 'post');
+    if (s0) parts.push(pre + 'xp'); if (s2) parts.push(pre + 'yn');
     for (const k of parts) { const f = A.buildings.get(k, col); if (!f) continue; const s = new Sprite(f.tex); s.anchor.set(f.ax, f.ay); s.alpha = e.built ? 1 : 0.55; v.extra.addChild(s); }
   }
 
@@ -421,12 +431,13 @@ export class View {
       if (e.kind === 'proj') {
         const s = v.spr; s.anchor.set(0.5); s.visible = true;
         const pt = e.ptype || 'arrow';
-        s.texture = pt === 'bullet' ? this.bullet : pt === 'ball' ? this.ball : this.arrow;
+        s.texture = pt === 'bullet' ? this.bullet : pt === 'ball' || pt === 'rock' ? this.ball : this.arrow;
+        if (pt === 'rock') { s.scale.set(1.7); s.tint = 0x8f8a80; } else if (pt === 'bolt') { s.scale.set(1.5, 1.25); s.tint = 0x4a3020; }
         if (pt === 'javelin') { s.scale.set(1.35, 1.1); s.tint = 0xb89a6a; }
         if (e.spear) { s.scale.set(1.35, 1.2); s.tint = 0x8a6a48; } else if (pt === 'fire') { s.tint = 0xffb060; if (Math.random() < 0.6) this.parts.emit({ x: sx, y: sy - e.z * 30, vy: -10, life: 0.35, size: 0.18, grow: 0.05, color: Math.random() < 0.5 ? 0xff7a1a : 0xffd040, add: true, alpha: 0.9, z: sy + 1001 }); }
         const z2 = e.z * 30; s.x = sx; s.y = sy - z2;
         const [nx, ny] = iso(e.tx, e.ty); const k2 = Math.min(1, e.t / e.T);
-        s.rotation = pt === 'ball' ? 0 : Math.atan2(ny - (sy) - (1 - 2 * k2) * 20, nx - sx); s.zIndex = sy + 1000;
+        s.rotation = pt === 'ball' || pt === 'rock' ? 0 : Math.atan2(ny - (sy) - (1 - 2 * k2) * 20, nx - sx); s.zIndex = sy + 1000;
         continue;
       }
       if (v.extra) { this.wallSprites(e, v); v.extra.visible = true; v.extra.x = sx; v.extra.y = sy; v.extra.zIndex = sy; for (const c of v.extra.children) c.tint = lit(visible || mineE ? 0xffffff : 0x9a9aa6); continue; }
@@ -590,10 +601,20 @@ export class View {
     b.rect(x - w / 2, y, w * f, 4).fill(f > 0.5 ? 0x38d838 : f > 0.25 ? 0xe8c020 : 0xe02020);
   }
   marker(x, y, color = 0x40ff40) { this.markers.push({ x, y, t: 0, color }); }
+  flare(x, y, color) { this.markers.push({ x, y, t: 0, color, life: 6, flare: true }); }
   drawMarkers(dt) {
     const g = this.markG; g.clear();
-    this.markers = this.markers.filter(m => (m.t += dt) < 0.7);
-    for (const m of this.markers) { const [sx, sy] = iso(m.x, m.y); const r = 6 + m.t * 26; g.ellipse(sx, sy, r, r * 0.5).stroke({ width: 2, color: m.color, alpha: 1 - m.t / 0.7 }); }
+    this.markers = this.markers.filter(m => (m.t += dt) < (m.life || 0.7));
+    for (const m of this.markers) {
+      const [sx, sy] = iso(m.x, m.y);
+      if (m.flare) {        // a signal flare: a beam of light and rings pulsing out
+        const k = m.t % 1, fade = Math.min(1, (m.life - m.t) / 1.5);
+        for (const d of [0, 0.5]) { const q = (k + d) % 1, r = 8 + q * 46; g.ellipse(sx, sy, r, r * 0.5).stroke({ width: 3, color: m.color, alpha: (1 - q) * fade }); }
+        g.rect(sx - 2, sy - 90, 4, 90).fill({ color: m.color, alpha: 0.55 * fade }); g.circle(sx, sy - 92, 6 + Math.sin(m.t * 8) * 2).fill({ color: 0xffffff, alpha: 0.9 * fade });
+        continue;
+      }
+      const r = 6 + m.t * 26; g.ellipse(sx, sy, r, r * 0.5).stroke({ width: 2, color: m.color, alpha: 1 - m.t / 0.7 });
+    }
   }
   setGhost(type, i, j, ok, tiles, axis = 'x') {
     if (!type) { this.ghost.visible = false; return; }
@@ -601,11 +622,11 @@ export class View {
     this.ghost.visible = true;
     const g = this.ghostG; g.clear();
     for (const [ti, tj, good] of tiles) { const p = [[ti, tj], [ti + 1, tj], [ti + 1, tj + 1], [ti, tj + 1]].map(([a, c]) => iso(a, c)); g.poly(p.flat()).fill({ color: good ? 0x30ff30 : 0xff3030, alpha: 0.28 }); }
-    let key = type === 'gate' ? (axis === 'y' ? 'gate_y' : 'gate_x') : type === 'stone_wall' ? 'wall_post' : type;
+    let key = type === 'gate' ? (axis === 'y' ? 'gate_y' : 'gate_x') : type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? (A.buildings.has('pal_post') ? 'pal_post' : 'wall_post') : type;
     if (type === 'town_center') key = this.W.players[this.me].age === 1 && A.buildings.has('town_center_dark') ? 'town_center_dark' : key;
     const f = A.buildings.get(key, col);
     const w = d.len && axis === 'y' ? 1 : (d.len || d.n), h = d.len && axis === 'y' ? d.len : d.n;
-    if (f) { this.ghostS.texture = f.tex; this.ghostS.anchor.set(f.ax, f.ay); const [sx, sy] = iso(i + w / 2, j + h / 2); this.ghostS.x = sx; this.ghostS.y = sy; this.ghostS.tint = ok ? 0xffffff : 0xff8080; this.ghostS.visible = tiles.length <= 4 || type !== 'stone_wall'; }
+    if (f) { this.ghostS.texture = f.tex; this.ghostS.anchor.set(f.ax, f.ay); const [sx, sy] = iso(i + w / 2, j + h / 2); this.ghostS.x = sx; this.ghostS.y = sy; this.ghostS.tint = ok ? 0xffffff : 0xff8080; this.ghostS.visible = tiles.length <= 4 || !d.wall; }
   }
 
   // ------------------------------------------------------------ events -> effects
@@ -641,6 +662,10 @@ export class View {
       case 'arrowhit': P.emit({ x: sx, y: sy - 12, life: 0.3, size: 0.2, grow: 0.5, color: 0xffffff, alpha: 0.5, z: sy + 2 }); break;
       case 'arrowmiss': if (e.water) P.emit({ x: sx, y: sy, life: 0.5, size: 0.15, grow: 0.6, color: 0xe0f0ff, alpha: 0.6, z: sy + 1 }); break;
       case 'board': case 'unload': for (let i = 0; i < 8; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy, vx: (Math.random() - 0.5) * 30, vy: -20, g: 80, life: 0.6, size: 0.1, grow: 0.05, color: 0xe0f0ff, alpha: 0.8, z: sy + 2 }); break;
+      case 'pack': for (let i = 0; i < 8; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy - 6, vx: (Math.random() - 0.5) * 30, vy: -12, life: 1.0, size: 0.4, grow: 1.0, color: 0xb8a888, alpha: 0.5, z: sy + 3 }); break;
+      case 'tradegold': this.floatText(e.x, e.y, `+${e.n} emas`); break;
+      case 'reseed': for (let i = 0; i < 10; i++) P.emit({ x: sx + (Math.random() - 0.5) * 60, y: sy + (Math.random() - 0.5) * 30, vy: -14, life: 0.9, size: 0.12, grow: 0.05, color: 0x9ad04a, alpha: 0.9, z: sy + 2 }); break;
+      case 'fishtrap': this.fx({ k: 'fish', x: e.x, y: e.y }); break;
       case 'age': for (let i = 0; i < 30; i++) P.emit({ x: sx + (Math.random() - 0.5) * 160, y: sy - Math.random() * 120, vy: -40, life: 1.5, size: 0.25, grow: 0.05, color: 0xffd860, add: true, alpha: 0.9, z: sy + 200 }); break;
     }
   }

@@ -325,3 +325,41 @@ body.touch #tooltip { pointer-events: none; }
 }
 @media (max-height: 520px) { #menu { gap: 6px; } .home .mbtn small { display: none; } #menu .title p { display: none; } }
 body.watch #btnCards { display: none; }      /* spectators / replays have no shipments to send */
+
+/* ---- v7: rules, diplomacy, goal timers, tech tree */
+.setupp .rules { margin-top: 10px; border-top: 1px solid #6b523088; padding-top: 6px; }
+.setupp .rgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 18px; }
+.setupp .rgrid .lbl { margin-top: 6px; }
+@media (max-width: 760px) { .setupp .rgrid { grid-template-columns: 1fr; } }
+.goal { display: flex; gap: 10px; font-weight: bold; font-size: 14px; padding: 0 6px; text-shadow: 0 1px 2px #000; }
+.goal.hidden { display: none; }
+#diploPanel { position: fixed; z-index: 45; top: 44px; left: 50%; transform: translateX(-50%); width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 230px); overflow: auto;
+  background: radial-gradient(ellipse at top, #4b3b2a 0%, #241b13 70%); border: 3px solid #6b5230; outline: 2px solid #1a130d;
+  box-shadow: inset 0 0 0 1px var(--gold), 0 10px 40px #000c; border-radius: 6px; padding: 10px 14px 12px; }
+table.diplo { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+table.diplo th { text-align: left; color: var(--gold2); font-weight: normal; border-bottom: 1px solid #6b5230; padding: 4px; }
+table.diplo td { padding: 5px 4px; border-bottom: 1px solid #ffffff10; }
+table.diplo tr.dead { opacity: 0.45; }
+table.diplo .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: middle; box-shadow: 0 0 0 1px #000; }
+table.diplo .trib { white-space: nowrap; } table.diplo .trib button { width: auto; margin: 0 2px 0 0; padding: 3px 6px; font-size: 12px; }
+#diploPanel .hint { font-size: 13px; opacity: 0.85; } #diploPanel .row button { width: auto; }
+.techp { width: min(1180px, 96vw); }
+.ttabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px 0; }
+.ttabs button { width: auto; margin: 0; padding: 4px 8px 4px 4px; font-size: 13px; display: flex; align-items: center; gap: 4px; opacity: 0.8; }
+.ttabs button.on { opacity: 1; box-shadow: inset 0 0 0 2px var(--gold2); background: linear-gradient(180deg, #9a7440, #5a4024); }
+.ttabs button i { width: 24px; height: 24px; display: inline-block; }
+.tthead { font-size: 14px; margin-bottom: 8px; } .tthead p { margin: 4px 0 0; opacity: 0.85; }
+.ttcols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ttcol { background: #0003; border: 1px solid #6b523066; border-radius: 6px; padding: 6px; min-width: 0; }
+.ttcol.reached { border-color: var(--gold); }
+.ttcol h4 { margin: 0 0 6px; font-family: Cinzel, serif; color: var(--gold2); text-align: center; font-size: 15px; }
+.ttcol .none { text-align: center; opacity: 0.4; }
+.tt { display: flex; gap: 6px; background: #ffffff0d; border-radius: 5px; padding: 5px; margin-bottom: 5px; font-size: 12px; }
+.tt.unit { border-left: 3px solid #6aa0e0; } .tt.tech { border-left: 3px solid var(--gold); }
+.tt.done { background: #3a6a2a55; } .tt.closed { opacity: 0.4; }
+.tt .ic { flex: 0 0 40px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-style: normal; }
+.tt b { font-size: 13px; } .tt small { display: block; opacity: 0.85; } .tt .aft { color: #c8d8ff; } .tt .grp { color: #ffd27a; } .tt .cst { color: #f3d98c; }
+.tt p { margin: 2px 0 0; opacity: 0.8; line-height: 1.25; }
+@media (max-width: 760px) { .ttcols { grid-template-columns: 1fr 1fr; } }
+.techp .sp-head button, #diploPanel .sp-head button { width: auto; flex: 0 0 auto; margin: 0; padding: 4px 10px; }
+.ttabs button i:not([style*=url]) { display: none; }

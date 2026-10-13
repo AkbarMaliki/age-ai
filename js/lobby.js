@@ -11,8 +11,14 @@ const CFG = {
   size: [[112, 'Kecil'], [144, 'Sedang'], [180, 'Besar'], [220, 'Raksasa'], [280, 'Kolosal']],
   season: [['random', 'Acak'], ['semi', 'Semi'], ['kemarau', 'Kemarau'], ['gugur', 'Gugur'], ['salju', 'Salju']],
   night: [['full', 'Penuh'], ['visual', 'Visual'], ['off', 'Mati']],
+  victory: [['conquest', 'Penaklukan'], ['regicide', 'Regicide (Raja)'], ['koth', 'Raja Bukit']],
+  treaty: [[0, 'Tidak ada'], [10, '10 menit'], [20, '20 menit']],
+  startRes: [['standar', 'Standar'], ['sedang', 'Sedang'], ['tinggi', 'Tinggi'], ['deathmatch', 'Deathmatch']],
+  popLimit: [[200, '200'], [125, '125'], [75, '75']],
+  speed: [[1, '1x'], [1.5, '1.5x'], [2, '2x']],
 };
-const CFG_NAME = { map: 'Peta', size: 'Ukuran', season: 'Musim', night: 'Siang-malam', relicWin: 'Menang Relik' };
+const CFG_NAME = { map: 'Peta', size: 'Ukuran', season: 'Musim', night: 'Siang-malam', relicWin: 'Menang Relik', victory: 'Kemenangan', treaty: 'Gencatan', startRes: 'Sumber awal', popLimit: 'Batas populasi', speed: 'Kecepatan' };
+const NUM_CFG = ['size', 'treaty', 'popLimit', 'speed'];
 const DIFFS = [['easy', 'Mudah'], ['normal', 'Normal'], ['hard', 'Sulit']];
 
 export class Lobby {
@@ -114,7 +120,7 @@ export class Lobby {
     // game settings: the host edits, everyone sees
     const cfg = net.meta.cfg || {};
     $('olCfg').innerHTML = Object.entries(CFG).map(([k, list]) => `<label>${CFG_NAME[k]} <select data-k="${k}" ${host ? '' : 'disabled'}>${list.map(([v, n]) => `<option value="${v}" ${String(cfg[k]) === String(v) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`).join('');
-    $('olCfg').querySelectorAll('select').forEach(el => el.onchange = () => { const k = el.dataset.k; net.setCfg({ [k]: k === 'size' ? +el.value : el.value }); });
+    $('olCfg').querySelectorAll('select').forEach(el => el.onchange = () => { const k = el.dataset.k; net.setCfg({ [k]: NUM_CFG.includes(k) ? +el.value : el.value }); });
     $('olHostBar').classList.toggle('hidden', !host || seats.length >= MAX_SEATS);
     const teams = new Set(seats.map(([, p]) => p.team)), offline = seats.some(([, p]) => !p.bot && !p.online);
     const why = seats.length < 2 ? 'Butuh minimal 2 kerajaan (teman atau AI).' : teams.size < 2 ? 'Semua di tim yang sama — pisahkan timnya.' : offline ? 'Ada pemain yang terputus.' : '';
@@ -128,7 +134,8 @@ export class Lobby {
     const deckKeys = Object.keys(DECKS), cfg = net.meta.cfg || {};
     const seats = net.seated().map(([pid, p]) => ({ pid, name: p.name, color: p.color, team: p.team, deck: p.bot ? null : (p.deck || null), bot: !!p.bot, diff: p.diff || 'normal', style: p.bot ? deckKeys[(Math.random() * deckKeys.length) | 0] : null,
       civ: CIVS[p.civ] ? p.civ : CIV_KEYS[(Math.random() * CIV_KEYS.length) | 0] }));      // 'random' is settled here, once, by the host
-    const game = { cfg: { seed: (Math.random() * 1e9) | 0, map: cfg.map || 'random', size: cfg.size || 144, season: cfg.season || 'random', night: cfg.night || 'full', relicWin: !!cfg.relicWin }, seats, run: Date.now() };
+    const game = { cfg: { seed: (Math.random() * 1e9) | 0, map: cfg.map || 'random', size: cfg.size || 144, season: cfg.season || 'random', night: cfg.night || 'full', relicWin: !!cfg.relicWin,
+      victory: cfg.victory || 'conquest', treaty: +cfg.treaty || 0, startRes: cfg.startRes || 'standar', popLimit: +cfg.popLimit || 200, speed: +cfg.speed || 1 }, seats, run: Date.now() };
     try { await net.startGame(game); } catch (e) { this.note('Gagal memulai: ' + e.message, true); $('olStartBtn').disabled = false; }
   }
 }

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261013073348">
+<link rel="stylesheet" href="css/style.css?v=20261013113946">
 <script type="importmap">{ "imports": { "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs" } }</script>
 </head>
 <body>
@@ -31,9 +31,12 @@
       <button data-sp="1" class="tb sp">1x</button><button data-sp="2" class="tb sp">2x</button><button data-sp="4" class="tb sp">4x</button><button data-sp="8" class="tb sp">8x</button>
       <button id="spCam" class="tb" title="Kamera mengikuti aksi (C)">🎥 Otomatis</button>
     </div>
+    <div id="goalInfo" class="goal hidden"></div>
     <div class="clock" id="clock">00:00:00</div>
     <button id="btnCards" class="tb" title="Kiriman Kerajaan (K)">🃏 <span>Kiriman</span><b id="cardN"></b><i class="xpbar"><i id="cardXp"></i></i></button>
     <button id="btnStats" class="tb" title="Statistik perang (I)">📊 <span>Statistik</span></button>
+    <button id="btnDiplo" class="tb" title="Diplomasi: sekutu, upeti dan tanda">🤝</button>
+    <button id="btnTree" class="tb" title="Pohon teknologi">🌳</button>
     <button id="btnChat" class="tb hidden" title="Chat (Enter)">💬</button>
     <button id="btnMenu" class="tb">Menu</button>
   </div>
@@ -68,6 +71,10 @@
     <div id="statsTabs"></div>
     <div id="statsBody"></div>
   </div>
+  <div id="diploPanel" class="hidden">
+    <div class="sp-head"><div><h2>Diplomasi</h2><small>Sekutu, musuh, upeti dan tanda di peta.</small></div><button id="diploClose" class="tb" title="Tutup">✖</button></div>
+    <div id="diploBody"></div>
+  </div>
   <!-- Home City shipments (AoE3 cards) -->
   <div id="cardsPanel" class="hidden">
     <div class="sp-head"><div><h2>Kiriman Kerajaan</h2><small id="cardsSub"></small></div><button id="cardsClose" class="tb" title="Tutup (K / Esc)">✖</button></div>
@@ -77,7 +84,7 @@
 
 <!-- ======================= MENU ======================= -->
 <div id="menu" class="screen">
-  <div class="title"><h1>Abad Kerajaan</h1><p>Bangun kerajaanmu dari zaman kegelapan hingga zaman kastil</p></div>
+  <div class="title"><h1>Abad Kerajaan</h1><p>Bangun kerajaanmu dari zaman kegelapan hingga zaman imperial</p></div>
   <div class="home">
     <div class="prof" id="profLine"></div>
     <button id="btnContinue" class="mbtn hidden"><b>▶ Lanjutkan</b><small id="contInfo"></small></button>
@@ -88,6 +95,7 @@
     <div class="iconrow">
       <button id="btnDeck" title="Susun dek kartu kiriman">🃏<span>Dek</span></button>
       <button id="btnCivs" title="Peradaban">🏛<span>Peradaban</span></button>
+      <button id="btnTreeHome" title="Pohon teknologi">🌳<span>Teknologi</span></button>
       <button id="btnAch" title="Prestasi &amp; gelar">🏆<span>Prestasi</span></button>
       <button id="btnSettings" title="Suara">⚙<span>Pengaturan</span></button>
       <button id="btnHow" title="Cara bermain &amp; kontrol">❓<span>Panduan</span></button>
@@ -112,6 +120,7 @@
       <div class="lbl">Lawan</div>
       <div class="seg" data-k="players"><button data-v="2">1 vs 1</button><button data-v="3">1 vs 2</button><button data-v="4">1 vs 3</button></div>
       <div class="seg" data-k="diff"><button data-v="easy">Mudah</button><button data-v="normal">Normal</button><button data-v="hard">Sulit</button></div>
+      <div class="seg" data-k="teams"><button data-v="ffa" title="Semua saling bermusuhan">Bebas (FFA)</button><button data-v="ally" title="2 vs 2: kamu + 1 AI sekutu; 1 vs 2: kedua AI bersekutu">Bertim</button></div>
     </section>
     <section>
       <h3>🗺 Dunia</h3>
@@ -126,7 +135,23 @@
       <div class="seg" data-k="relicWin"><button data-v="off">Mati</button><button data-v="on" title="Kuasai semua relik selama 5 menit">Aktif</button></div>
     </section>
   </div>
+  <section class="rules">
+    <h3>📜 Aturan</h3>
+    <div class="rgrid">
+      <div><div class="lbl">Kemenangan</div><div class="seg" data-k="victory"><button data-v="conquest" title="Kalahkan semua musuh, atau pertahankan Keajaiban 10 menit">Penaklukan</button><button data-v="regicide" title="Setiap kerajaan punya Raja — bunuh Raja musuh">Regicide</button><button data-v="koth" title="Kuasai Monumen di tengah peta 10 menit">Raja Bukit</button></div></div>
+      <div><div class="lbl">Gencatan senjata</div><div class="seg" data-k="treaty"><button data-v="0">Tidak</button><button data-v="10">10 mnt</button><button data-v="20">20 mnt</button></div></div>
+      <div><div class="lbl">Sumber daya awal</div><div class="seg" data-k="startRes"><button data-v="standar">Standar</button><button data-v="sedang">Sedang</button><button data-v="tinggi">Tinggi</button><button data-v="deathmatch" title="Deathmatch: sumber daya melimpah sejak awal">DM</button></div></div>
+      <div><div class="lbl">Batas populasi</div><div class="seg" data-k="popLimit"><button data-v="75">75</button><button data-v="125">125</button><button data-v="200">200</button></div></div>
+      <div><div class="lbl">Kecepatan</div><div class="seg" data-k="speed"><button data-v="1">1x</button><button data-v="1.5">1.5x</button><button data-v="2">2x</button></div></div>
+    </div>
+  </section>
   <div class="row two foot"><button id="setupBack">← Kembali</button><button id="btnStart" class="big">⚔ Mulai Permainan</button></div>
+</div></div>
+
+<div id="techModal" class="screen dim hidden"><div class="panel wide techp">
+  <div class="sp-head"><div><h2>🌳 Pohon Teknologi</h2><small>Pilih bangunan untuk melihat unit dan riset per zaman. ✔ = sudah diteliti, redup = jalur lain sudah dipilih.</small></div><button id="techClose" class="tb">✖</button></div>
+  <div id="techTabs" class="ttabs"></div>
+  <div id="techBody"></div>
 </div></div>
 
 <div id="settingsModal" class="screen dim hidden"><div class="panel">
@@ -164,7 +189,14 @@
     <h3>Peradaban, Biarawan &amp; Relik</h3><p>Pilih satu dari 6 <b>peradaban</b> (Jepang, Han, Persia, Bizantium, Mongol, Majapahit): masing-masing punya bonus sendiri dan <b>unit unik</b> yang dilatih di Kastil. Bangun <b>Biara</b> untuk melatih <b>Biarawan</b>: klik kanan unit musuh untuk <b>mengonversinya</b> (butuh iman penuh — bilah biru), klik kanan <b>Relik</b> (titik putih di minimap) lalu bawa ke Biara untuk +30 emas/menit. Dengan aturan <b>Kemenangan Relik</b>, kuasai semua relik selama 5 menit untuk menang.</p>
     <h3>Perintah Lanjutan</h3><p><b>Shift + klik kanan</b> mengantrekan perintah (rute titik demi titik). Tombol tentara baris ketiga: <b>Patroli</b> (bolak-balik sambil menyerang), <b>Kawal</b> (ikuti dan lindungi unit kawan), dan <b>Serang Tanah</b> untuk meriam. Permainan <b>disimpan otomatis</b> tiap 2 menit — lanjutkan dari menu, atau simpan manual lewat Menu. Di akhir pertandingan, <b>Simpan Replay</b> untuk menontonnya lagi (Muat &amp; Replay).</p>
     <h3>Main Online</h3><p>Tekan <b>🌐 Main Online</b> → <b>Buat Room</b>, lalu <b>Salin Link</b> dan kirim ke teman: membuka link langsung masuk ke room (atau masukkan kode room). Tuan rumah bisa menambah AI, mengatur tim, peta, musim dan ukuran, lalu memulai. Tekan <b>Enter</b> (atau 💬) untuk chat. Permainan online tidak bisa dijeda. Kalau koneksi putus, AI menjaga kerajaanmu sampai kamu kembali &mdash; muat ulang halaman untuk menyusul. Kalau tuan rumah keluar, pemain lain otomatis menjadi tuan rumah. Teman yang membuka link saat permainan berjalan bisa menonton.</p>
-    <h3>Zaman</h3><p>Di Pusat Kota, naik ke <b>Zaman Feodal</b> (butuh 2 bangunan Zaman Kegelapan) lalu <b>Zaman Kastil</b> untuk membuka unit & bangunan baru.</p></div>
+    <h3>Zaman</h3><p>Di Pusat Kota, naik ke <b>Zaman Feodal</b> (butuh 2 bangunan Zaman Kegelapan), <b>Zaman Kastil</b>, lalu <b>Zaman Imperial</b> (butuh 2 dari: Kastil, Bengkel Pengepungan, Biara, Akademi, Pasar) — pilih jalurnya: Zaman Keemasan (+10% kumpul), Legiun Kekaisaran (+1/+1 zirah) atau Ilmu Kekaisaran.</p>
+    <h3>Peningkatan Unit</h3><p>Setiap jalur unit bisa ditingkatkan: Milisi → Prajurit Bersenjata → Pendekar Pedang → Juara, Tombak → Halberdier, Pemanah → Arbalest, Kavaleri Ringan → Hussar, Ksatria → Kavalier → Paladin, dan seterusnya. Lihat semuanya di <b>🌳 Pohon Teknologi</b> (menu utama atau bilah atas).</p>
+    <h3>Pengepungan</h3><p><b>Bengkel Pengepungan</b> (Zaman Kastil) melatih <b>Pendobrak</b>, <b>Mangonel</b> (batu meledak area, tak bisa menembak dari dekat) dan <b>Skorpion</b> (baut menembus barisan). <b>Trebuchet</b> dilatih di Kastil: jangkauan sangat jauh untuk menghancurkan bangunan, tapi harus <b>dipasang</b> sebelum menembak dan <b>dibongkar</b> untuk berjalan (otomatis, atau tombol 🏗).</p>
+    <h3>Garnisun &amp; Pertahanan</h3><p>Pilih tentara lalu klik kanan Menara, Pusat Kota atau Kastil untuk <b>bergarnisun</b>: bangunan menembakkan lebih banyak panah dan tentara di dalam sembuh perlahan. Infanteri bisa naik ke dalam <b>Pendobrak</b> (lebih cepat). Tombol ⏏ mengeluarkan mereka. <b>Pagar Kayu</b> tersedia sejak Zaman Kegelapan; menara bisa ditingkatkan jadi Menara Pengawal dan Benteng Menara; <b>gerbang bisa dikunci</b> 🔒.</p>
+    <h3>Dagang &amp; Ekonomi Lanjutan</h3><p><b>Gerobak Dagang</b> (Pasar) dan <b>Kapal Dagang</b> (Dermaga): klik kanan pasar/dermaga lain — makin jauh makin banyak emas, rute ke sekutu lebih untung. Di Penggilingan, <b>antre tanam ulang</b> ladang (bayar di muka) agar ladang yang habis langsung ditanam lagi. Dermaga bisa memasang <b>perangkap ikan</b>. Riset ekonomi baru: Gergaji, Bajak Berat, Rotasi Tanaman, Poros Tambang, Gerobak Tangan.</p>
+    <h3>Kapal Perang</h3><p>Selain Kapal Perang: <b>Kapal Api</b> (membakar kapal dari dekat), <b>Kapal Peledak</b> (meledak di tengah armada musuh), <b>Kapal Meriam</b> (Imperial, butuh Bubuk Mesiu) dan riset <b>Galleon</b>.</p>
+    <h3>Mode &amp; Aturan</h3><p>Di <b>Permainan Baru → Aturan</b>: <b>Penaklukan</b> (atau bangun <b>Keajaiban Dunia</b> dan pertahankan 10 menit), <b>Regicide</b> (lindungi Rajamu — dia otomatis berlindung di Pusat Kota), <b>Raja Bukit</b> (kuasai Monumen di tengah peta 10 menit). Juga gencatan senjata, sumber daya awal (sampai <b>Deathmatch</b>), batas populasi dan kecepatan. Pilih <b>Bertim</b> untuk bermain bersama sekutu AI.</p>
+    <h3>Diplomasi</h3><p>Tombol <b>🤝</b>: lihat sekutu dan musuh, kirim <b>upeti</b> (komisi 20%). <b>Alt + klik</b> peta atau minimap untuk memberi <b>tanda</b> ke sekutu. Sekutu berbagi pandangan.</p></div>
     <div><h3>Kontrol</h3><table>
       <tr><td>Klik kiri / tarik</td><td>Pilih unit</td></tr><tr><td>Klik kanan</td><td>Gerak / serang / kumpulkan / bangun</td></tr>
       <tr><td>Klik ganda</td><td>Pilih semua unit sejenis di layar</td></tr><tr><td>Q W E R T / A S D F G / Z X C V B</td><td>Tombol perintah</td></tr>
@@ -233,8 +265,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/firebase-config.js?v=20261013073348"></script>
-<script>window.AK_VER = "20261013073348";</script>
-<script type="module" src="js/main.js?v=20261013073348"></script>
+<script src="js/firebase-config.js?v=20261013113946"></script>
+<script>window.AK_VER = "20261013113946";</script>
+<script type="module" src="js/main.js?v=20261013113946"></script>
 </body>
 </html>
