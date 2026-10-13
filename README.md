@@ -16,6 +16,7 @@ node tests/stuck.test.js 40 5 144 4   (stuck-unit detector, slower)
 ## Highlights
 6 civilizations with unique units, monks (conversion, relics, relic victory), age paths, stances, formations, town bell, shift-queued orders, patrol / guard, autosave + saved games + replays, online multiplayer.
 v7: Imperial Age with unit upgrade lines, Siege Workshop (mangonel, scorpion, trebuchet that packs/unpacks), garrisons (towers, TC, castle, rams), palisades, tower upgrades and gate locks, trade carts/cogs, economy techs + farm reseed queue + fish traps, fire/demolition ships and cannon galleons, game modes (Regicide, Wonder, King of the Hill, treaty, Deathmatch), teams/diplomacy (tribute, flares, shared vision), lobby rules (pop limit, start resources, speed) and a tech tree viewer.
+v8: the kingdom visibly grows: every building restyles with each age (thatch → tiles → slate → Imperial limestone and glazed roofs), roads go from earth to gravel, cobbles and paved streets with lanterns and banners, and upgraded unit lines get new armour.
 
 ## Online (play with friends)
 Menu → **🌐 Main Online** → *Buat Room* → *Salin Link*. A friend who opens the link (`?room=CODE`) joins the room. The host can add AIs, set teams and the map, then start. Up to 4 kingdoms, plus any number of spectators.

@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013113946';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013133425';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -110,7 +110,8 @@ export function stat(W, owner, type) {
     s.hp += up.hp || 0; s.atk += up.atk || 0; s.ma += up.ma || 0; s.pa += up.pa || 0; if (up.range) { s.range += up.range; s.los += up.range; }
     if (up.splash) s.splash = (s.splash || 0) + up.splash; if (up.vsBuilding) s.vsBuilding = (s.vsBuilding || 0) + up.vsBuilding;
     for (const c in up.bonus || {}) s.bonus[c] = (s.bonus[c] || 0) + up.bonus[c];
-    if (!up.base || up.base === type) s.name = up.name; }
+    if (!up.base || up.base === type) s.name = up.name;
+    if (up.look && up.look[type]) s.sprite = up.look[type]; }          // the line also looks the part (render only)
   if (type === 'villager' && T.has('hand_cart')) s.speed *= 1.1;
   if (type === 'monk') { if (T.has('fervor')) s.speed *= 1.15; if (T.has('sanctity')) s.hp *= 1.5; if (T.has('illumination')) s.faith *= 0.5; }
   const cv = P.civ && CIVS[P.civ];
@@ -246,7 +247,7 @@ function buildRoad(W, b) {
   const p = findPath(W, -1, a[0] + 0.5, a[1] + 0.5, goal, z[0] + 0.5, z[1] + 0.5, 6000, false, true);
   if (!p.complete) return;
   let n = 0;
-  const mark = (i, j) => { if (inb(W, i, j) && !W.occ[j * S + i] && W.terrain[j * S + i] !== TER.WATER && !W.road[j * S + i]) { W.road[j * S + i] = 1; n++; } };
+  const mark = (i, j) => { if (inb(W, i, j) && !W.occ[j * S + i] && W.terrain[j * S + i] !== TER.WATER && !W.road[j * S + i]) { W.road[j * S + i] = b.owner + 1; n++; } };     // owner + 1: the road takes its kingdom's look
   mark(a[0], a[1]);
   for (const [x, y] of p.raw) mark(Math.floor(x), Math.floor(y));
   if (n) { W.roadVer++; W.ev.push({ k: 'road', owner: b.owner }); }

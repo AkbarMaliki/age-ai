@@ -1,8 +1,8 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013113946';
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261013113946';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost } from './sim.js?v=20261013113946';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261013133425';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261013133425';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost } from './sim.js?v=20261013133425';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -73,7 +73,9 @@ export class HUD {
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
   // k: scale of a 64 px icon (small boxes shrink the whole sheet, so the offsets must shrink too)
-  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261013113946);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261013133425);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  // portrait of a unit as this kingdom fields it (upgraded lines have their own look)
+  spriteOf(owner, type) { const d = UNITS[type]; if (!d) return type; const s = owner >= 0 && !d.animal ? stat(this.g.W, owner, type).sprite : null; return s && this.icons.icons[s] ? s : d.sprite; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
 
   notify(msg, cls = '') {
@@ -186,7 +188,7 @@ export class HUD {
       const u = trainType(P, u0), ud = UNITS[u]; const slot = slots[u0] ?? k; if (!ud) return;
       const why = P.age < ud.age ? `Butuh ${AGES[ud.age]}` : ud.needsTech && !P.techs.has(ud.needsTech) ? 'Butuh riset ' + TECHS[ud.needsTech].name : !canAfford(P, unitCost(P, u)) ? 'Sumber daya kurang' : '';
       const sn = stat(W, G.me, u).name;
-      this.setBtn(slot, { icon: ud.sprite === u ? u : ud.sprite, badge: u !== u0 ? '★' : '', badgeCls: 'spec', glyph: UGLYPH[u], name: sn || ud.name, cost: unitCost(P, u), desc: this.unitDesc(P, u), why, disabled: !!why || b.queue.length >= 5, act: () => G.train(b, u0) });
+      this.setBtn(slot, { icon: ud.sprite === u ? this.spriteOf(G.me, u) : ud.sprite, badge: u !== u0 ? '★' : '', badgeCls: 'spec', glyph: UGLYPH[u], name: sn || ud.name, cost: unitCost(P, u), desc: this.unitDesc(P, u), why, disabled: !!why || b.queue.length >= 5, act: () => G.train(b, u0) });
     });
     (d.techs || []).forEach((t) => {
       if (!shown(t)) return;
@@ -233,7 +235,7 @@ export class HUD {
     if (!sel.length) { if (el.dataset.k !== 'none') { el.dataset.k = 'none'; el.innerHTML = '<div class="empty">Pilih unit atau bangunan</div>'; } return; }
     if (sel.length > 1) {
       const k = 'multi' + sel.map(e => e.id).join();
-      if (el.dataset.k !== k) { el.dataset.k = k; el.innerHTML = '<div class="multi">' + sel.slice(0, 40).map(e => `<i data-id="${e.id}" style="${this.iconStyle(UNITS[e.type] ? UNITS[e.type].sprite : e.type, 36 / 64)}"><b></b></i>`).join('') + '</div>'; el.querySelectorAll('i').forEach(i => i.onclick = (ev) => { G.select([+i.dataset.id], ev.shiftKey); }); }
+      if (el.dataset.k !== k) { el.dataset.k = k; el.innerHTML = '<div class="multi">' + sel.slice(0, 40).map(e => `<i data-id="${e.id}" style="${this.iconStyle(UNITS[e.type] ? this.spriteOf(e.owner, e.type) : e.type, 36 / 64)}"><b></b></i>`).join('') + '</div>'; el.querySelectorAll('i').forEach(i => i.onclick = (ev) => { G.select([+i.dataset.id], ev.shiftKey); }); }
       el.querySelectorAll('i').forEach(i => { const e = W.ents.get(+i.dataset.id); if (e) i.firstChild.style.width = (e.hp / e.maxHp * 100) + '%'; });
       return;
     }
@@ -244,7 +246,7 @@ export class HUD {
     const owner = e.owner >= 0 ? W.players[e.owner] : null;
     if (el.dataset.k !== k) {
       el.dataset.k = k;
-      const icon = e.kind === 'monument' ? 'monument' : e.type === 'palisade' ? 'pal_post' : e.kind === 'relic' ? 'relic' : e.kind === 'treasure' ? 'treasure_' + e.type : e.type === 'carcass' ? e.animal : e.kind === 'res' ? 'res_' + { tree: 'wood', gold: 'gold', stone: 'stone', iron: 'iron', berry: 'food', fish: 'food' }[e.type] : e.type === 'stone_wall' ? 'wall_post' : e.type === 'gate' ? 'gate_x' : e.kind === 'unit' ? UNITS[e.type].sprite : e.type;
+      const icon = e.kind === 'monument' ? 'monument' : e.type === 'palisade' ? 'pal_post' : e.kind === 'relic' ? 'relic' : e.kind === 'treasure' ? 'treasure_' + e.type : e.type === 'carcass' ? e.animal : e.kind === 'res' ? 'res_' + { tree: 'wood', gold: 'gold', stone: 'stone', iron: 'iron', berry: 'food', fish: 'food' }[e.type] : e.type === 'stone_wall' ? 'wall_post' : e.type === 'gate' ? 'gate_x' : e.kind === 'unit' ? this.spriteOf(e.owner, e.type) : e.type;
       el.innerHTML = `<div class="one"><div class="por" style="${this.iconStyle(icon)}">${this.icons.icons[icon] ? '' : UGLYPH[e.type] || ''}</div><div class="nm"><b>${name}</b>${owner ? `<small style="color:rgb(${PLAYER_RGB[owner.color]})">${owner.name}</small>` : e.kind === 'unit' ? '<small class="gaia">Alam liar</small>' : ''}</div>
         <div class="hp"><i></i><span></span></div><div class="stats"></div><div class="queue"></div></div>`;
       if (e.kind === 'building') el.querySelector('.queue').innerHTML = e.queue.map((q, i) => `<i data-i="${i}" style="${q.unit ? this.iconStyle(UNITS[q.unit].sprite, 42 / 64) : ''}">${q.tech ? (GLYPH[q.tech] || '📜') : ''}<b></b></i>`).join('');

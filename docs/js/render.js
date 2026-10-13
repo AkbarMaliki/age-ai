@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261013113946';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261013113946';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261013133425';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261013133425';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -58,12 +58,25 @@ void main() {
   float rk = smoothstep(0.25, 0.65, vEx.y + (n - 0.5) * 0.35);
   vec3 rock = mix(d * vec3(0.72, 0.72, 0.74), vec3(0.47, 0.46, 0.45), 0.5) * (0.8 + 0.35 * texture(uGrass, vGrid * 0.37).g);
   col = mix(col, rock, rk);
-  // roads: packed earth with cobbles near the town
-  float rd = texture(uRoad, vGrid / uSize).r;
+  // roads grow with their kingdom: packed earth (Dark Age) -> gravel (Feudal) -> cobbles (Castle) -> paved slabs with kerbs (Imperial)
+  vec4 rm = texture(uRoad, vGrid / uSize); float rd = rm.r, lv = clamp(rm.g / max(rd, 0.05), 0.0, 1.0) * 3.0;
   float road = smoothstep(0.22, 0.55, rd + (n - 0.5) * 0.25) * (1.0 - vWater);
   float cob = step(0.55, fract(vGrid.x * 2.1 + sin(vGrid.y * 4.0) * 0.2)) * step(0.55, fract(vGrid.y * 2.1 + sin(vGrid.x * 4.0) * 0.2));
-  vec3 rc = d * vec3(1.08, 0.97, 0.84) * (0.9 + 0.12 * cob);
-  col = mix(col, rc, road * 0.92);
+  vec3 earth = d * vec3(1.08, 0.97, 0.84) * (0.9 + 0.12 * cob);
+  float sp = texture(uGrass, vGrid * 1.9).g, sp2 = texture(uDirt, vGrid * 2.7).r;
+  vec3 gravel = mix(d * vec3(1.02, 0.96, 0.86), vec3(0.62, 0.57, 0.5), 0.6) * (0.78 + 0.32 * sp) * (0.92 + 0.16 * step(0.6, sp2));
+  vec2 cg = vGrid * 4.4; cg.x += 0.5 * mod(floor(cg.y), 2.0); vec2 cf = fract(cg) - 0.5, ci = floor(cg);
+  float hsh = fract(sin(dot(ci, vec2(12.9898, 78.233))) * 43758.5453);
+  float stone = 1.0 - smoothstep(0.32, 0.48, max(abs(cf.x), abs(cf.y)) + 0.08 * length(cf));
+  vec3 cobble = mix(vec3(0.27, 0.24, 0.21), vec3(0.56, 0.5, 0.42) * (0.78 + 0.34 * hsh) * (0.9 + 0.2 * sp), stone);
+  vec2 pg = vGrid * vec2(1.6, 2.4); pg.x += 0.5 * mod(floor(pg.y), 2.0); vec2 pf = fract(pg), pi2 = floor(pg);
+  float ph = fract(sin(dot(pi2, vec2(39.3468, 11.135))) * 24634.6345);
+  float slab = step(0.04, pf.x) * step(0.05, pf.y);
+  vec3 paved = mix(vec3(0.36, 0.33, 0.29), vec3(0.72, 0.66, 0.56) * (0.86 + 0.18 * ph) * (0.92 + 0.12 * sp), slab);
+  float kerb = smoothstep(0.3, 0.42, rd) * (1.0 - smoothstep(0.5, 0.62, rd));
+  paved = mix(paved, vec3(0.4, 0.37, 0.33), kerb * 0.85);
+  vec3 rc = lv < 1.0 ? mix(earth, gravel, lv) : lv < 2.0 ? mix(gravel, cobble, lv - 1.0) : mix(cobble, paved, lv - 2.0);
+  col = mix(col, rc, road * mix(0.92, 1.0, clamp(lv - 1.0, 0.0, 1.0)));
   col *= vShade;
   // snow lies everywhere except on busy roads and steep rock faces
   float sn = uSnow * smoothstep(0.2, 0.75, 0.62 + (n - 0.5) * 1.1 - road * 0.45 - rk * 0.3);
@@ -234,10 +247,31 @@ export class View {
     this.fogCtx.putImageData(this.fogImg, 0, 0); this.fogTex.source.update();
   }
   updateRoads() {
-    const W = this.W; if (this.roadVer === W.roadVer) return; this.roadVer = W.roadVer;
+    const W = this.W, sig = W.roadVer + ':' + W.players.map(p => p.age).join();
+    if (this.roadSig === sig) return; this.roadSig = sig;
     const d = this.roadImg.data, R = W.road;
-    for (let k = 0; k < R.length; k++) { const v = R[k] ? 255 : 0; d[k * 4] = v; d[k * 4 + 3] = 255; }
+    // road value = owner + 1 (older saves: 1 = whoever is nearest is not known, so player 0's age)
+    for (let k = 0; k < R.length; k++) { const v = R[k] ? 255 : 0, P = R[k] ? W.players[R[k] - 1] : null; d[k * 4] = v; d[k * 4 + 1] = P ? Math.round(v * (P.age - 1) / 3) : 0; d[k * 4 + 3] = 255; }
     this.roadCtx.putImageData(this.roadImg, 0, 0); this.roadTex.source.update();
+    this.buildProps();
+  }
+  // street furniture that comes with the ages: lanterns along Castle Age roads, gilt lamps and banners in the Imperial Age
+  // (visual only, placed by a fixed hash so every client sees the same street)
+  buildProps() {
+    const W = this.W, S = W.size, A = this.A, R = W.road;
+    for (const pr of this.props || []) pr.s.destroy(); this.props = [];
+    if (!A.buildings.has('lamp_a3')) return;
+    for (let j = 1; j < S - 1; j++) for (let i = 1; i < S - 1; i++) {
+      const k = j * S + i, o = R[k]; if (!o) continue; const P = W.players[o - 1]; if (!P || P.age < 3) continue;
+      const h = ((i * 73856093) ^ (j * 19349663)) >>> 0; if (h % 9) continue;
+      // stand on the verge: a free, non-road neighbour
+      const side = [[1, 0], [0, 1], [-1, 0], [0, -1]].find(([di, dj]) => { const kk = (j + dj) * S + i + di; return !R[kk] && !W.occ[kk] && W.terrain[kk] !== TER.WATER && W.terrain[kk] !== TER.ROCK; });
+      if (!side) continue;
+      const key = P.age >= 4 ? ((h >> 5) % 3 === 0 ? 'banner_a4' : 'lamp_a4') : 'lamp_a3', f = A.buildings.get(key, P.color); if (!f) continue;
+      const x = i + 0.5 + side[0] * 0.55, y = j + 0.5 + side[1] * 0.55, [sx, sy] = iso(x, y);
+      const sp = new Sprite(f.tex); sp.anchor.set(f.ax, f.ay); sp.x = sx; sp.y = sy; sp.zIndex = sy; sp.visible = false; this.objs.addChild(sp);
+      this.props.push({ s: sp, k: (Math.floor(y)) * S + Math.floor(x), x: sx, y: sy, lamp: key !== 'banner_a4' });
+    }
   }
   // mountain tiles get boulders on top so the ridges read as raised ground
   makeRocks() {
@@ -309,7 +343,9 @@ export class View {
   // sprite set + animation for a unit (or a corpse / carcass of one)
   unitSet(e) {
     if (e.type === 'villager') return (e.kind === 'corpse' ? e.sk : e.id % 2) ? 'villager_f' : 'villager_m';
-    const set = UNITS[e.type] ? UNITS[e.type].sprite : e.type;
+    const base = UNITS[e.type] ? UNITS[e.type].sprite : e.type;
+    const up = e.owner >= 0 && UNITS[e.type] && !UNITS[e.type].animal ? stat(this.W, e.owner, e.type).sprite : null;      // upgraded line: its new look
+    const set = up && this.A.units.meta.anims[up] ? up : base;
     return this.A.units.meta.anims[set] || this.A.fauna.meta.anims[set] || !SPRITE_FALLBACK[set] ? set : SPRITE_FALLBACK[set];     // art not packed yet: a stand-in
   }
   unitAnim(e) {
@@ -324,8 +360,8 @@ export class View {
   buildingKey(e) {
     const A = this.A, d = BUILDINGS[e.type], P = this.W.players[e.owner], age = P ? P.age : 1;
     let key = e.type;
-    if (e.type === 'house') { const a = e.age || 1, v = e.id % 3; key = a === 1 ? (v === 0 ? 'house' : 'house_c') : a === 2 ? ['house', 'house_b', 'house_c'][v] : (v === 0 ? 'house' : 'house_b'); }
-    if (e.type === 'town_center' && e.built) key = age === 1 ? 'town_center_dark' : age === 3 ? 'town_center_castle' : 'town_center';      // the town grows with the ages
+    if (e.type === 'house') key = A.buildings.has('house_a1') ? ['house', 'house_b', 'house_c'][e.id % 3] : (() => { const a = e.age || 1, v = e.id % 3; return a === 1 ? (v === 0 ? 'house' : 'house_c') : a === 2 ? ['house', 'house_b', 'house_c'][v] : (v === 0 ? 'house' : 'house_b'); })();
+    if (e.type === 'town_center' && e.built) key = age === 1 ? 'town_center_dark' : age >= 3 ? 'town_center_castle' : 'town_center';      // the town grows with the ages
     if (e.type === 'mill' && e.built && A.buildings.has('mill_body')) key = 'mill_body';
     if (e.type === 'watch_tower' && e.built && P) key = P.techs.has('keep') ? 'keep' : P.techs.has('guard_tower') ? 'guard_tower' : key;
     if (key !== e.type && !A.buildings.has(key)) key = e.type;
@@ -333,6 +369,7 @@ export class View {
     if (e.type === 'farm') key = e.food > d.food * 0.45 || !e.built ? 'farm' : 'farm_seed';
     if (!e.built) { const base = e.type === 'house' ? key : e.type; key = A.buildings.has(base + '_c0') ? base + '_c' + Math.min(2, Math.floor(e.progress * 3)) : base; }
     if (!A.buildings.has(key) && BLD_FALLBACK[e.type]) key = BLD_FALLBACK[e.type];
+    if (e.built && age !== 2 && A.buildings.has(key + '_a' + age)) key += '_a' + age;           // the kingdom's age restyles it
     return key;
   }
   frameFor(e) {
@@ -501,6 +538,7 @@ export class View {
     }
     for (const [id, v] of this.views) if (!seen.has(id)) this.dropView(id, v);
     // boulders on the mountain ridges
+    for (const r of this.props || []) { const on = r.x > vx0 && r.x < vx1 && r.y > vy0 && r.y < vy1 && (this.reveal || P.exp[r.k]); r.s.visible = on; if (on) { r.s.tint = lit(this.reveal || P.vis[r.k] ? 0xffffff : 0x9a9aa6); if (r.lamp && night > 0.1) this.light2(r.x, r.y - 40, 70, 0xffc070, 0.75); } }
     for (const r of this.rocks) { const [rx, ry] = [r.s.x, r.s.y]; const on = rx > vx0 && rx < vx1 && ry > vy0 && ry < vy1 && (this.reveal || P.exp[r.k]); r.s.visible = on; if (on) r.s.tint = mulTint(this.reveal || P.vis[r.k] ? r.base : mulTint(r.base, [0.7, 0.7, 0.75]), L); }
     this.glows.end();
     this.renderLights();
