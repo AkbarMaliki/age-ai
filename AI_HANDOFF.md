@@ -287,6 +287,28 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
 - Measured at 560 (4 players): generation ≤ 0.25 s; game ready in ~10 s with 33k entities; 52–60 fps at 2x, 41 fps fully zoomed out; ~110 MB heap. 20x gives ~21–24 game-s/s by minute 25. The first wars start around minute 38 (longer marches).
 - Checks: `SIZES=224,288,360,440,560 node tests/map.test.js 5` (fairness ≤ 14%, no cut-off towns); browser `tests/browser/bigmap.cjs` (`SIZE=`, `MOBILE=1`).
 
+### v19: mercenary camps (Kamp Tentara Bayaran) and the helping hand
+- `MERCS` (data.js): five companies, each with a camp sprite and tint, a unit, a band size `n` and a `cost`.
+
+| Company | Unit | Skill |
+|---|---|---|
+| rimba | `sumpit` | `poison: [dps, s]` |
+| gunung | `biksu` | `regen`, `noConvert` |
+| kompi | `bayaran` | `charge` |
+| perampok | `perampok` | `loot` gold per hit |
+| mesiu | `penembak` | `pierce`: ranged hits ignore armour |
+
+  - Units are `age: 9, from: 'none'` (never trained) and reuse base sprites with a `tint`. They carry a nominal `cost` (AI valuation, kill value) and `u.merc` = company.
+- Camps: `kind: 'camp'` (2×2, not blocking, `cd[pid]` = cooldown), placed in map.js with their own rng stream, so older seeds and saves keep their maps.
+  - About size / 56 camps, at least 26 tiles (or 13% of the map) from any town and 16% of the map apart; every company appears before any repeats.
+- Hiring: command `{ t: 'hire', pid, camp }`; `hireWhy(W, pid, camp)` returns why not ('' = ok). Conditions: explored, Feudal Age, off cooldown (`MERC.cd` 150 s), population room, the cost, and no enemy soldier within `MERC.guard`. The band spawns at the camp (event `hired`).
+- Helping hand (`mercHelp` in `ruleTick`, every 30 s from minute 20): power = pop + 2 × soldiers + 12 × towns. A living kingdom below `helpRatio` (45%) of the strongest gets `P.mercOffer = { faction, n (3–8, by the gap), until (+60 s) }` at most every 8 min (event `mercoffer` plus chronicle).
+  - `{ t: 'mercaccept' | 'mercdecline' }`; accepting sends the band to the Town Center via `giftUnits` (may exceed the population cap).
+  - Players get the `#mercBox` pop-up (`Game.mercPrompt`); the AI always accepts.
+- AI `mercs()`: takes offers; at war, when holding, or after raids, it hires at the nearest usable camp within 110 tiles if gold stays ≥ 150 after paying (chronicle `hire`); bands idle at a far camp in peace walk home.
+- UI: camp info panel (skill, unit stats, price, why not), Rekrut button (slot Q), company emblem floating over the camp (`campBadge`), campfire, minimap marks; poisoned units breathe green.
+- Tests: `tests/mercs.test.js` (in `npm test`); browser `tests/browser/mercs.cjs`.
+
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
 - Changes from it: archer atk 5, +3 vs infantry, cost 30w/40g; pikeman 55 hp, 0 pierce armour, 40f/30w; cataphract 115 hp, 3/3 armour, 35 iron; militia atk 5, 1 melee armour, 55f/20g; fire archer atk 6. Wells and outposts (and children) no longer keep a kingdom alive; the AI resigns when crushed (< 15 pop vs > 5x, for 2 min); exhaustion no longer kills; town-watch patrols recover energy. Bug: the AI's life timer shared its name (`lcT`) with the lumber-camp timer, so taverns / wells / hospitals were rarely considered (now `lifeT`). Expansion reserves the Town Center's cost once a site is known (`expandNeed`). `expansionSite` uses a resource grid (was a 75 ms spike).

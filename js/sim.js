@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX } from './data.js';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX, MERCS, MERC } from './data.js';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -234,6 +234,41 @@ function postTick(W) {
     if (one && (p.owner < 0 || enemies(W, p.owner, o))) { p.hold++; if (p.hold >= POST.hold) { const from = p.owner; p.owner = o; p.hold = 0; W.ev.push({ k: 'postcapture', owner: o, from, x: p.x, y: p.y, name: p.name }); } }
     else p.hold = Math.max(0, p.hold - 1);
     if (p.owner >= 0) { const P = W.players[p.owner]; if (!P.alive) p.owner = -1; else { P.res.gold += POST.gold; P.stats.gathered += POST.gold; P.stats.gres.gold += POST.gold; } }
+  }
+}
+// ---------------------------------------------------------------- mercenary camps
+export function addCamp(W, i, j, faction, name) { return add(W, { kind: 'camp', type: 'camp', faction, name, x: i, y: j, w: 2, h: 2, owner: -1, cd: {} }); }
+const enemiesNear = (W, pid, x, y, r) => { let n = 0; unitsNear(W, x, y, r, (e) => { if (e.kind === 'unit' && e.hp > 0 && e.owner >= 0 && MILITARY(e.type) && enemies(W, e.owner, pid) && Math.hypot(e.x - x, e.y - y) <= r) n++; }); return n; };
+// why this kingdom can't hire at this camp right now ('' = it can)
+export function hireWhy(W, pid, m) {
+  const P = W.players[pid], F = MERCS[m.faction]; if (!P || !P.alive || !F) return 'Tidak tersedia';
+  if (!P.exp[idx(W, m.x + 1, m.y + 1)]) return 'Kamp belum ditemukan';
+  if (P.age < MERC.minAge) return 'Butuh Zaman Feodal';
+  if ((m.cd[pid] || 0) > W.t) return `Siap lagi dalam ${Math.ceil(m.cd[pid] - W.t)} detik`;
+  if (P.pop + F.n > P.popCap) return 'Populasi penuh';
+  if (!canAfford(P, F.cost)) return 'Sumber daya kurang';
+  if (enemiesNear(W, pid, m.x + 1, m.y + 1, MERC.guard)) return 'Ada pasukan musuh di dekat kamp';
+  return '';
+}
+function spawnBand(W, pid, unit, n, x, y) {
+  const out = [];
+  for (let k = 0; k < n; k++) { const f = nearestFree(W, x + (k % 3) - 1, y + 1.5 + Math.floor(k / 3), pid, 6); if (!f) continue; const u = addUnit(W, pid, unit, f[0] + 0.5, f[1] + 0.5); u.merc = UNITS[unit].merc; out.push(u); }
+  return out;
+}
+// the helping hand: a kingdom far behind the strongest (people, soldiers, towns) is offered a free band now and then
+function mercHelp(W) {
+  for (const P of W.players) if (P.mercOffer && (W.t > P.mercOffer.until || !P.alive)) { P.mercOffer = null; W.ev.push({ k: 'mercgone', owner: P.id }); }
+  if (W.t < MERC.helpFrom || W.tick % 300 !== 5) return;
+  const live = W.players.filter(P => P.alive); if (live.length < 2) return;
+  const army = W.players.map(() => 0), towns = W.players.map(() => 0);
+  for (const e of W.dyn.values()) { if (e.owner < 0) continue; if (e.kind === 'unit' && MILITARY(e.type) && !UNITS[e.type].animal) army[e.owner]++; else if (e.kind === 'building' && e.type === 'town_center' && e.built) towns[e.owner]++; }
+  const pw = (P) => P.pop + army[P.id] * 2 + towns[P.id] * 12, top = Math.max(...live.map(pw)), keys = Object.keys(MERCS);
+  for (const P of live) {
+    if (P.mercOffer || W.t - (P.helpT ?? -1e9) < MERC.helpEvery || pw(P) >= top * MERC.helpRatio) continue;
+    const faction = keys[Math.floor(W.rnd() * keys.length)], n = Math.max(3, Math.min(8, Math.round((1 - pw(P) / top) * 10)));
+    P.mercOffer = { faction, n, until: W.t + MERC.helpWait }; P.helpT = W.t;
+    const text = `${MERCS[faction].name} menawarkan ${n} ${UNITS[MERCS[faction].unit].name} tanpa bayaran kepada ${P.name} yang terdesak.`;
+    W.ev.push({ k: 'mercoffer', owner: P.id, faction, n, text }); (W.chron || (W.chron = [])).push({ t: W.t, kind: 'mercoffer', owner: P.id, foe: -1, text });
   }
 }
 // King of the Hill: the monument in the middle (x, y = centre; tx, ty = top-left tile of its 3x3 footprint)
@@ -651,6 +686,23 @@ function applyCmd0(W, c) {
       W.tribT[c.pid * 8 + c.to] = W.t;
       break;
     }
+    case 'hire': {      // a band from a mercenary camp: found, paid, no enemy at the camp, not on cooldown, room for them
+      const m = W.ents.get(+c.camp); if (!m || m.kind !== 'camp' || hireWhy(W, c.pid, m)) break;
+      const F = MERCS[m.faction]; pay(P, F.cost); m.cd[c.pid] = W.t + MERC.cd;
+      const band = spawnBand(W, c.pid, F.unit, F.n, m.x + 1, m.y + 1);
+      W.ev.push({ k: 'hired', owner: c.pid, faction: m.faction, n: band.length, x: m.x + 1, y: m.y + 1, name: m.name });
+      break;
+    }
+    case 'mercaccept': case 'mercdecline': {      // the helping hand: a free band marches to the Town Center (it may go over the population cap)
+      const o = P.mercOffer; if (!o || W.t > o.until) break; P.mercOffer = null;
+      if (c.t === 'mercdecline') { W.ev.push({ k: 'mercgone', owner: c.pid }); break; }
+      const F = MERCS[o.faction]; giftUnits(W, P, [[F.unit, o.n]]);
+      for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner === c.pid && e.type === F.unit && !e.merc) e.merc = o.faction;
+      const tc = alive(W, P.tc) || [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === c.pid && e.type === 'town_center');
+      const text = `${o.n} ${UNITS[F.unit].name} dari ${F.name} tiba membantu ${P.name}.`;
+      W.ev.push({ k: 'mercarrive', owner: c.pid, faction: o.faction, n: o.n, x: tc ? tc.x + 2 : P.start[0], y: tc ? tc.y + 2 : P.start[1], text }); (W.chron || (W.chron = [])).push({ t: W.t, kind: 'mercarrive', owner: c.pid, foe: -1, text });
+      break;
+    }
     case 'pact': {      // offer a pact (sealed when the other side offered too within a minute), or break one
       const Q = W.players[c.with], a = c.pid, b = +c.with; if (!Q || !Q.alive || a === b || P.team === Q.team) break;
       if (c.on === false) { if (W.pact[a * 8 + b]) { W.pact[a * 8 + b] = W.pact[b * 8 + a] = 0; W.broke[a * 8 + b] = W.t; W.ev.push({ k: 'pactbreak', owner: a, with: b }); } break; }
@@ -962,6 +1014,8 @@ function unitTick(W, u) {
     if (u.type === 'trebuchet' && !o) { u.anim = u.anim === 'attack' && u.aT < 1 ? 'attack' : 'idle'; }
   }
   if (s.convert && u.faith < 1) u.faith = Math.min(1, u.faith + TICK / s.faith);
+  if (d.regen && u.hp < u.maxHp) u.hp = Math.min(u.maxHp, u.hp + d.regen * TICK);                    // Tenaga Dalam
+  if (u.poisonUntil > W.t) { damage(W, u, u.poisonDps * TICK, { owner: u.poisonBy, kind: 'poison' }); if (u.hp <= 0) return; }
   if (!u.order && (u.type === 'villager' || u.type === 'child') && (W.tick + u.id) % 20 === 0 && restNow(W, W.players[u.owner])) goHome(W, u);   // idle or just trained after dusk
   if (u.hp < u.maxHp && u.owner >= 0 && W.t - (u.hitT ?? -99) > 8 && MILITARY(u.type) && W.players[u.owner].techs.has('medicine')) u.hp = Math.min(u.maxHp, u.hp + 0.4 * TICK);
   const o = u.order;
@@ -1239,7 +1293,7 @@ function explode(W, u, s) {
   W.ev.push({ k: 'boom', x: u.x, y: u.y, owner: u.owner }); damage(W, u, 1e9, null);
 }
 // what a monk can turn: soldiers and villagers (not buildings, siege, ships, monks or animals)
-const convertible = (t) => t.kind === 'unit' && !isAnimal(t) && t.owner >= 0 && t.type !== 'monk' && !UNITS[t.type].hero && !UNITS[t.type].naval && UNITS[t.type].cls !== 'siege' && !t.inside;
+const convertible = (t) => t.kind === 'unit' && !isAnimal(t) && t.owner >= 0 && t.type !== 'monk' && !UNITS[t.type].hero && !UNITS[t.type].noConvert && !UNITS[t.type].naval && UNITS[t.type].cls !== 'siege' && !t.inside;
 // a unit changes sides (conversion): population, hit points scaled to the new owner's upgrades, orders forgotten
 function changeOwner(W, e, pid) {
   const A = W.players[e.owner], B = W.players[pid];
@@ -1315,6 +1369,7 @@ export function dmgOf(W, a, t) {
     const ts = stat(W, t.owner, t.type), fb = t.fb;
     arm = (rg ? ts.pa : ts.ma) + (fb ? (rg ? fb.pa : fb.ma) : 0);
   } else { const bs = bstat(W, t.owner, t.type); arm = rg ? bs.pa : bs.ma; }
+  if (s.pierce && rg) arm = 0;                                                      // Tembus Zirah
   if (s.charge && W.t - (a.lastAtk || -99) > 8) atk += s.charge;                  // lancer: the first strike of a charge
   let dmg = Math.max(1, atk - arm);
   if (t.kind === 'unit') { const c = stat(W, t.owner, t.type).cls; if (s.bonus && s.bonus[c]) dmg += s.bonus[c]; if (a.fb && a.fb.vsCav && c === 'cavalry') dmg += a.fb.vsCav; }
@@ -1378,7 +1433,7 @@ function moraleTick(W) {
 function setTimeoutTick(W, s, fn) { add(W, { kind: 'timer', t: s, fn }); }
 function spawnArrow(W, owner, x, y, z, tx, ty, tid, dmg, ptype = 'arrow', s = null) {
   const dist = Math.hypot(tx - x, ty - y);
-  add(W, { kind: 'proj', owner, x, y, z, sx: x, sy: y, tx, ty, tid, dmg, t: 0, T: Math.max(ptype === 'bullet' ? 0.08 : 0.25, dist / (PROJ[ptype] || 7)), arc: ptype === 'bullet' ? 0 : 0.25 * dist, ptype, spear: ptype === 'spear', splash: s && s.splash, fire: s && s.fire });
+  add(W, { kind: 'proj', owner, x, y, z, sx: x, sy: y, tx, ty, tid, dmg, t: 0, T: Math.max(ptype === 'bullet' ? 0.08 : 0.25, dist / (PROJ[ptype] || 7)), arc: ptype === 'bullet' ? 0 : 0.25 * dist, ptype, spear: ptype === 'spear', splash: s && s.splash, fire: s && s.fire, poison: s && s.poison });
 }
 function projTick(W, p) {
   p.t += TICK; const k = Math.min(1, p.t / p.T);
@@ -1389,6 +1444,7 @@ function projTick(W, p) {
     if (t && distTo(t, p.x, p.y) < 1.0) {
       damage(W, t, p.dmg, { owner: p.owner, kind: 'proj' });
       if (p.fire && t.kind === 'building' && W.ents.has(t.id)) { t.burn = W.t + 8; t.burnBy = p.owner; }
+      if (p.poison && t.kind === 'unit' && W.ents.has(t.id) && !isAnimal(t) && UNITS[t.type].cls !== 'siege' && !t.nav) { t.poisonUntil = W.t + p.poison[1]; t.poisonDps = p.poison[0]; t.poisonBy = p.owner; }      // Racun
     }
     if (p.splash) {     // cannon ball: half damage around the impact
       unitsNear(W, p.x, p.y, p.splash, (e) => { if (e !== t && e.hp > 0 && enemies(W, e.owner, p.owner) && !isAnimal(e) && Math.hypot(e.x - p.x, e.y - p.y) <= p.splash) damage(W, e, p.dmg * 0.5, { owner: p.owner, kind: 'proj' }); });
@@ -1401,7 +1457,10 @@ function projTick(W, p) {
 export function damage(W, t, dmg, src) {
   if (t.kind === 'res') return;
   t.hp -= dmg; t.hitT = W.t;
-  if (src && src.owner !== undefined && src.owner !== t.owner) { const [hx, hy] = center(t); W.ev.push({ k: 'hit', x: hx, y: hy, owner: t.owner, u: t.kind === 'unit' ? t.type : 0, b: t.kind === 'building' ? 1 : 0, fire: src.kind === 'fire' ? 1 : 0 }); }
+  if (src && src.owner !== undefined && src.owner !== t.owner) { const [hx, hy] = center(t); W.ev.push({ k: 'hit', x: hx, y: hy, owner: t.owner, u: t.kind === 'unit' ? t.type : 0, b: t.kind === 'building' ? 1 : 0, fire: src.kind === 'fire' || src.kind === 'poison' ? 1 : 0 }); }
+  if (src && src.type && UNITS[src.type] && UNITS[src.type].loot && t.owner >= 0 && src.owner >= 0 && t.owner !== src.owner) {        // Rampas
+    const V = W.players[t.owner], n = Math.min(UNITS[src.type].loot, Math.floor(V.res.gold)); if (n > 0) { V.res.gold -= n; W.players[src.owner].res.gold += n; }
+  }
   if (src && t.kind === 'unit' && t.type !== 'villager' && src.id && alive(W, src.id) && stat(W, t.owner, t.type).atk > 0 && (!t.order || (isAnimal(t) && t.order.t !== 'attack')) && t.stance !== 'pasif'
     && (t.stance !== 'diam' || distTo(src, t.x, t.y) <= reachOf(W, t, src) + 0.2)) setOrder(W, t, { t: 'attack', id: src.id, auto: true, gx: t.x, gy: t.y });
   if (src && src.id && t.kind === 'unit' && t.type === 'villager' && t.hp > 0) villagerDefend(W, t, src);
@@ -1806,7 +1865,7 @@ export function spyReport(W, pid) {
 function ruleTick(W) {
   if (W.opts.treaty && !W.treatyOver && W.t >= W.opts.treaty) { W.treatyOver = true; W.ev.push({ k: 'treatyend' }); }
   if (W.winner >= 0) return;
-  postTick(W);
+  postTick(W); mercHelp(W);
   // Perang Total: after 75 minutes, 20 minutes without a capital falling or a kingdom beaten -> pacts dissolve,
   // soldiers hit buildings 50% harder, and the computer commanders hold nothing back
   if (!W.totalWar && W.t > 4500 && W.t - (W.lastProg || 0) > 1200 && W.players.filter(P => P.alive).length >= 2) {

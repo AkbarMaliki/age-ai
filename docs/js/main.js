@@ -1,23 +1,23 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js?v=20261014172537';
-import { openTechTree } from './techtree.js?v=20261014172537';
-import { Saves } from './saves.js?v=20261014172537';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014172537';
-import { townRing, pacted, POST } from './sim.js?v=20261014172537';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014172537';
-import { generate } from './map.js?v=20261014172537';
-import { AI } from './ai.js?v=20261014172537';
-import { loadAll, vq } from './assets.js?v=20261014172537';
-import { View, iso, UNIT_BOX, FX } from './render.js?v=20261014172537';
-import { HUD } from './ui.js?v=20261014172537';
-import { Sound } from './audio.js?v=20261014172537';
-import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261014172537';
-import { CardPanel, DeckBuilder } from './cards.js?v=20261014172537';
-import { Advisor } from './advisor.js?v=20261014172537';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014172537';
-import { Lockstep } from './lockstep.js?v=20261014172537';
-import { Lobby } from './lobby.js?v=20261014172537';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD, MERCS, MERC } from './data.js?v=20261014210523';
+import { openTechTree } from './techtree.js?v=20261014210523';
+import { Saves } from './saves.js?v=20261014210523';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014210523';
+import { townRing, pacted, POST } from './sim.js?v=20261014210523';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014210523';
+import { generate } from './map.js?v=20261014210523';
+import { AI } from './ai.js?v=20261014210523';
+import { loadAll, vq } from './assets.js?v=20261014210523';
+import { View, iso, UNIT_BOX, FX } from './render.js?v=20261014210523';
+import { HUD } from './ui.js?v=20261014210523';
+import { Sound } from './audio.js?v=20261014210523';
+import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261014210523';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261014210523';
+import { Advisor } from './advisor.js?v=20261014210523';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014210523';
+import { Lockstep } from './lockstep.js?v=20261014210523';
+import { Lobby } from './lobby.js?v=20261014210523';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -192,7 +192,7 @@ class Game {
     this.view.applyCam();
     this.sel = this.sel.filter(id => this.W.ents.has(id));
     this.view.sync(Math.min(1, this.acc / TICK), this.paused && !this.lock ? 0 : dt * this.speed, this.sel, this.hover);
-    this.hud.update(dt); this.stats.update(dt); this.story.update(dt); this.cards.update(dt); this.advisor.update(dt);
+    this.hud.update(dt); this.stats.update(dt); this.story.update(dt); this.mercPrompt(dt); this.cards.update(dt); this.advisor.update(dt);
     if ((this.trackT = (this.trackT || 0) - dt) <= 0) { this.trackT = 2; let v = 0; for (const e of this.W.dyn.values()) if (e.kind === 'unit' && e.owner === this.me && e.type === 'villager') v++; this.track.maxVil = Math.max(this.track.maxVil, v); }
     if (this.placing) this.updateGhost();
   }
@@ -275,6 +275,9 @@ class Game {
       case 'prosperhold': { const o = W.players[e.owner]; this.snd.play('alert'); this.hud.notify(o.team === P.team ? `⭐ Kerajaan ${o.name} makmur! Pertahankan 10 menit untuk menang.` : `⭐ ${o.name} mencapai kemakmuran — menang dalam 10 menit kecuali dihentikan!`, o.team === P.team ? 'age' : 'bad'); break; }
       case 'prosperlost': if (mine) this.hud.notify('⭐ Kemakmuran turun di bawah batas — hitungan mundur berhenti.', 'bad'); break;
       case 'totalwar': this.snd.play('alert'); this.hud.notify('🔥 ' + e.text, 'bad'); break;
+      case 'hired': if (mine) { this.snd.play('trained'); this.hud.notify(`💰 ${e.n} tentara bayaran dari ${e.name} bergabung!`, 'age', [e.x, e.y]); } else if (vis) this.hud.notify(`${W.players[e.owner].name} menyewa tentara bayaran.`, 'enemy', [e.x, e.y]); break;
+      case 'mercoffer': if (mine) { this.snd.play('card'); this.mercT = 0; } break;
+      case 'mercarrive': if (mine) { this.snd.play('ship'); this.hud.notify('🛡 ' + e.text, 'age', [e.x, e.y]); } break;
       case 'postcapture': if (e.owner === this.me) { this.snd.play('tech'); this.hud.notify(`🏰 Kita merebut ${e.name}! +${Math.round(POST.gold * 60)} emas/menit dan penglihatan luas.`, 'age', [e.x, e.y]); } else if (e.from === this.me) { this.snd.play('alert'); this.hud.notify(`🏰 ${e.name} direbut ${W.players[e.owner].name}!`, 'bad', [e.x, e.y]); } break;
       case 'generaldie': if (e.owner === this.me) { this.snd.play('alert'); this.hud.notify(`⚰ Panglima ${e.name} gugur! Pasukan di dekatnya tercerai-berai.`, 'bad'); } else if (e.by === this.me) this.hud.notify(`⚔ Panglima musuh ${e.name} tewas!`, 'age'); break;
       case 'war': {        // the war commanders' chronicle: wars on us and our allies in full, elsewhere only fallen towns
@@ -317,6 +320,21 @@ class Game {
     this.snd.play('click');
     this.hud.notify(on ? `👁 Kabut perang aktif. ${this.fogNote()} Tab = ganti kerajaan.` : '👁 Kabut perang mati: seluruh peta terlihat.', 'age');
   }
+  // the helping hand: a band offers itself to us while we are far behind (accept / decline before the bar runs out)
+  mercPrompt(dt) {
+    if ((this.mercT = (this.mercT || 0) - dt) > 0) return; this.mercT = 0.25;
+    const box = $('mercBox'), P = this.W.players[this.me], o = !this.watch && !this.online && P && P.alive ? P.mercOffer : null;
+    if (!o || this.W.t > o.until) { box.classList.add('hidden'); return; }
+    const F = MERCS[o.faction], U = UNITS[F.unit];
+    if (box.classList.contains('hidden') || box.dataset.k !== o.faction + o.until) {
+      box.dataset.k = o.faction + o.until; box.classList.remove('hidden');
+      box.querySelector('.mt').textContent = `${F.glyph} ${F.name} menawarkan bantuan`;
+      box.querySelector('.md').innerHTML = `Kerajaanmu tertinggal jauh. ${F.name} bersedia mengirim <b>${o.n} ${U.name}</b> <b>tanpa bayaran</b> ke Pusat Kotamu.<br><small>${F.glyph} ${U.desc}</small>`;
+      $('mercYes').onclick = () => { this.send({ t: 'mercaccept', pid: this.me }); box.classList.add('hidden'); this.snd.play('click'); };
+      $('mercNo').onclick = () => { this.send({ t: 'mercdecline', pid: this.me }); box.classList.add('hidden'); this.snd.play('click'); };
+    }
+    box.querySelector('.mbar i').style.width = Math.max(0, (o.until - this.W.t) / MERC.helpWait * 100) + '%';
+  }
   // one speed button: click = faster (wraps to 1x), right click = slower
   setSpeed(v) { this.speed = v; const b = $('spSpeed'); if (b) { b.querySelector('b').textContent = v + 'x'; b.classList.toggle('fast', v >= 8); } }
   stepSpeed(d) { const L = [1, 2, 4, 8, 20], i = Math.max(0, L.indexOf(this.speed)); this.setSpeed(L[(i + d + L.length) % L.length]); this.snd.play('click'); }
@@ -349,6 +367,9 @@ class Game {
       case 'firespread': this.heatAdd(e.x, e.y, 2); break;
       case 'postcapture': this.hud.notify(`🏰 ${W.players[e.owner].name} merebut ${e.name}.`, 'enemy', [e.x, e.y]); break;
       case 'totalwar': this.snd.play('alert'); this.hud.notify('🔥 ' + e.text, 'bad'); break;
+      case 'hired': this.hud.notify(`💰 ${W.players[e.owner].name} menyewa ${e.n} tentara bayaran (${e.name}).`, 'enemy', [e.x, e.y]); this.heatAdd(e.x, e.y, 3); break;
+      case 'mercoffer': this.hud.notify('🤝 ' + e.text, 'age'); break;
+      case 'mercarrive': this.hud.notify('🛡 ' + e.text, 'age', [e.x, e.y]); break;
       case 'generaldie': this.hud.notify(`⚰ Panglima ${e.name} (${W.players[e.owner].name}) gugur!`, 'age', [e.x, e.y]); this.cine(e.x, e.y); break;
       case 'war':
         this.hud.notify('⚔ ' + e.text, ['fall', 'conquer', 'declare', 'wonder', 'hold'].includes(e.kind) ? 'age' : 'enemy', e.x !== undefined ? [e.x, e.y] : null);
@@ -913,9 +934,9 @@ async function boot() {
   $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
   window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
-  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014172537);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
+  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014210523);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014172537);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014210523);background-position:-${p[0]}px -${p[1]}px` : ''; };
   let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;

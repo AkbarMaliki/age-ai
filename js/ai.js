@@ -4,8 +4,8 @@
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
 import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js';
-import { DAY, RELICS, RES_NAME } from './data.js';
-import { timeOfDay, unreachable, restNow, targetable, generalName, pacted, pactSince, offerOf, brokeAt, tributeAt } from './sim.js';
+import { DAY, RELICS, RES_NAME, MERCS } from './data.js';
+import { timeOfDay, unreachable, restNow, targetable, generalName, hireWhy, pacted, pactSince, offerOf, brokeAt, tributeAt } from './sim.js';
 import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
@@ -1231,7 +1231,7 @@ export class AI {
         this.endWar(); return false;
       }
     }
-    this.guardTowns(field); this.posture(); this.generalTick(war); this.holdPosts(field);
+    this.guardTowns(field); this.posture(); this.generalTick(war); this.holdPosts(field); this.mercs(field, war);
     if (this.wonders(field, war)) return true;
     this.counterTick(field);
     war = this.war;
@@ -1422,6 +1422,23 @@ export class AI {
     const [fx, fy] = this.stagePoint(c);
     const idle = field.filter(u => u.id !== this.explorer && !this.inWar(u.id) && !u.order && Math.hypot(u.x - fx, u.y - fy) > 8);
     if (idle.length) command(W, { t: 'move', pid: this.pid, ids: idle.map(u => u.id), x: fx, y: fy, amove: true });
+  }
+  // mercenaries: a band offered for free is always taken; at war (or holding against a stronger enemy) a band is hired at
+  // the nearest camp we have found when the gold allows; bands left at a far camp in peace walk home
+  mercs(field, war) {
+    const W = this.W, P = this.P;
+    if (P.mercOffer && W.t <= P.mercOffer.until && W.t > (this.mercAccT || 0)) { this.mercAccT = W.t + 5; command(W, { t: 'mercaccept', pid: this.pid }); }
+    if (W.t < (this.hireT || 0) || P.age < 2) return; this.hireT = W.t + 15;
+    const [bx, by] = this.base;
+    if (!war) { const far = field.filter(u => u.merc && !u.order && Math.hypot(u.x - bx, u.y - by) > 40); if (far.length) command(W, { t: 'move', pid: this.pid, ids: far.map(u => u.id), x: bx, y: by + 6, amove: true }); }
+    if (!(war || this.stance === 'bertahan' || (this.attacked >= 2 && W.t - this.lastHit < 240))) return;
+    const camp = [...W.dyn.values()].filter(e => e.kind === 'camp' && Math.hypot(e.x - bx, e.y - by) < 110 && !this.overSea([e.x + 1, e.y + 1]) && !hireWhy(W, this.pid, e))
+      .sort((a, b) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(b.x - bx, b.y - by))[0];
+    if (!camp) return;
+    const F = MERCS[camp.faction];
+    if (!this.afford(F.cost) || P.res.gold - (F.cost.gold || 0) < 150) return;
+    command(W, { t: 'hire', pid: this.pid, camp: camp.id }); this.hireT = W.t + 60;
+    this.tell('hire', `${P.name} menyewa ${F.n} ${UNITS[F.unit].name} dari ${camp.name}.`, camp.x + 1, camp.y + 1, -1);
   }
   // the old forts: a squad of spare soldiers takes the nearest one we don't hold (gold and a wide view); told when won
   holdPosts(field) {

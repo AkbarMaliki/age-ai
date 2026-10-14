@@ -18,6 +18,12 @@ export const UNITS = {
   spearman: { name: 'Prajurit Tombak', hp: 45, atk: 3, ma: 0, pa: 0, speed: 1.0, range: 0, reload: 3.0, los: 4, cost: { food: 35, wood: 25 }, time: 22, age: 2, from: 'barracks', key: 'W', bonus: { cavalry: 15 }, vsBuilding: 2, line: 'spear', desc: 'Murah, penangkal kavaleri.' },
   archer: { name: 'Pemanah', hp: 30, atk: 5, ma: 0, pa: 0, speed: 0.96, range: 4, reload: 2.0, los: 6, acc: 0.8, cost: { wood: 30, gold: 40 }, time: 35, age: 2, from: 'archery_range', key: 'Q', proj: 'arrow', bonus: { infantry: 3 }, line: 'bow', desc: 'Menyerang dari jauh, efektif melawan infanteri.' },
   scout: { name: 'Kavaleri Pengintai', hp: 45, atk: 3, ma: 0, pa: 2, speed: 1.55, range: 0, reload: 2.0, los: 6, cost: { food: 80 }, time: 30, age: 2, from: 'stable', key: 'Q', cls: 'cavalry', bonus: { archer: 2 }, desc: 'Cepat, penglihatan luas.' },
+  // mercenaries (hired at camps on the map, never trained): each company has its own skill
+  sumpit: { name: 'Pemburu Sumpit', hp: 38, atk: 3, ma: 0, pa: 2, speed: 1.05, range: 4.5, reload: 2.2, los: 7, acc: 0.85, cost: { gold: 52, food: 24 }, age: 9, from: 'none', proj: 'arrow', poison: [3, 6], merc: 'rimba', sprite: 'skirmisher', tint: 0xa8d888, bonus: { infantry: 1 }, desc: 'Sumpit beracun: tiap kena, musuh terkena racun 3/detik selama 6 detik.' },
+  biksu: { name: 'Biksu Petarung', hp: 95, atk: 9, ma: 2, pa: 3, speed: 1.05, range: 0, reload: 1.6, los: 6, cost: { gold: 85, food: 15 }, age: 9, from: 'none', regen: 1.6, noConvert: true, merc: 'gunung', sprite: 'samurai', tint: 0xffc070, bonus: { cavalry: 3 }, desc: 'Tenaga dalam: memulihkan 1,6 HP/detik tanpa henti dan tak bisa dikonversi biarawan.' },
+  bayaran: { name: 'Prajurit Bayaran', hp: 115, atk: 11, ma: 3, pa: 3, speed: 0.95, range: 0, reload: 2.0, los: 5, cost: { gold: 95, food: 25 }, age: 9, from: 'none', charge: 9, merc: 'kompi', sprite: 'militia', scale: 1.1, tint: 0xb8c4d4, vsBuilding: 4, desc: 'Serbuan: pukulan pertama dalam pertempuran +9. Zirah tebal.' },
+  perampok: { name: 'Perampok Berkuda', hp: 75, atk: 7, ma: 1, pa: 1, speed: 1.55, range: 0, reload: 1.6, los: 7, cost: { gold: 52, food: 32 }, age: 9, from: 'none', cls: 'cavalry', loot: 3, merc: 'perampok', sprite: 'scout', tint: 0xd88070, bonus: { archer: 3 }, desc: 'Rampas: tiap pukulan merampas 3 emas dari kerajaan yang diserang.' },
+  penembak: { name: 'Penembak Bayaran', hp: 42, atk: 13, ma: 0, pa: 1, speed: 0.9, range: 6, reload: 3.2, los: 7, acc: 0.7, cost: { gold: 120, iron: 20 }, age: 9, from: 'none', proj: 'bullet', pierce: true, merc: 'mesiu', sprite: 'gunner', tint: 0xe8d090, bonus: { cavalry: 3 }, desc: 'Tembus zirah: pelurunya mengabaikan zirah panah.' },
   general: { name: 'Panglima', hp: 420, atk: 13, ma: 5, pa: 6, speed: 1.35, range: 0, reload: 1.8, los: 9, cost: { food: 200, gold: 200 }, time: 45, age: 3, from: 'town_center', key: 'Z', cls: 'cavalry', general: true, limit: 1, sprite: 'knight', scale: 1.2, tint: 0xfff0c0, bonus: { archer: 3 }, desc: 'Panglima (hanya satu): prajurit dalam 7 petak menyerang +15% dan tidak kocar-kacir. Bila ia gugur, pasukan di dekatnya bisa lari tercerai-berai.' },
   knight: { name: 'Ksatria', hp: 100, atk: 10, ma: 2, pa: 2, speed: 1.35, range: 0, reload: 1.8, los: 4, cost: { food: 60, gold: 75 }, vsBuilding: 3, time: 30, age: 3, from: 'stable', key: 'W', cls: 'cavalry', bonus: { archer: 4 }, line: 'heavycav', desc: 'Kavaleri berat, penghancur pemanah.' },
   // gunpowder + siege
@@ -248,6 +254,16 @@ export const WONDER_TIME = 600, KOTH_TIME = 600;     // game-seconds a wonder / 
 // relics (AoE2): only monks carry them; each relic kept in a monastery yields gold. Relic victory (optional rule):
 // hold every relic on the map for `win` game-seconds.
 export const RELICS = { gold: 0.5, speed: 0.8, win: 300 };
+// mercenary companies camped round the map: found first, then hired for gold (a band at once, a cooldown per camp).
+// A kingdom far behind gets a band offered for free now and then (the game's helping hand).
+export const MERCS = {
+  rimba: { name: 'Suku Rimba', camp: 'house', tint: 0x9ad07a, unit: 'sumpit', n: 5, cost: { gold: 260, food: 120 }, glyph: '🏹', skill: 'Racun' },
+  gunung: { name: 'Perguruan Gunung', camp: 'monastery', tint: 0xffc070, unit: 'biksu', n: 4, cost: { gold: 340, food: 60 }, glyph: '🥋', skill: 'Tenaga Dalam' },
+  kompi: { name: 'Kompi Bayaran', camp: 'barracks', tint: 0xb8c4d4, unit: 'bayaran', n: 4, cost: { gold: 380, food: 100 }, glyph: '🛡', skill: 'Serbuan' },
+  perampok: { name: 'Perampok Padang', camp: 'stable', tint: 0xd88070, unit: 'perampok', n: 5, cost: { gold: 260, food: 160 }, glyph: '🐎', skill: 'Rampas' },
+  mesiu: { name: 'Laskar Mesiu', camp: 'academy', tint: 0xe8d090, unit: 'penembak', n: 3, cost: { gold: 360, iron: 60 }, glyph: '🔫', skill: 'Tembus Zirah' },
+};
+export const MERC = { cd: 150, minAge: 2, guard: 8, helpFrom: 1200, helpEvery: 480, helpRatio: 0.45, helpWait: 60 };
 
 // civilizations: lasting bonuses (mods / per-class stat multipliers / unit discounts / start) and a unique unit
 // trained at the Castle (the 'unique' slot). AIs pick at random unless set.

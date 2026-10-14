@@ -1,9 +1,9 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261014172537';
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261014172537';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST } from './sim.js?v=20261014172537';
-import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261014172537';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME, MERCS, MERC } from './data.js?v=20261014210523';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261014210523';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST, hireWhy } from './sim.js?v=20261014210523';
+import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261014210523';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -81,7 +81,7 @@ export class HUD {
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
   // k: scale of a 64 px icon (small boxes shrink the whole sheet, so the offsets must shrink too)
-  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014172537);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014210523);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
   // portrait of a unit as this kingdom fields it (upgraded lines have their own look)
   spriteOf(owner, type) { const d = UNITS[type]; if (!d) return type; const s = owner >= 0 && !d.animal ? stat(this.g.W, owner, type).sprite : null; return s && this.icons.icons[s] ? s : d.sprite; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
@@ -168,6 +168,11 @@ export class HUD {
   buildCommands(sel) {
     const G = this.g, W = G.W, P = W.players[G.me];
     for (let i = 0; i < 15; i++) this.setBtn(i, null);
+    if (sel.length === 1 && sel[0].kind === 'camp' && !G.watch && !G.lost) {        // a mercenary camp: hire a band
+      const m = sel[0], F = MERCS[m.faction], U = UNITS[F.unit], why = hireWhy(W, G.me, m);
+      this.setBtn(0, { icon: U.sprite, name: `Rekrut ${F.n} ${U.name}`, cost: F.cost, desc: `${F.glyph} <b>${F.skill}</b>: ${U.desc}<br>Mereka muncul di kamp dan menjadi pasukanmu. Kamp bisa dipakai lagi setelah ${Math.round(MERC.cd / 60 * 10) / 10} menit.`, why, disabled: !!why, act: () => G.send({ t: 'hire', pid: G.me, camp: m.id }) });
+      return;
+    }
     const mine = sel.filter(e => e.owner === G.me);
     if (!mine.length || G.watch || G.lost) return;      // spectators can inspect but not command
     const units = mine.filter(e => e.kind === 'unit');
@@ -278,18 +283,18 @@ export class HUD {
     }
     const e = sel[0];
     const k = 'one' + e.id + e.type + (e.kind === 'building' ? e.queue.map(q => q.unit || q.tech).join() + e.built : '');
-    const name = e.kind === 'unit' && e.nm !== undefined ? `${personName(e)} <small class="role">${stat(W, e.owner, e.type).name || UNITS[e.type].name}</small>` : e.kind === 'monument' ? 'Monumen Raja Bukit' : e.kind === 'post' ? e.name : e.kind === 'unit' && stat(W, e.owner, e.type).name ? stat(W, e.owner, e.type).name : e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
+    const name = e.kind === 'unit' && e.nm !== undefined ? `${personName(e)} <small class="role">${stat(W, e.owner, e.type).name || UNITS[e.type].name}</small>` : e.kind === 'monument' ? 'Monumen Raja Bukit' : e.kind === 'post' ? e.name : e.kind === 'camp' ? e.name : e.kind === 'unit' && stat(W, e.owner, e.type).name ? stat(W, e.owner, e.type).name : e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
       : e.type === 'carcass' ? 'Bangkai ' + UNITS[e.animal].name : e.trap ? 'Perangkap Ikan' : { tree: 'Pohon', gold: 'Tambang Emas', stone: 'Tambang Batu', iron: 'Tambang Besi', berry: 'Semak Berry', fish: 'Kawanan Ikan' }[e.type];
     const owner = e.owner >= 0 ? W.players[e.owner] : null;
     if (el.dataset.k !== k) {
       el.dataset.k = k;
-      const icon = e.kind === 'monument' ? 'monument' : e.type === 'palisade' ? 'pal_post' : e.kind === 'relic' ? 'relic' : e.kind === 'treasure' ? 'treasure_' + e.type : e.type === 'carcass' ? e.animal : e.kind === 'res' ? 'res_' + { tree: 'wood', gold: 'gold', stone: 'stone', iron: 'iron', berry: 'food', fish: 'food' }[e.type] : e.type === 'stone_wall' ? 'wall_post' : e.type === 'gate' ? 'gate_x' : e.kind === 'unit' ? this.spriteOf(e.owner, e.type) : e.type;
+      const icon = e.kind === 'camp' ? UNITS[MERCS[e.faction].unit].sprite : e.kind === 'monument' ? 'monument' : e.type === 'palisade' ? 'pal_post' : e.kind === 'relic' ? 'relic' : e.kind === 'treasure' ? 'treasure_' + e.type : e.type === 'carcass' ? e.animal : e.kind === 'res' ? 'res_' + { tree: 'wood', gold: 'gold', stone: 'stone', iron: 'iron', berry: 'food', fish: 'food' }[e.type] : e.type === 'stone_wall' ? 'wall_post' : e.type === 'gate' ? 'gate_x' : e.kind === 'unit' ? this.spriteOf(e.owner, e.type) : e.type;
       el.innerHTML = `<div class="one"><div class="por" style="${this.iconStyle(icon)}">${this.icons.icons[icon] ? '' : UGLYPH[e.type] || ''}</div><div class="nm"><b>${name}</b>${owner ? `<small style="color:rgb(${PLAYER_RGB[owner.color]})">${owner.name}</small>` : e.kind === 'unit' ? '<small class="gaia">Alam liar</small>' : ''}</div>
         <div class="hp"><i></i><span></span></div><div class="stats"></div><div class="queue"></div></div>`;
       if (e.kind === 'building') el.querySelector('.queue').innerHTML = e.queue.map((q, i) => `<i data-i="${i}" style="${q.unit ? this.iconStyle(UNITS[q.unit].sprite, 42 / 64) : ''}">${q.tech ? (GLYPH[q.tech] || '📜') : ''}<b></b></i>`).join('');
       el.querySelectorAll('.queue i').forEach(i => i.onclick = () => G.cancel(e, +i.dataset.i));
     }
-    const hp = e.kind === 'res' || e.kind === 'treasure' || e.kind === 'monument' ? null : e;
+    const hp = e.kind === 'res' || e.kind === 'treasure' || e.kind === 'monument' || e.kind === 'post' || e.kind === 'camp' ? null : e;
     const hpEl = el.querySelector('.hp');
     if (hp) { hpEl.style.display = ''; hpEl.firstChild.style.width = (hp.hp / hp.maxHp * 100) + '%'; hpEl.lastChild.textContent = `${Math.ceil(hp.hp)}/${hp.maxHp}`; } else hpEl.style.display = 'none';
     let st = '';
@@ -323,6 +328,8 @@ export class HUD {
     if (e.kind === 'building' && BUILDINGS[e.type].relics && e.built) { let n = 0; for (const r of W.dyn.values()) if (r.kind === 'relic' && r.inBld === e.id) n++; st += ` · 📿 ${n} relik (+${Math.round(n * RELICS.gold * 60)} emas/menit)`; }
     if (e.kind === 'building' && e.type === 'town_center' && owner && owner.civ && CIVS[owner.civ]) st += ` · ${CIVS[owner.civ].glyph} ${CIVS[owner.civ].name}`;
     if (e.kind === 'res') st = `Sisa: <b>${Math.ceil(e.amount)}</b>` + (e.type === 'fish' ? (e.trap ? ' · perangkap ikan' : ' · dijala dari tepi atau Kapal Nelayan') : '');
+    if (e.kind === 'camp') { const F = MERCS[e.faction], U = UNITS[F.unit], why = G.watch ? '' : hireWhy(W, G.me, e);
+      st = `${F.glyph} <b>${F.skill}</b> — ${U.desc}<br>Rekrut ${F.n} ${U.name} (⚔ ${U.atk} · ❤ ${U.hp}${U.range ? ' · 🏹 ' + U.range : ''}) seharga ${Object.entries(F.cost).map(([r, n]) => `${n} ${RES_NAME[r].toLowerCase()}`).join(' + ')}` + (why ? ` · <b class="warn">${why}</b>` : G.watch ? '' : ' · <b style="color:#9fe07a">siap direkrut</b>'); }
     if (e.kind === 'post') { const o = W.players[e.owner]; st = (o ? `Dikuasai <b style="color:rgb(${PLAYER_RGB[o.color]})">${o.name}</b> · ` : 'Belum dikuasai · ') + `Benteng strategis: +${Math.round(POST.gold * 60)} emas/menit dan penglihatan luas bagi yang menguasainya. Rebut dengan prajurit tanpa musuh di dekatnya (${POST.hold} detik).`; }
     if (e.kind === 'monument') { const o = W.players[e.owner]; st = (o ? `Dikuasai <b style="color:rgb(${PLAYER_RGB[o.color]})">${o.name}</b> · ` : 'Belum dikuasai · ') + `Kuasai sendirian (tanpa musuh dalam 5 petak) selama ${KOTH_TIME / 60} menit untuk menang.`; }
     if (e.kind === 'building') {
@@ -371,6 +378,7 @@ export class HUD {
       if (e.owner !== G.me && !P.vis[k] && !G.seeAll) continue; const col = e.owner >= 0 ? PLAYER_RGB[W.players[e.owner].color] : UNITS[e.type].animal && !['wolf', 'bear'].includes(e.type) ? [235, 235, 220] : [150, 40, 30];
       for (const kk of [k, k + 1, k + S]) if (kk < S * S) { d[kk * 4] = col[0]; d[kk * 4 + 1] = col[1]; d[kk * 4 + 2] = col[2]; }
     }
+    for (const p of W.dyn.values()) if (p.kind === 'camp' && (G.seeAll || P.exp[idx(W, p.x + 1, p.y + 1)])) for (let dj = 0; dj <= 2; dj++) for (let di = 0; di <= 2; di++) { const k = idx(W, Math.min(W.size - 1, p.x + di), Math.min(W.size - 1, p.y + dj)); d[k * 4] = 220; d[k * 4 + 1] = 150; d[k * 4 + 2] = 255; }
     for (const p of W.dyn.values()) if (p.kind === 'post' && (G.seeAll || P.exp[idx(W, Math.floor(p.x), Math.floor(p.y))])) { const col = p.owner >= 0 ? PLAYER_RGB[W.players[p.owner].color] : [255, 255, 255]; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const k = idx(W, Math.floor(p.x) + di, Math.floor(p.y) + dj); d[k * 4] = col[0]; d[k * 4 + 1] = col[1]; d[k * 4 + 2] = col[2]; } }
     if (W.monument) { const m = W.monument, col = m.owner >= 0 ? PLAYER_RGB[W.players[m.owner].color] : [255, 255, 255]; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const k = idx(W, Math.floor(m.x) + di, Math.floor(m.y) + dj); d[k * 4] = col[0]; d[k * 4 + 1] = col[1]; d[k * 4 + 2] = col[2]; } }
     c.putImageData(img, 0, 0);

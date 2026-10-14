@@ -94,6 +94,12 @@ input[type=text], #nameIn { background: #1b140e; border: 1px solid var(--gold); 
 #cineTop, #cineBot { position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 8; pointer-events: none; transition: height 0.45s ease; }
 #cineTop { top: 36px; } #cineBot { bottom: 168px; }
 body.cine #cineTop, body.cine #cineBot { height: 7vh; }
+/* the helping hand: a mercenary band offers help to a kingdom far behind */
+#mercBox { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); z-index: 30; width: min(440px, 92vw); padding: 14px 16px 18px; background: linear-gradient(180deg, #3a2a1a, #22180f); border: 2px solid var(--gold2, #e8c860); border-radius: 6px; box-shadow: 0 10px 30px #000c, 0 0 24px #e8c86044; text-align: center; animation: mercIn 0.35s ease; }
+#mercBox.hidden { display: none; } @keyframes mercIn { from { transform: translate(-50%, -16px); opacity: 0; } }
+#mercBox .mt { font-family: Cinzel, serif; font-size: 18px; color: var(--gold2, #e8c860); margin-bottom: 6px; } #mercBox .md { font-size: 14.5px; line-height: 1.4; }
+#mercBox .mb { display: flex; gap: 10px; justify-content: center; margin-top: 12px; } #mercBox .mb .tb { width: auto; padding: 6px 18px; } #mercYes { box-shadow: inset 0 0 0 2px #7cff7c; }
+#mercBox .mbar { position: absolute; left: 10px; right: 10px; bottom: 6px; height: 3px; background: #0008; border-radius: 2px; overflow: hidden; } #mercBox .mbar i { display: block; height: 100%; background: var(--gold2, #e8c860); }
 /* live score (spectator) */
 #scoreBox { position: fixed; right: 8px; top: 44px; z-index: 9; min-width: 250px; background: #1a120bdd; border: 1px solid #6b5230; box-shadow: 0 4px 12px #000a, inset 0 0 0 1px #a8834c40; border-radius: 4px; padding: 6px 8px; font-size: 13px; }
 #scoreBox.hidden { display: none; }

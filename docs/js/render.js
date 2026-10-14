@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261014172537';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261014172537';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY, MERCS } from './data.js?v=20261014210523';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261014210523';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -481,6 +481,7 @@ export class View {
     if (e.kind === 'treasure') return [A.nature.get('treasure_' + e.type), false];
     if (e.kind === 'relic') return [A.nature.get('relic'), false];
     if (e.kind === 'monument') return [A.buildings.get('monument', col) || A.buildings.get('wonder', col), false];
+    if (e.kind === 'camp') return [A.buildings.get(MERCS[e.faction].camp, 'none') || A.buildings.get('house', 'none'), false];
     if (e.kind === 'post') return [A.buildings.get('watch_tower_keep', col) || A.buildings.get('watch_tower', col), false];
     if (e.kind === 'building') return [A.buildings.get(this.buildingKey(e), col), false];
     if (e.kind === 'res') {
@@ -503,6 +504,13 @@ export class View {
     this.moods = this.moods || {};
     if (!this.moods[k]) { const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.fillStyle = 'rgba(20,14,8,0.55)'; g.beginPath(); g.arc(16, 16, 14, 0, 6.283); g.fill(); g.font = '20px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText({ sick: '🤢', thirst: '💧', hunger: '🍞', tired: '💤', sad: '☁', rout: '🏳', general: '⭐' }[k], 16, 17); this.moods[k] = Texture.from(c); }
     return this.moods[k];
+  }
+  campBadge(f) {
+    this.cBadges = this.cBadges || {};
+    if (!this.cBadges[f]) { const c = document.createElement('canvas'); c.width = c.height = 48; const g = c.getContext('2d'), col = MERCS[f].tint;
+      g.fillStyle = 'rgba(20,14,8,0.8)'; g.beginPath(); g.arc(24, 24, 21, 0, 6.283); g.fill(); g.lineWidth = 3; g.strokeStyle = `rgb(${(col >> 16) & 255},${(col >> 8) & 255},${col & 255})`; g.stroke();
+      g.font = '24px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(MERCS[f].glyph, 24, 26); this.cBadges[f] = Texture.from(c); }
+    return this.cBadges[f];
   }
   dropView(id, v) { if (v.badge) v.badge.destroy(); v.spr.destroy(); if (v.extra) v.extra.destroy({ children: true }); if (v.sail) v.sail.destroy(); this.views.delete(id); }
 
@@ -544,7 +552,7 @@ export class View {
       if (e.kind === 'timer') continue;
       let x, y;
       if (e.kind === 'unit' || e.kind === 'proj') { x = e.px + (e.x - e.px) * alpha; y = e.py + (e.y - e.py) * alpha; if (e.kind === 'proj' && e.px === undefined) { x = e.x; y = e.y; } }
-      else if (e.kind === 'building' || e.kind === 'res' || e.kind === 'treasure') { x = e.x + e.w / 2; y = e.y + e.h / 2; }
+      else if (e.kind === 'building' || e.kind === 'res' || e.kind === 'treasure' || e.kind === 'camp') { x = e.x + e.w / 2; y = e.y + e.h / 2; }
       else if (e.kind === 'relic') {
         const m = e.carrier && W.ents.get(e.carrier);
         if (e.inBld || (e.carrier && !m)) { const v = this.views.get(e.id); if (v) v.spr.visible = false; seen.add(e.id); continue; }
@@ -592,7 +600,7 @@ export class View {
       }
       if (e.kind === 'relic' && e.carrier) { s.scale.set(0.45); s.y = sy - 46; }        // carried high by its monk
       s.zIndex = e.kind === 'building' ? sy - (e.w + e.h) * 6 : sy;
-      if (e.kind === 'building' && e.type !== 'farm' && BUILDINGS[e.type].n > 1) s.zIndex = iso(e.x + e.w * 0.75, e.y + e.h * 0.75)[1] - 2;
+      if ((e.kind === 'building' && e.type !== 'farm' && BUILDINGS[e.type].n > 1) || e.kind === 'camp') s.zIndex = iso(e.x + e.w * 0.75, e.y + e.h * 0.75)[1] - 2;
       if (e.kind === 'unit') {        // standing in a barn's yard: drawn over the barn sprite (its yard floor and fence), still sorted among themselves
         const fb = W.focc[k], bb = fb && W.ents.get(fb);
         if (bb && BUILDINGS[bb.type] && BUILDINGS[bb.type].pen) s.zIndex = iso(bb.x + bb.w * 0.75, bb.y + bb.h * 0.75)[1] - 1 + sy / 1e5;
@@ -602,6 +610,7 @@ export class View {
       let tint = visible || mineE ? (hover === e.id ? 0xfff2c0 : 0xffffff) : 0x9a9aa6;
       if (us && us.tint) tint = mulTint(tint, [((us.tint >> 16) & 255) / 255, ((us.tint >> 8) & 255) / 255, (us.tint & 255) / 255]);
       if (W.season && W.season.snow && e.kind === 'res' && e.type === 'tree') tint = mulTint(tint, [0.93, 0.97, 1.08]);
+      if (e.kind === 'camp') { const c = MERCS[e.faction].tint; tint = mulTint(tint, [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255]); }
       s.tint = lit(tint);
       // windmill sails turn while the mill is in use
       if (e.kind === 'building' && e.type === 'mill' && e.built && A.buildings.has('mill_sail_0')) {
@@ -633,6 +642,18 @@ export class View {
         if (!us.naval) this.glows.put(sx + 6, sy - 34, 0.7, 0xffb050, 0.32 * night * fl, sy + 2);
         this.light2(sx + 4, sy - 12, us.naval ? 150 : 125, 0xffc27a, 0.85 * fl);            // the torch lights the path around its bearer
       }
+      // a mercenary camp: its campfire (day and night) with a wisp of smoke; the poisoned breathe green
+      if (e.kind === 'camp') {           // the company's emblem floats over its camp (found from afar on the map)
+        if (!v.badge) { v.badge = new Sprite(this.campBadge(e.faction)); v.badge.anchor.set(0.5); this.sky.addChild(v.badge); }
+        v.badge.visible = true; v.badge.scale.set(0.75); v.badge.x = sx; v.badge.y = s.y - s.anchor.y * s.texture.height - 14 + Math.sin(this.t * 2 + e.id) * 3; v.badge.zIndex = sy + 999; v.badge.tint = lit(0xffffff);
+      }
+      if (e.kind === 'camp' && visible) {
+        const [fx, fy] = iso(e.x - 0.3, e.y + 1.2), fl = 0.85 + 0.15 * Math.sin(this.t * 11 + e.id);
+        if (Math.random() < dt * 9) this.flame.emit({ x: fx + (Math.random() - 0.5) * 6, y: fy - 2, vx: this.wind * 0.5, vy: -22, life: 0.45, size: 0.22, grow: 0.06, sy: 1.1, color: 0xffa020, c1: 0x9a1a04, alpha: 0.9, ay: 0.85, z: fy + 3 });
+        if (Math.random() < dt * 0.8) this.smoke.emit({ x: fx, y: fy - 14, vy: -26, ax: this.wind, drag: 0.25, life: 4, size: 0.15, grow: 0.9, color: mulTint(0x5a544c, L), c1: mulTint(0x9a948c, L), alpha: 0.35, rot: Math.random() * 6.28 });
+        this.glows.put(fx, fy - 6, 0.8, 0xff8a28, 0.25 + 0.3 * night, fy + 4); if (night > 0.15) this.light2(fx, fy - 4, 150, 0xff9a48, 0.9 * fl);
+      }
+      if (e.kind === 'unit' && e.poisonUntil > W.t && visible && Math.random() < dt * 5) this.parts.emit({ x: sx + (Math.random() - 0.5) * 10, y: sy - 26 - Math.random() * 10, vx: (Math.random() - 0.5) * 8, vy: -16, life: 0.7, size: 0.09, grow: 0.05, color: 0x8ce060, add: true, alpha: 0.9, z: sy + 5 });
       // fire on badly damaged (or burning) buildings; ruins smoulder
       if (e.kind === 'building' && e.built && visible && !BUILDINGS[e.type].wall && e.type !== 'farm' && (e.hp < e.maxHp * 0.5 || (e.burn && e.burn > W.t))) this.burnFx(e, s, sx, sy, dt, night);
       if (e.kind === 'rubble' && visible && e.t < 30 && e.n >= 2) this.rubbleFx(e, sx, sy, dt);

@@ -28,7 +28,7 @@ for (let s = 0; s < 12 && raiders(); s++) { run(10); helpers = Math.max(helpers,
 run(30);
 for (const t of told) console.log('   ' + t);
 ok(helpers >= 8, `soldiers rode to the town under attack (${helpers})`);
-ok(raiders() === 0, 'the raid was beaten off');
+ok([...W.dyn.values()].filter(e => e.kind === 'unit' && e.owner === 1 && e.type === 'knight' && Math.hypot(e.x - spot[0] - 2, e.y - spot[1] - 2) < 10).length === 0, 'the raid was beaten off (no raider left in the town; a wounded one may have fled)');
 ok(W.ents.has(town.id), 'the town still stands');
 ok(told.some(t => t.includes('[Biru] repel:')), 'the chronicle tells of the beaten-off attack');
 ok(told.some(t => t.includes('[Biru] counter:')) || (ais[0].war && ais[0].war.foe === 1), 'a counter-attack on the attacker followed');

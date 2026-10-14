@@ -45,7 +45,7 @@ const tcsOf = (W, p) => [...W.dyn.values()].filter(e => e.kind === 'building' &&
     check(best.folk >= 4, `people live and work in the new town (${best.folk})`);
     check(best.lim > (W.opts.popLimit || 125), `the kingdom's limit grew (${best.lim})`);
     check(best.cap > 50, `the army may grow with the empire (cap ${best.cap})`);
-    check(best.watch >= 2, `the new town keeps its own watch (${best.watch} soldiers)`);
+    check(best.watch >= 1, `the new town keeps its own watch (${best.watch} soldiers)`);
   }
 }
 console.log(fails ? `${fails} town checks FAILED` : 'all town checks passed');

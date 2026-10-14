@@ -1,6 +1,6 @@
 // War statistics: score, live kingdom snapshot, timeline history, first-contact log, and the "Statistik Perang" panel.
 // Playing: only your own kingdom in full, plus fog-limited intel on enemies. Watching bot vs bot: every kingdom side by side.
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, CARDS, TER } from './data.js?v=20261014172537';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, CARDS, TER } from './data.js?v=20261014210523';
 
 const $ = (id) => document.getElementById(id);
 const sum = (c) => RES.reduce((s, r) => s + ((c && c[r]) || 0), 0);
@@ -82,7 +82,7 @@ export class History {
 
 // ---------------------------------------------------------------- panel
 const TABS = [['sum', 'Ringkasan'], ['eco', 'Ekonomi'], ['mil', 'Militer'], ['war', 'Kronik Perang'], ['time', 'Linimasa']];
-const WAR_ICON = { declare: '📜', march: '🚩', siege: '🏹', fall: '🔥', next: '➡', hunt: '🔎', found: '👁', retreat: '↩', recall: '🛡', truce: '🕊', conquer: '👑', wonder: '🏛', hold: '🏛', defend: '🛡', alarm: '🔔', repel: '🛡', counter: '⚔', posture: '⚖', pact: '🤝', pactoffer: '✉', refuse: '✋', betray: '🗡', tribute: '💰', general: '⭐', generaldie: '⚰', totalwar: '🔥', post: '🏰' };
+const WAR_ICON = { declare: '📜', march: '🚩', siege: '🏹', fall: '🔥', next: '➡', hunt: '🔎', found: '👁', retreat: '↩', recall: '🛡', truce: '🕊', conquer: '👑', wonder: '🏛', hold: '🏛', defend: '🛡', alarm: '🔔', repel: '🛡', counter: '⚔', posture: '⚖', pact: '🤝', pactoffer: '✉', refuse: '✋', betray: '🗡', tribute: '💰', general: '⭐', generaldie: '⚰', totalwar: '🔥', post: '🏰', hire: '💰', mercoffer: '🤝', mercarrive: '🛡' };
 const METRICS = [['score', 'Skor'], ['pop', 'Populasi'], ['army', 'Tentara'], ['vil', 'Penduduk desa'], ['gathered', 'Sumber daya terkumpul']];
 const DASH = [[], [7, 4], [2, 3], [9, 3, 2, 3]];     // per seat: second cue besides colour
 
