@@ -1,9 +1,9 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261014113000';
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261014113000';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax } from './sim.js?v=20261014113000';
-import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261014113000';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js?v=20261014113611';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261014113611';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax } from './sim.js?v=20261014113611';
+import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261014113611';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -81,7 +81,7 @@ export class HUD {
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
   // k: scale of a 64 px icon (small boxes shrink the whole sheet, so the offsets must shrink too)
-  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014113000);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014113611);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
   // portrait of a unit as this kingdom fields it (upgraded lines have their own look)
   spriteOf(owner, type) { const d = UNITS[type]; if (!d) return type; const s = owner >= 0 && !d.animal ? stat(this.g.W, owner, type).sprite : null; return s && this.icons.icons[s] ? s : d.sprite; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
@@ -333,7 +333,7 @@ export class HUD {
       else if (d.pop) st = `Populasi +${d.pop}`;
       if (e.built && e.hp < e.maxHp && e.owner === G.me) st += ' · <b class="warn">Rusak</b> — klik kanan dengan penduduk desa untuk memperbaiki';
       if (e.burn && e.burn > W.t) st += ' · <b class="warn">🔥 terbakar!</b>';
-      if (e.owner === this.g.me && !d.tavern && !d.hospital) { const { soldiers, vils } = insideOf(W, e); if (vils) st += ` · 🌙 ${vils} penduduk di dalam`; if (soldiers) st += ` · ⛑ garnisun ${soldiers}/${garrisonCapOf(W, e)}`; }
+      if (e.owner === this.g.me && !d.tavern && !d.hospital && !d.shaft) { const { soldiers, vils } = insideOf(W, e); if (vils) st += ` · 🌙 ${vils} penduduk di dalam`; if (soldiers) st += ` · ⛑ garnisun ${soldiers}/${garrisonCapOf(W, e)}`; }
       if (d.gate && e.locked) st += ' · 🔒 terkunci';
       if (d.tavern || d.hospital) { let n = 0; for (const u of W.dyn.values()) if (u.inside === e.id) n++; st += d.tavern ? ` · 🍺 ${n} pengunjung (maks ${d.tavern})` : ` · ⚕ ${n} pasien`; }
       if (d.pen) st += ` · 🐑 ${e.herd || 0}/${d.penCap} ternak di padang — klik kanan domba/sapi ke sini`;

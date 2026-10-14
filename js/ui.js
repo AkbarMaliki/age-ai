@@ -333,7 +333,7 @@ export class HUD {
       else if (d.pop) st = `Populasi +${d.pop}`;
       if (e.built && e.hp < e.maxHp && e.owner === G.me) st += ' · <b class="warn">Rusak</b> — klik kanan dengan penduduk desa untuk memperbaiki';
       if (e.burn && e.burn > W.t) st += ' · <b class="warn">🔥 terbakar!</b>';
-      if (e.owner === this.g.me && !d.tavern && !d.hospital) { const { soldiers, vils } = insideOf(W, e); if (vils) st += ` · 🌙 ${vils} penduduk di dalam`; if (soldiers) st += ` · ⛑ garnisun ${soldiers}/${garrisonCapOf(W, e)}`; }
+      if (e.owner === this.g.me && !d.tavern && !d.hospital && !d.shaft) { const { soldiers, vils } = insideOf(W, e); if (vils) st += ` · 🌙 ${vils} penduduk di dalam`; if (soldiers) st += ` · ⛑ garnisun ${soldiers}/${garrisonCapOf(W, e)}`; }
       if (d.gate && e.locked) st += ' · 🔒 terkunci';
       if (d.tavern || d.hospital) { let n = 0; for (const u of W.dyn.values()) if (u.inside === e.id) n++; st += d.tavern ? ` · 🍺 ${n} pengunjung (maks ${d.tavern})` : ` · ⚕ ${n} pasien`; }
       if (d.pen) st += ` · 🐑 ${e.herd || 0}/${d.penCap} ternak di padang — klik kanan domba/sapi ke sini`;
