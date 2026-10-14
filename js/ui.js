@@ -2,8 +2,8 @@
 // day / season indicator and the advisor ("!") with counter-strategy advice.
 import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js';
 import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge } from './sim.js';
-import { NAMES, LIFE } from './data.js';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax } from './sim.js';
+import { NAMES, LIFE, TOWN_POP } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -116,6 +116,7 @@ export class HUD {
     const G = this.g, W = G.W, P = W.players[G.me];
     for (const r of RES) { const el = $('r_' + r); if (el) el.textContent = Math.floor(P.res[r]); }
     $('r_pop').textContent = `${P.pop}/${P.popCap}`; $('r_pop').parentElement.classList.toggle('warn', P.pop >= P.popCap);
+    if (this.popT !== P.popLim) { this.popT = P.popLim; $('r_pop').parentElement.title = `Populasi / kapasitas rumah. Batas kerajaan: ${P.popLim} (+${TOWN_POP} untuk tiap Pusat Kota baru)`; }
     $('ageName').textContent = AGES[P.age];
     const tt = Math.floor(W.t); $('clock').textContent = `${String(Math.floor(tt / 3600)).padStart(2, '0')}:${String(Math.floor(tt / 60) % 60).padStart(2, '0')}:${String(tt % 60).padStart(2, '0')}`;
     // day / night, season, weather, hunger
@@ -174,7 +175,7 @@ export class HUD {
           const d = BUILDINGS[type]; const ok = canBuild(W, G.me, type), cost = costOf(P, type);
           let why = P.age < d.age ? `Butuh ${AGES[d.age]}` : (d.needs || []).filter(n => !G.hasBuilt(n)).map(n => 'Butuh ' + BUILDINGS[n].name).join(', ');
           if (ok && !canAfford(P, cost)) why = 'Sumber daya kurang';
-          if (type === 'town_center' && !ok && P.age >= d.age) why = `Batas Pusat Kota tercapai (maks ${Math.max(1, P.age)} di zaman ini)`;
+          if (type === 'town_center' && !ok && P.age >= d.age) why = `Batas Pusat Kota tercapai (maks ${townsMax(P)} di zaman ini)`;
           this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵', well: '🪣', tavern: '🍺', hospital: '⚕', barn: '🐄', outpost: '🚩', town_center: '🏰' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
         }
         const nx = (this.page + 1) % VIL_PAGES.length;

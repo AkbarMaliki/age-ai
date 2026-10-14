@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS } from './data.js';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX } from './data.js';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -16,7 +16,7 @@ export function createWorld({ size, terrain, players, seed = 1, opts = {} }) {
   const W = {
     t: 0, tick: 0, size, terrain, occ: new Int32Array(size * size), focc: new Int32Array(size * size), road: new Uint8Array(size * size), roadVer: 0,
     ents: new Map(), dyn: new Map(), ugrid: new Map(), nextId: 1,
-    players: players.map((p, i) => ({ id: i, name: p.name, color: p.color, ai: !!p.ai, team: p.team ?? i, res: { ...((START_PRESETS[opts.startRes] || {}).res || START_RES) }, age: 1, pop: 0, popCap: 0, techs: new Set(), alive: true,
+    players: players.map((p, i) => ({ id: i, name: p.name, color: p.color, ai: !!p.ai, team: p.team ?? i, res: { ...((START_PRESETS[opts.startRes] || {}).res || START_RES) }, age: 1, pop: 0, popCap: 0, popRaw: 0, towns: 0, popLim: 0, techs: new Set(), alive: true,
       vis: new Uint8Array(size * size), exp: new Uint8Array(size * size), stats: newStats(), housed: false, deck: p.deck || null, style: p.style || null,
       xp: 0, nextXp: XP.first, ships: 0, shipsEarned: 0, cards: [], shipment: null, mods: newMods(), sv: 0, spec: {}, hungry: false, spyUntil: 0, spyCd: 0, civ: CIVS[p.civ] ? p.civ : null })),
     cmds: [], ev: [], rnd: rng(seed), seed, paths: 0, nodes: 0, winner: -1, unreach: new Map(),
@@ -31,7 +31,7 @@ export function createWorld({ size, terrain, players, seed = 1, opts = {} }) {
     for (const r of RES) if (cv.start && cv.start[r]) P.res[r] += cv.start[r];
     P.spec.unique = cv.unique;
   }
-  W.gaia = { id: GAIA, name: 'Alam', color: 'none', gaia: true, team: -1, res: { ...START_RES }, age: 1, pop: 0, popCap: 0, techs: new Set(), alive: true, stats: newStats(), mods: newMods(), sv: 0, spec: {} };
+  W.gaia = { id: GAIA, name: 'Alam', color: 'none', gaia: true, team: -1, res: { ...START_RES }, age: 1, pop: 0, popCap: 0, popRaw: 0, towns: 0, popLim: 0, techs: new Set(), alive: true, stats: newStats(), mods: newMods(), sv: 0, spec: {} };
   return W;
 }
 // per-player war statistics (stats panel + end screen). killed / lost = units, razed / bldLost = buildings,
@@ -224,10 +224,18 @@ export function addRelic(W, i, j) { return add(W, { kind: 'relic', type: 'relic'
 export function addTreasure(W, type, i, j, amount) {
   return add(W, { kind: 'treasure', type, x: i, y: j, w: 1, h: 1, amount, guards: [] });
 }
+// Population: popRaw = room in all the houses and town centres; the cap is that, up to the kingdom's limit, which
+// grows by TOWN_POP for every Town Center after the first (expansion lets an empire grow past the lobby's limit).
+export function popLimit(W, P) { return (W.opts.popLimit || POP_LIMIT) + Math.max(0, (P.towns || 1) - 1) * TOWN_POP; }
+function popRefresh(W, P, gone = null) {
+  let n = 0; for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === P.id && e.type === 'town_center' && e.built && e !== gone) n++;
+  P.towns = n; P.popLim = popLimit(W, P); P.popCap = Math.max(0, Math.min(P.popLim, P.popRaw || 0));
+}
+export function townsMax(P) { return TOWNS_MAX[Math.min(TOWNS_MAX.length - 1, P.age)] || 1; }
 function onBuilt(W, b, silent) {
   const d = BUILDINGS[b.type], P = W.players[b.owner];
   b.built = true; b.progress = 1; b.hp = Math.max(b.hp, 1); if (silent) b.hp = b.maxHp;
-  if (d.pop) P.popCap = Math.min(W.opts.popLimit || POP_LIMIT, P.popCap + d.pop);
+  if (d.pop) { P.popRaw = (P.popRaw || 0) + d.pop; popRefresh(W, P); }
   if (d.wonder && !silent) { W.wonders.set(b.id, W.t); W.ev.push({ k: 'wonderbuilt', owner: b.owner, secs: WONDER_TIME }); }
   if (!silent) { P.stats.built++; addXp(W, P, costVal(d.cost) * XP.build); W.ev.push({ k: 'built', x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }
   if (!silent || b.type !== 'town_center') buildRoad(W, b);
@@ -416,7 +424,7 @@ export function hasBuilt(W, pid, type) { for (const e of W.dyn.values()) if (e.k
 export function canBuild(W, pid, type) {
   const d = BUILDINGS[type], P = W.players[pid];
   if (P.age < d.age) return false;
-  if (type === 'town_center') { let n = 0; for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === pid && e.type === 'town_center') n++; if (n >= Math.max(1, P.age)) return false; }   // a new town per age
+  if (type === 'town_center') { let n = 0; for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === pid && e.type === 'town_center') n++; if (n >= townsMax(P)) return false; }   // new towns as the ages pass
   return !(d.needs || []).some(t => !hasBuilt(W, pid, t));
 }
 export function canTrain(W, pid, type) {
@@ -1343,7 +1351,7 @@ export function damage(W, t, dmg, src) {
     const d = BUILDINGS[t.type];
     for (let a = 0; a < t.w; a++) for (let c = 0; c < t.h; c++) { const k = idx(W, t.x + a, t.y + c); if (W.occ[k] === t.id) W.occ[k] = 0; if (W.focc[k] === t.id) W.focc[k] = 0; }
     W.regionDirty = true; W.regionDirtyW = true;
-    if (t.built && d.pop) P.popCap = Math.max(0, P.popCap - d.pop);
+    if (t.built && d.pop) { P.popRaw = Math.max(0, (P.popRaw || 0) - d.pop); popRefresh(W, P, t); }
     if (d.terr) W.terrDirty = true;
     if (t.type !== 'farm') add(W, { kind: 'rubble', n: Math.min(4, Math.max(t.w, t.h)), x: t.x + t.w / 2, y: t.y + t.h / 2, t: 0 });
     W.ev.push({ k: 'collapse', x: t.x + t.w / 2, y: t.y + t.h / 2, owner: t.owner, type: t.type, n: t.w, hit: !!src });
@@ -1888,7 +1896,7 @@ function lifeTick(W) {
     // the state of the kingdom
     const amen = Math.min(1, (houses.length ? houses.filter(h => near(wells, h, BUILDINGS.well.well + 1) || wg[idx(W, h.x, h.y)]).length / houses.length : 0.5) * 0.4 + (taverns.length ? 0.2 : 0) + (hospitals.length ? 0.15 : 0) + (barns.length ? 0.1 : 0) + (markets.length ? 0.1 : 0) + (monas.length ? 0.05 : 0));
     const L = P.life = { n, fun: n ? sumFu / n : 0, health: n ? sumHe / n : 0, need: n ? sumNeed / n : 0, sick, homeless, amen, births: P.stats.births || 0 };
-    P.prosper = Math.round(L.fun * 0.22 + L.health * 0.22 + L.need * 0.16 + amen * 100 * 0.2 + Math.min(1, P.pop / (0.6 * (W.opts.popLimit || POP_LIMIT))) * 100 * 0.1 + (P.age - 1) / 3 * 100 * 0.1);
+    P.prosper = Math.round(L.fun * 0.22 + L.health * 0.22 + L.need * 0.16 + amen * 100 * 0.2 + Math.min(1, P.pop / (0.6 * (P.popLim || W.opts.popLimit || POP_LIMIT))) * 100 * 0.1 + (P.age - 1) / 3 * 100 * 0.1);
   }
 }
 

@@ -7,7 +7,7 @@ import { TECHS, UNITS } from '../js/data.js';
 let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) fail++; };
 const world = () => {
   const W = generate({ size: 112, seed: 9, type: 'padang', opts: { season: 'semi', night: 'off' }, players: [{ name: 'A', color: 'blue' }, { name: 'B', color: 'red' }] });
-  for (const P of W.players) { for (const r in P.res) P.res[r] = 9000; P.exp.fill(1); P.popCap = 200; }
+  for (const P of W.players) { for (const r in P.res) P.res[r] = 9000; P.exp.fill(1); P.popCap = P.popRaw = P.popLim = 200; }
   return W;
 };
 const run = (W, sec) => { for (let i = 0; i < sec * 10; i++) { step(W); W.ev.length = 0; } };
@@ -121,7 +121,7 @@ const finish = (W, pid, tech) => { const tc = tcOf(W, pid); command(W, { t: 'res
 // ---- 10. civilization: unique unit at the castle, price discount
 {
   const W = generate({ size: 112, seed: 9, type: 'padang', opts: { season: 'semi', night: 'off' }, players: [{ name: 'A', color: 'blue', civ: 'jepang' }, { name: 'B', color: 'red', civ: 'bizantium' }] });
-  for (const P of W.players) { for (const r in P.res) P.res[r] = 9000; P.exp.fill(1); P.popCap = 200; P.age = 3; }
+  for (const P of W.players) { for (const r in P.res) P.res[r] = 9000; P.exp.fill(1); P.popCap = P.popRaw = P.popLim = 200; P.age = 3; }
   const c = put(W, 0, 'castle'); command(W, { t: 'train', pid: 0, bid: c.id, type: 'unique' }); run(W, 30);
   check([...W.dyn.values()].some(e => e.owner === 0 && e.type === 'samurai'), 'Jepang trains Samurai at the Castle');
   check(unitCost(W.players[1], 'spearman').food < UNITS.spearman.cost.food, 'Bizantium spearmen are cheaper');

@@ -8,7 +8,7 @@ import { TECHS, WONDER_TIME, KOTH_TIME } from '../js/data.js';
 let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) fail++; };
 const world = (o = {}) => {
   const W = generate({ size: 112, seed: 9, type: 'padang', opts: { season: 'semi', night: 'off', ...o }, players: [{ name: 'A', color: 'blue' }, { name: 'B', color: 'red' }, ...(o.three ? [{ name: 'C', color: 'green', team: o.three }] : [])] });
-  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = 200; P.age = 4; }
+  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = P.popRaw = P.popLim = 200; P.age = 4; }
   return W;
 };
 const run = (W, sec) => { for (let i = 0; i < sec * 10; i++) { step(W); W.ev.length = 0; } };

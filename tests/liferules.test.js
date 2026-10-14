@@ -7,7 +7,7 @@ import { LIFE, UNITS } from '../js/data.js';
 let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) fail++; };
 const world = (o = {}) => {
   const W = generate({ size: 112, seed: 4, type: 'padang', opts: { season: 'semi', night: 'off', ...o }, players: [{ name: 'A', color: 'blue' }, { name: 'B', color: 'red' }] });
-  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = 200; }
+  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = P.popRaw = P.popLim = 200; }
   return W;
 };
 const run = (W, sec) => { const ev = []; for (let i = 0; i < sec * 10; i++) { step(W); ev.push(...W.ev); W.ev.length = 0; } return ev; };

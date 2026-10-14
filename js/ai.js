@@ -3,7 +3,7 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, POP_LIMIT, DECKS } from './data.js';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js';
 import { DAY, RELICS } from './data.js';
 import { timeOfDay, unreachable, restNow } from './sim.js';
 import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js';
@@ -66,14 +66,18 @@ export class AI {
 
     // ---- villagers
     const tcs = mine.bld.filter(b => b.type === 'town_center' && b.built);
-    const target = Math.max(12, this.D.vil[P.age - 1] + S.vil) + Math.max(0, tcs.length - 1) * 8;      // every new town adds villagers
+    const target = Math.max(12, this.D.vil[P.age - 1] + S.vil) + Math.max(0, tcs.length - 1) * 12;      // every new town adds villagers
+    this.tcs = tcs;
     const ageing = tc && tc.queue.some(q => q.tech && TECHS[q.tech].toAge);
     // dawn brings the food upkeep: keep enough in the granary as night approaches
     this.foodKeep = W.opts.night !== 'off' && (timeOfDay(W) > 0.4 || timeOfDay(W) < 0.03) ? Math.ceil(P.pop * DAY.upkeep * (P.techs.has('granary') ? 0.6 : 1) * Math.max(0, 1 + P.mods.upkeep) * 1.15) + 30 : 0;     // tomorrow's bread is not spent
     if (tc && tc.built && !ageing && vils.length < target && tc.queue.length < 2 && canAfford(P, UNITS.villager.cost) && P.res.food - 50 >= this.foodKeep) command(W, { t: 'train', pid: this.pid, bid: tc.id, type: 'villager' });
     // ---- houses
     const pendingPop = mine.bld.filter(b => !b.built && BUILDINGS[b.type].pop).length * 5;
-    if (P.popCap + pendingPop < POP_LIMIT && P.pop + 4 > P.popCap + pendingPop && P.res.wood >= 25 && vils.length) this.build('house', this.base, 4, 10);
+    if (P.popCap + pendingPop < P.popLim && P.pop + 4 > P.popCap + pendingPop && P.res.wood >= 25 && vils.length) {
+      const ht = this.houseTown(tcs, mine);            // the town with the fewest houses gets the next one
+      if (ht && ht !== tc) this.withTown(ht, () => this.build('house', this.base, 4, 10)); else this.build('house', this.base, 4, 10);
+    }
     // ---- drop sites and economy buildings
     const vilsOn = (k) => vils.filter(v => v.order && ((v.order.t === 'gather' && v.order.kind === k) || (v.order.t === 'drop' && v.order.then && v.order.then.kind === k) || (k === 'carcass' && v.order.t === 'attack' && v.order.hunt))).length;
     this.vilsOn = vilsOn;
@@ -108,6 +112,7 @@ export class AI {
     this.economy2(P, mine);
     this.lifeCare(P, mine, vils);
     this.expand(P, mine, vils, tcs, ageing, target);
+    this.towns(P, mine, vils, tcs);
     this.diplomacy(P);
     if (!tc && vils.length && canAfford(P, BUILDINGS.town_center.cost)) this.build('town_center', this.base, 0, 10);     // rebuild a lost Town Center
     if (P.age >= 2 && !count('market') && vils.length >= 24 && P.res.wood >= 260) this.build('market', this.base, 8, 15);
@@ -165,7 +170,7 @@ export class AI {
       if (unfinished.length) { const b = unfinished.shift(); command(W, { t: 'smart', pid: this.pid, ids: [v.id], target: b.id, x: b.x, y: b.y }); continue; }
       const res = Object.keys(want).filter(k => want[k] > 0).sort((a, b) => (now[a] - vils.length * want[a]) - (now[b] - vils.length * want[b]))[0];
       let tgt = null;
-      if (res === 'food') { tgt = this.meat(vilsOn('carcass')) || this.res('berry', this.base[0], this.base[1], 16) || (vilsOn('fish') < 8 && this.shoreFish(v)) || this.freeFarm() || this.shoreFish(v); }
+      if (res === 'food') { const [hx, hy] = this.homeOf(v); tgt = this.meat(vilsOn('carcass')) || this.res('berry', hx, hy, 16) || (vilsOn('fish') < 8 && this.shoreFish(v)) || this.freeFarm(v) || this.shoreFish(v); }
       else if (res === 'wood') tgt = this.nearDropRes('tree', 'wood', v);
       else tgt = this.nearDropRes(res, res, v);
       if (!tgt) tgt = this.nearDropRes('tree', 'wood', v);
@@ -780,6 +785,55 @@ export class AI {
       else if (W.map && W.map.water === 'islands') { const s2 = this.expansionSite(true); if (s2) this.startColony(s2, vils); }
     }
   }
+  // ---------------------------------------------------------------- the other towns
+  // Every Town Center after the first grows into a town of its own: houses round its plaza, camps by the nearby wood
+  // and ore, its own field district and mill, a well and a tavern, then a market, a barracks and a tower to hold it.
+  // The planner is pointed at that town for the call (base / tc / town), so its quarters are laid out like the capital's.
+  withTown(t, fn) {
+    const keep = [this.base, this.tc, this.town];
+    this.base = [t.x + 2, t.y + 2]; this.tc = t; this.town = t;
+    try { return fn(); } finally { [this.base, this.tc, this.town] = keep; }
+  }
+  houseTown(tcs, mine) {
+    let best = null, bn = 1e9;
+    for (const t of tcs) { const n = mine.bld.filter(b => b.type === 'house' && b.x !== undefined && Math.hypot(b.x - t.x - 2, b.y - t.y - 2) < 16).length; if (t !== this.tc && n >= 10) continue; if (n < bn) { bn = n; best = t; } }
+    return best;
+  }
+  towns(P, mine, vils, tcs) {
+    const W = this.W, others = tcs.filter(t => t !== this.tc);
+    if (!others.length || W.t < (this.townT || 0)) return; this.townT = W.t + 4;
+    const t = others[this.townI = ((this.townI || 0) + 1) % others.length];
+    const cx = t.x + 2, cy = t.y + 2, inTown = (e, r) => Math.hypot(e.x - cx, e.y - cy) < r;
+    const here = (type, r = 18) => mine.bld.filter(b => b.type === type && b.x !== undefined && inTown(b, r)).length;
+    const folk = vils.filter(v => inTown(v, 22));
+    // settlers: a few villagers walk over from the capital until the new town has hands of its own
+    if (folk.length < 8 && vils.length >= 18 && !restNow(W, P)) {
+      const r = this.res('tree', cx, cy, 14) || this.res('berry', cx, cy, 14) || this.res('gold', cx, cy, 16);
+      const go = vils.filter(v => !inTown(v, 30) && v.order && v.order.t === 'gather' && ['tree', 'gold', 'stone', 'berry'].includes(v.order.kind)).slice(0, 2);
+      if (r && go.length) command(W, { t: 'smart', pid: this.pid, ids: go.map(v => v.id), target: r.id, x: r.x, y: r.y });
+    }
+    if (!folk.length) return;
+    this.withTown(t, () => {
+      // drop sites by the wood and ore round the town (the Town Center itself takes what lies next to it)
+      if (!here('lumber_camp', 16) && P.res.wood >= 100) { const r = this.res('tree', cx, cy, 14); if (r && distTo(t, r.x, r.y) > 5) this.build('lumber_camp', [r.x, r.y], 2, 5); }
+      for (const k of ['gold', 'stone', 'iron']) {
+        const r = this.res(k, cx, cy, 16); if (!r || distTo(t, r.x, r.y) <= 5 || P.res.wood < 100) continue;
+        if (!mine.bld.some(b => b.type === 'mining_camp' && b.x !== undefined && Math.hypot(b.x - r.x, b.y - r.y) < 6)) { this.build('mining_camp', [r.x, r.y], 2, 5); break; }
+      }
+      // homes: a town looks lived in (and every house is room for more people)
+      if (here('house', 16) < Math.min(10, 2 + Math.floor(folk.length / 2)) && P.res.wood >= 80) this.build('house', this.base, 4, 10);
+      // its own fields and mill, outside the houses
+      const fields = here('farm', 24);
+      if (folk.length >= 5 && fields < Math.min(12, Math.ceil(folk.length * 0.45)) && P.res.wood >= 60 + (here('mill', 24) ? 0 : 100)) this.build('farm', this.base, 4, 10);
+      // life: water, a tavern; then the town grows a market, a barracks and a watch tower
+      if (W.opts.life && !here('well', 12) && P.res.wood >= 60 && P.res.stone >= 15) this.build('well', this.base, 3, 8);
+      if (W.opts.life && folk.length >= 8 && !here('tavern', 18) && P.res.wood >= 250) this.build('tavern', this.base, 3, 12);
+      if (P.age >= 2 && folk.length >= 10 && !here('market', 20) && P.res.wood >= 450) this.build('market', this.base, 8, 15);
+      if (P.age >= 2 && folk.length >= 8 && !here('barracks', 20) && P.res.wood >= 400) this.build('barracks', this.base, 6, 13);
+      if (P.age >= 2 && !here('watch_tower', 12) && P.res.stone >= 250 && P.res.wood >= 100) this.build('watch_tower', this.base, 4, 8);
+      if (P.age >= 3 && folk.length >= 14 && !here('blacksmith', 20) && P.res.wood >= 500) this.build('blacksmith', this.base, 6, 13);
+    });
+  }
   // the best spot for a new town: free land 24-50 tiles out, nobody's territory, away from known enemies, rich around
   expansionSite(otherIsland) {
     const W = this.W, S = W.size, [bx, by] = this.base, home = regionAt(W, bx, by + 3), T = W.terr;
@@ -789,7 +843,8 @@ export class AI {
     for (const e of W.ents.values()) if (e.kind === 'res' && VAL[e.type] && this.P.exp[idx(W, Math.floor(e.x), Math.floor(e.y))]) cellV[Math.floor(e.y / G) * gn + Math.floor(e.x / G)] += VAL[e.type];
     let best = null, bs = -1e9;
     for (let j = 4; j < S - 8; j += 4) for (let i = 4; i < S - 8; i += 4) {
-      const dd = Math.hypot(i - bx, j - by); if (otherIsland ? dd > 90 : (dd < 24 || dd > 50)) continue;
+      const dd = Math.hypot(i - bx, j - by); if (otherIsland ? dd > 90 : (dd < 24 || dd > 50 + 16 * Math.max(0, (this.tcs || []).length - 1))) continue;
+      if ((this.tcs || []).some(t => Math.hypot(t.x + 2 - i, t.y + 2 - j) < 22)) continue;
       const k = idx(W, i, j); if (!this.P.exp[k] || (T && T[k])) continue;
       const rg = regionAt(W, i + 2, j + 5); if (otherIsland ? (rg === home || !rg) : rg !== home) continue;
       if (foes.some(f => Math.hypot(f.x - i, f.y - j) < 30)) continue;
@@ -1056,9 +1111,15 @@ export class AI {
     }
     return best;
   }
-  freeFarm() {
-    for (const b of this.m.bld) if (b.type === 'farm' && b.built) { const f = b.farmer && alive(this.W, b.farmer); if (!f || !f.order || f.order.id !== b.id) return b; }
-    return null;
+  freeFarm(v = null) {          // with a villager: the nearest free field
+    let best = null, bd = 1e9;
+    for (const b of this.m.bld) if (b.type === 'farm' && b.built) { const f = b.farmer && alive(this.W, b.farmer); if (!f || !f.order || f.order.id !== b.id) { if (!v) return b; const d = Math.hypot(b.x - v.x, b.y - v.y); if (d < bd) { bd = d; best = b; } } }
+    return best;
+  }
+  homeOf(v) {                    // the centre of the villager's nearest town
+    let best = this.base, bd = 1e9;
+    for (const t of this.tcs || []) { const d = Math.hypot(t.x + 2 - v.x, t.y + 2 - v.y); if (d < bd) { bd = d; best = [t.x + 2, t.y + 2]; } }
+    return best;
   }
   // ---------------------------------------------------------------- town plan: districts
   // The town grows in quarters around the Town Center (d = Chebyshev distance from its footprint):
@@ -1066,10 +1127,10 @@ export class AI {
   //   residential tidy blocks of houses on a 3-tile lattice with lanes between them (d 2-13, not on the front)
   //   military    barracks, ranges, stables, workshop and castle on the side that faces the enemy (d 6-20)
   //   fields      outside the town (d >= 12) on the sheltered side: a grid of 3x3 fields round their own mill
-  tcRect() { const W = this.W, tc = W.ents.get(W.players[this.pid].tc); return tc && tc.kind === 'building' && tc.type === 'town_center' ? tc : this.m.bld.find(b => b.type === 'town_center' && b.built && b.id); }
+  tcRect() { if (this.town) return this.town; const W = this.W, tc = W.ents.get(W.players[this.pid].tc); return tc && tc.kind === 'building' && tc.type === 'town_center' ? tc : this.m.bld.find(b => b.type === 'town_center' && b.built && b.id); }
   ringD(T, i, j, n) { const dx = Math.max(T.x - (i + n - 1), i - (T.x + T.w - 1), 0), dy = Math.max(T.y - (j + n - 1), j - (T.y + T.h - 1), 0); return Math.max(dx, dy); }
   frontOff(T, x, y) {            // 0 = straight towards the enemy, PI = straight away from it
-    if (!this.toE || this.toE.t < this.W.t - 30) { const [ex, ey] = this.towardEnemy(30); this.toE = { a: Math.atan2(ey - (T.y + T.h / 2), ex - (T.x + T.w / 2)), t: this.W.t }; }
+    if (!this.toE || this.toE.id !== T.id || this.toE.t < this.W.t - 30) { const [ex, ey] = this.towardEnemy(30); this.toE = { a: Math.atan2(ey - (T.y + T.h / 2), ex - (T.x + T.w / 2)), t: this.W.t, id: T.id }; }
     const a = Math.atan2(y - (T.y + T.h / 2), x - (T.x + T.w / 2)); return Math.abs(Math.atan2(Math.sin(a - this.toE.a), Math.cos(a - this.toE.a)));
   }
   // field districts: blocks of 3x3 fields round their own mill, outside the town on the sheltered side. A new block is
@@ -1096,7 +1157,10 @@ export class AI {
     (this.fds = this.fds || []).push(best); return best;
   }
   fieldDistrict(T) {
-    if (this.fdTc !== T.id) { this.fdTc = T.id; this.fds = []; }
+    if (this.fdTc !== T.id) {          // every town keeps its own field districts
+      const by = this.fdBy || (this.fdBy = new Map()); if (this.fdTc !== undefined) by.set(this.fdTc, { fds: this.fds, retry: this.fdRetry });
+      const st = by.get(T.id); this.fdTc = T.id; this.fds = st ? st.fds : []; this.fdRetry = st ? st.retry : 0;
+    }
     if (!this.fds.length && this.W.t >= (this.fdRetry || 0)) { if (!this.newFieldDistrict(T)) this.fdRetry = this.W.t + 45; }
     return this.fds;
   }

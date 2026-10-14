@@ -4,7 +4,7 @@ import { generate } from '../js/map.js';
 import { step, command, placementOk, addBuilding, addUnit, regionAt, nearestFree, alive } from '../js/sim.js';
 const W = generate({ size: 144, seed: 21, type: 'kepulauan', opts: { season: 'semi', night: 'off' }, players: [{ name: 'A', color: 'blue' }, { name: 'B', color: 'red' }] });
 const P = W.players[0], [sx, sy] = P.start, run = (sec) => { for (let i = 0; i < sec * 10; i++) { step(W); W.ev.length = 0; } };
-P.exp.fill(1); for (const r in P.res) P.res[r] = 5000; P.age = 2; P.popCap = 100;
+P.exp.fill(1); for (const r in P.res) P.res[r] = 5000; P.age = 2; P.popCap = P.popRaw = P.popLim = 100;
 let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) fail++; };
 // 1. dock on the nearest shore
 let dock = null;

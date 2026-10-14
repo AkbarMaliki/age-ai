@@ -8,7 +8,7 @@ import { AI } from '../js/ai.js';
 let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) fail++; };
 const world = (type = 'padang', seed = 4, size = 144) => {
   const W = generate({ size, seed, type, opts: { season: 'semi', night: 'off', life: false }, players: [{ name: 'A', color: 'blue', ai: true }, { name: 'B', color: 'red', ai: true }] });
-  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = 200; }
+  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = P.popRaw = P.popLim = 200; }
   return W;
 };
 const run = (W, sec, ais = []) => { for (let i = 0; i < sec * 10; i++) { for (const a of ais) a.tick(); step(W); W.ev.length = 0; } };

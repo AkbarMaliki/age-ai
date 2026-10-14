@@ -7,7 +7,7 @@ import { AI } from '../js/ai.js';
 let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) fail++; };
 const world = () => {
   const W = generate({ size: 144, seed: 6, type: 'padang', opts: { season: 'semi', night: 'off', life: false }, players: [{ name: 'A', color: 'blue', ai: true }, { name: 'B', color: 'red' }] });
-  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = 200; P.age = 2; }
+  for (const P of W.players) { for (const r in P.res) P.res[r] = 20000; P.exp.fill(1); P.popCap = P.popRaw = P.popLim = 200; P.age = 2; }
   for (const e of [...W.dyn.values()]) if (e.kind === 'unit' && e.owner === -1) { W.ents.delete(e.id); W.dyn.delete(e.id); }     // no wolves to distract the watch
   return W;
 };
