@@ -898,6 +898,7 @@ export class View {
       case 'board': case 'unload': for (let i = 0; i < 8; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy, vx: (Math.random() - 0.5) * 30, vy: -20, g: 80, life: 0.6, size: 0.1, grow: 0.05, color: 0xe0f0ff, alpha: 0.8, z: sy + 2 }); break;
       case 'pack': for (let i = 0; i < 8; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy - 6, vx: (Math.random() - 0.5) * 30, vy: -12, life: 1.0, size: 0.4, grow: 1.0, color: 0xb8a888, alpha: 0.5, z: sy + 3 }); break;
       case 'tradegold': this.floatText(e.x, e.y, `+${e.n} emas`); break;
+      case 'levy': case 'unlevy': for (let i = 0; i < 6 + Math.min(14, e.n); i++) P.emit({ x: sx + (Math.random() - 0.5) * 60, y: sy - 10 - Math.random() * 20, vx: (Math.random() - 0.5) * 20, vy: -18, life: 0.9, size: 0.18, grow: 0.06, color: e.k === 'levy' ? 0xd8dce0 : 0xb8d878, add: true, alpha: 0.9, z: sy + 60 }); break;
       case 'reseed': for (let i = 0; i < 10; i++) P.emit({ x: sx + (Math.random() - 0.5) * 60, y: sy + (Math.random() - 0.5) * 30, vy: -14, life: 0.9, size: 0.12, grow: 0.05, color: 0x9ad04a, alpha: 0.9, z: sy + 2 }); break;
       case 'fishtrap': this.fx({ k: 'fish', x: e.x, y: e.y }); break;
       case 'age': for (let i = 0; i < 30; i++) P.emit({ x: sx + (Math.random() - 0.5) * 160, y: sy - Math.random() * 120, vy: -40, life: 1.5, size: 0.25, grow: 0.05, color: 0xffd860, add: true, alpha: 0.9, z: sy + 200 }); break;

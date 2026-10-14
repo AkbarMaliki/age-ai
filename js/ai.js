@@ -311,6 +311,7 @@ export class AI {
       const c = techCost(P, tech); if (!this.afford(c) || P.res.food < (c.food || 0) + Math.max(spare, this.foodKeep)) return false;
       command(W, { t: 'research', pid: this.pid, bid: b.id, tech }); return true;
     };
+    if (P.age >= 4 && this.m.units.filter(u => u.type === 'villager').length >= 40 && (this.attacked >= 1 || W.totalWar || this.war)) go('levy', 'town_center', 300);
     if (P.age >= 2) {
       for (const [tech, at] of [['double_bit_axe', 'lumber_camp'], ['horse_collar', 'mill'], ['gold_mining', 'mining_camp'], ['wheelbarrow', 'town_center'], ['iron_smelting', 'mining_camp'], ['granary', 'mill'], ['torches', 'town_center'], ['gillnets', 'dock'], ['guilds', 'market'], ['trade_route', 'market']]) go(tech, at, 150);
       // first doctrine: counter the enemy's main arm if we know it, otherwise our personality
@@ -1231,7 +1232,7 @@ export class AI {
         this.endWar(); return false;
       }
     }
-    this.guardTowns(field); this.posture(); this.generalTick(war); this.holdPosts(field); this.mercs(field, war);
+    this.guardTowns(field); this.posture(); this.generalTick(war); this.holdPosts(field); this.mercs(field, war); this.levyTick(threat);
     if (this.wonders(field, war)) return true;
     this.counterTick(field);
     war = this.war;
@@ -1248,7 +1249,7 @@ export class AI {
     const Q = W.players[war.foe], ids = (us) => us.map(u => u.id);
     const go = (us, x, y, amove = true) => { if (us.length) command(W, { t: 'move', pid: this.pid, ids: ids(us), x, y, amove }); };
     // soldiers of the field army who are free join the campaign (monks keep their own work)
-    const fresh = field.filter(u => !war.units.has(u.id) && u.id !== this.explorer && !UNITS[u.type].general && !stat(W, u.owner, u.type).convert && (!u.order || u.order.amove || u.order.t === 'patrol'));
+    const fresh = field.filter(u => !war.units.has(u.id) && u.id !== this.explorer && !UNITS[u.type].general && !u.levy && !stat(W, u.owner, u.type).convert && (!u.order || u.order.amove || u.order.t === 'patrol'));
     let mem = [...war.units].map(id => W.ents.get(id)).filter(u => u && !u.inside);
     const cx = mem.length ? mem.reduce((a, u) => a + u.x, 0) / mem.length : war.stage[0], cy = mem.length ? mem.reduce((a, u) => a + u.y, 0) / mem.length : war.stage[1];
     // the town still standing: the known buildings of the target round its centre
@@ -1423,6 +1424,28 @@ export class AI {
     const idle = field.filter(u => u.id !== this.explorer && !this.inWar(u.id) && !u.order && Math.hypot(u.x - fx, u.y - fy) > 8);
     if (idle.length) command(W, { t: 'move', pid: this.pid, ids: idle.map(u => u.id), x: fx, y: fy, amove: true });
   }
+  // Wajib Militer Rakyat: when the capital is overrun (or in total war with the army thin) part of the villagers take up
+  // arms; once it has been quiet for a minute they go back to work
+  levyTick(threat) {
+    const W = this.W, P = this.P; if (!P.techs.has('levy') || W.t < (this.levyT || 0)) return; this.levyT = W.t + 4;
+    const [bx, by] = this.base, vils = this.m.units.filter(u => u.type === 'villager' && !u.inside), levies = this.m.units.filter(u => u.levy);
+    if (threat && threat.owner >= 0) this.levyThreatT = W.t;        // (a wolf by the town is no reason to stay armed)
+    const overrun = threat && this.threatPower() > (this.m.units.filter(u => MILITARY(u.type) && !u.levy && Math.hypot(u.x - bx, u.y - by) < 28).length + 3) * 1.2;
+    const desperate = W.totalWar && this.m.units.filter(u => MILITARY(u.type) && !u.nav).length < this.armyCap * 0.6 && !this.levyTW;
+    if ((overrun || desperate) && vils.length > 15 && levies.length < vils.length * 0.5) {
+      const n = Math.min(desperate ? 20 : 25, Math.floor(vils.length * (desperate ? 0.2 : 0.35))), pick = vils.sort((a, b) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(b.x - bx, b.y - by)).slice(0, n).filter(() => P.res.gold >= 20);
+      if (pick.length >= 4 && P.res.gold >= 20 * pick.length) {
+        command(W, { t: 'levy', pid: this.pid, ids: pick.map(u => u.id) }); if (desperate) this.levyTW = true;
+        this.tell('levy', desperate ? `Perang total: ${P.name} mempersenjatai ${pick.length} penduduknya.` : `Kota diserbu! ${P.name} mempersenjatai ${pick.length} penduduk untuk mempertahankan ibu kota.`, bx, by, -1);
+        if (overrun) command(W, { t: 'move', pid: this.pid, ids: pick.map(u => u.id), x: threat.x, y: threat.y, amove: true });
+        return;
+      }
+    }
+    if (levies.length && !W.totalWar && W.t - (this.levyThreatT || -999) > 60) {
+      const home = levies.filter(u => !this.inWar(u.id) && (!u.order || u.order.t !== 'attack'));
+      if (home.length) { command(W, { t: 'unlevy', pid: this.pid, ids: home.map(u => u.id) }); this.tell('unlevy', `Bahaya berlalu — ${home.length} prajurit rakyat ${P.name} kembali bekerja.`, bx, by, -1); }
+    }
+  }
   // mercenaries: a band offered for free is always taken; at war (or holding against a stronger enemy) a band is hired at
   // the nearest camp we have found when the gold allows; bands left at a far camp in peace walk home
   mercs(field, war) {
@@ -1498,7 +1521,7 @@ export class AI {
     const W = this.W, [bx, by] = this.base;
     const G = this.guard = this.guard || new Set();
     for (const id of G) if (!W.ents.has(id)) G.delete(id);
-    const fit = (u) => u.id !== this.explorer && !UNITS[u.type].general && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && !UNITS[u.type].hero && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert;
+    const fit = (u) => u.id !== this.explorer && !UNITS[u.type].general && !u.levy && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && !UNITS[u.type].hero && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert;
     const cand = army.filter(fit);
     const share = (({ eko: 0.28, serbu: 0.15, benteng: 0.4, ilmu: 0.3, laut: 0.25 }[this.style] ?? 0.25) + (this.attacked >= 2 && W.t - this.lastHit < 300 ? 0.12 : 0)) * (this.ahead || W.totalWar ? 0.5 : 1);
     const want = cand.length < 5 ? 0 : Math.min(16, Math.max(2, Math.round(cand.length * share)));

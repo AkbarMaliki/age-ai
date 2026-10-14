@@ -85,7 +85,7 @@ export const TREASURES = {
 
 // n = footprint (tiles). drop = resources accepted. block=false lets units walk over it (farms). water = built on water.
 export const BUILDINGS = {
-  town_center: { name: 'Pusat Kota', n: 4, terr: 18, hp: 2400, ma: 3, pa: 5, cost: { wood: 275, stone: 100 }, time: 150, age: 1, pop: 5, los: 8, drop: ['food', 'wood', 'gold', 'stone', 'iron'], trains: ['villager', 'general'], garrison: 15, techs: ['loom', 'wheelbarrow', 'hand_cart', 'torches', 'civic_defense', 'feudal', 'feudal_war', 'feudal_wall', 'castle', 'castle_war', 'castle_trade'], ability: 'bell', attack: { atk: 5, range: 6, reload: 2.0 }, key: 'Q', page: 0 },
+  town_center: { name: 'Pusat Kota', n: 4, terr: 18, hp: 2400, ma: 3, pa: 5, cost: { wood: 275, stone: 100 }, time: 150, age: 1, pop: 5, los: 8, drop: ['food', 'wood', 'gold', 'stone', 'iron'], trains: ['villager', 'general'], garrison: 15, techs: ['loom', 'wheelbarrow', 'hand_cart', 'torches', 'civic_defense', 'feudal', 'feudal_war', 'feudal_wall', 'castle', 'castle_war', 'castle_trade', 'levy'], ability: 'bell', attack: { atk: 5, range: 6, reload: 2.0 }, key: 'Q', page: 0 },
   house: { name: 'Rumah', n: 2, hp: 550, ma: 0, pa: 7, cost: { wood: 25 }, time: 25, age: 1, pop: 5, los: 2 },
   mill: { name: 'Penggilingan', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['food'], techs: ['horse_collar', 'heavy_plow', 'crop_rotation', 'granary'], reseed: true },
   lumber_camp: { name: 'Kamp Penebang', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['wood'], techs: ['double_bit_axe', 'bow_saw', 'two_man_saw'] },
@@ -140,6 +140,7 @@ export const TECHS = {
   careening: { name: 'Lambung Kapal', cost: { food: 200, gold: 100 }, time: 40, age: 2, at: 'dock', key: 'T', desc: 'Kapal +1 zirah panah; Kapal Angkut memuat +5 unit.' },
   guilds: { name: 'Serikat Dagang', cost: { food: 300, gold: 100 }, time: 50, age: 2, at: 'market', key: 'R', desc: 'Komisi jual-beli di Pasar turun dari 30% menjadi 15%.' },
   trade_route: { name: 'Rute Dagang', cost: { food: 200, wood: 200 }, time: 60, age: 3, at: 'market', key: 'T', desc: 'Pedagang singgah: setiap Pasar menghasilkan 24 emas per menit.' },
+  levy: { name: 'Wajib Militer Rakyat', cost: { food: 400, gold: 300 }, time: 50, age: 4, at: 'town_center', key: 'X', glyph: '⚔', desc: 'Penduduk desa bisa mengangkat senjata (20 emas per orang) dan menjadi infanteri pedang terbaikmu — dengan semua peningkatan jalur pedangnya. Bisa kembali bekerja kapan saja. Senjata terakhir di akhir perang.' },
   civic_defense: { name: 'Pertahanan Rakyat', cost: { food: 100, wood: 100 }, time: 35, age: 2, at: 'town_center', key: 'E', glyph: '🔔', desc: 'Penduduk yang berlindung (Lonceng Kota atau malam) di Pusat Kota, Kastil atau menara menambah 1 anak panah per 2 penduduk (tanpa riset: 1 per 4), maksimal +5.' },
   drill: { name: 'Latihan Keras', cost: { food: 150, gold: 50 }, time: 40, age: 2, at: 'barracks', key: 'R', glyph: '🏋', desc: 'Infanteri +15% HP.' },
   pikes: { name: 'Tombak Panjang', cost: { food: 250, gold: 150 }, time: 50, age: 3, at: 'barracks', key: 'T', glyph: '🔱', spec: ['spearman', 'pikeman'], desc: 'Prajurit Tombak menjadi Pasukan Tombak Panjang: +15 HP, +22 vs kavaleri.' },
@@ -263,6 +264,9 @@ export const MERCS = {
   perampok: { name: 'Perampok Padang', camp: 'stable', tint: 0xd88070, unit: 'perampok', n: 5, cost: { gold: 260, food: 160 }, glyph: '🐎', skill: 'Rampas' },
   mesiu: { name: 'Laskar Mesiu', camp: 'academy', tint: 0xe8d090, unit: 'penembak', n: 3, cost: { gold: 360, iron: 60 }, glyph: '🔫', skill: 'Tembus Zirah' },
 };
+// Wajib Militer Rakyat: what a villager becomes (the kingdom's sword line: its upgrades, specialists or unique unit) and
+// what arming one costs
+export const LEVY = { from: 'militia', cost: { gold: 20 } };
 export const MERC = { cd: 150, minAge: 2, guard: 8, helpFrom: 1200, helpEvery: 480, helpRatio: 0.45, helpWait: 60 };
 
 // civilizations: lasting bonuses (mods / per-class stat multipliers / unit discounts / start) and a unique unit

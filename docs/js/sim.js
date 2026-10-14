@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX, MERCS, MERC } from './data.js?v=20261014210523';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX, MERCS, MERC, LEVY } from './data.js?v=20261014223400';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -235,6 +235,12 @@ function postTick(W) {
     else p.hold = Math.max(0, p.hold - 1);
     if (p.owner >= 0) { const P = W.players[p.owner]; if (!P.alive) p.owner = -1; else { P.res.gold += POST.gold; P.stats.gathered += POST.gold; P.stats.gres.gold += POST.gold; } }
   }
+}
+// a unit becomes another (a villager taking up arms and back): same person, the same share of health, a fresh start
+function retype(W, u, type) {
+  const k = u.maxHp ? u.hp / u.maxHp : 1, s = stat(W, u.owner, type);
+  u.type = type; u.maxHp = s.hp; u.hp = Math.max(1, s.hp * k); u.carry = null; u.path = null; u.anim = 'idle'; u.form = null; u.stance = undefined; u.oq = null;
+  setOrder(W, u, null);
 }
 // ---------------------------------------------------------------- mercenary camps
 export function addCamp(W, i, j, faction, name) { return add(W, { kind: 'camp', type: 'camp', faction, name, x: i, y: j, w: 2, h: 2, owner: -1, cd: {} }); }
@@ -684,6 +690,14 @@ function applyCmd0(W, c) {
       const Q = W.players[c.to], n = Math.floor(+c.n || 0); if (!Q || !Q.alive || c.to === c.pid || !RES.includes(c.res) || n <= 0 || P.res[c.res] < n) break;
       P.res[c.res] -= n; Q.res[c.res] += Math.floor(n * 0.8); W.ev.push({ k: 'tribute', owner: c.pid, to: c.to, res: c.res, n: Math.floor(n * 0.8) });
       W.tribT[c.pid * 8 + c.to] = W.t;
+      break;
+    }
+    case 'levy': case 'unlevy': {      // Wajib Militer Rakyat: villagers take up arms (20 gold each), levies go back to work
+      if (!P.techs.has('levy')) break;
+      const us = own(W, c.pid, c.ids).filter(u => !u.inside && (c.t === 'levy' ? u.type === 'villager' : u.levy));
+      const type = c.t === 'levy' ? trainType(P, LEVY.from) : 'villager'; let n = 0;
+      for (const u of us) { if (c.t === 'levy') { if (!canAfford(P, LEVY.cost)) break; pay(P, LEVY.cost); } retype(W, u, type); u.levy = c.t === 'levy'; n++; }
+      if (n) W.ev.push({ k: c.t, owner: c.pid, n, type, x: us[0].x, y: us[0].y });
       break;
     }
     case 'hire': {      // a band from a mercenary camp: found, paid, no enemy at the camp, not on cooldown, room for them

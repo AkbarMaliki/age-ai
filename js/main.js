@@ -277,6 +277,8 @@ class Game {
       case 'totalwar': this.snd.play('alert'); this.hud.notify('🔥 ' + e.text, 'bad'); break;
       case 'hired': if (mine) { this.snd.play('trained'); this.hud.notify(`💰 ${e.n} tentara bayaran dari ${e.name} bergabung!`, 'age', [e.x, e.y]); } else if (vis) this.hud.notify(`${W.players[e.owner].name} menyewa tentara bayaran.`, 'enemy', [e.x, e.y]); break;
       case 'mercoffer': if (mine) { this.snd.play('card'); this.mercT = 0; } break;
+      case 'levy': if (mine) { this.snd.play('trained'); this.hud.notify(`⚔ ${e.n} penduduk mengangkat senjata sebagai ${UNITS[e.type].name}!`, 'age', [e.x, e.y]); } else if (vis) this.hud.notify(`${W.players[e.owner].name} mempersenjatai rakyatnya!`, 'enemy', [e.x, e.y]); break;
+      case 'unlevy': if (mine) this.hud.notify(`🌾 ${e.n} prajurit rakyat kembali menjadi penduduk desa.`, '', [e.x, e.y]); break;
       case 'mercarrive': if (mine) { this.snd.play('ship'); this.hud.notify('🛡 ' + e.text, 'age', [e.x, e.y]); } break;
       case 'postcapture': if (e.owner === this.me) { this.snd.play('tech'); this.hud.notify(`🏰 Kita merebut ${e.name}! +${Math.round(POST.gold * 60)} emas/menit dan penglihatan luas.`, 'age', [e.x, e.y]); } else if (e.from === this.me) { this.snd.play('alert'); this.hud.notify(`🏰 ${e.name} direbut ${W.players[e.owner].name}!`, 'bad', [e.x, e.y]); } break;
       case 'generaldie': if (e.owner === this.me) { this.snd.play('alert'); this.hud.notify(`⚰ Panglima ${e.name} gugur! Pasukan di dekatnya tercerai-berai.`, 'bad'); } else if (e.by === this.me) this.hud.notify(`⚔ Panglima musuh ${e.name} tewas!`, 'age'); break;

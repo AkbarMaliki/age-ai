@@ -1,6 +1,6 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS, WONDER_TIME, KOTH_TIME, MERCS, MERC } from './data.js';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME, MERCS, MERC, LEVY } from './data.js';
 import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js';
 import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST, hireWhy } from './sim.js';
 import { NAMES, LIFE, TOWN_POP } from './data.js';
@@ -26,7 +26,7 @@ const BLD_DESC = { house: '+5 populasi', mill: 'Tempat setor makanan, membuka la
   hospital: 'Balai Pengobatan: menyembuhkan yang sakit dan menahan wabah.', barn: 'Kandang dengan padang: domba/sapi di sini bertambah gemuk dan menghasilkan susu. Bisa membeli ternak.' };
 // fixed slots per building (some have more commands than keys follow from the data)
 const SLOTS = {
-  town_center: { villager: 0, torches: 1, hand_cart: 2, loom: 3, wheelbarrow: 4, feudal: 5, feudal_war: 6, feudal_wall: 7, castle: 5, castle_war: 6, castle_trade: 7, imperial: 5, imperial_war: 6, imperial_lore: 7, civic_defense: 8, $bell: 10, $out: 11, general: 12 },
+  town_center: { villager: 0, torches: 1, hand_cart: 2, loom: 3, wheelbarrow: 4, feudal: 5, feudal_war: 6, feudal_wall: 7, castle: 5, castle_war: 6, castle_trade: 7, imperial: 5, imperial_war: 6, imperial_lore: 7, civic_defense: 8, $bell: 10, $out: 11, general: 12, levy: 13 },
   blacksmith: { forging: 0, scale_mail: 1, scale_barding: 2, fletching: 3, padded_archer: 4, iron_casting: 5, chain_mail: 6, chain_barding: 7, bodkin: 8, doc_legion: 10, doc_cavalry: 11, doc_archers: 12 },
   academy: { spy_network: 0, masonry: 1, ballistics: 2, gunpowder: 3, cannon: 4, healer: 5, medicine: 6, doc_fortress: 10, doc_blitz: 11, doc_formation: 12, $spy: 13 },
   // upgrade chains share one slot: only the next step of a line is shown
@@ -186,6 +186,11 @@ export class HUD {
           if (type === 'town_center' && !ok && P.age >= d.age) why = `Batas Pusat Kota tercapai (maks ${townsMax(P)} di zaman ini)`;
           this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵', well: '🪣', tavern: '🍺', hospital: '⚕', barn: '🐄', outpost: '🚩', town_center: '🏰' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
         }
+        if (this.page === 1) {          // the military page: villagers take up arms (Wajib Militer Rakyat)
+          const vs = units.filter(u => u.type === 'villager'), lt = trainType(P, LEVY.from), cost = { gold: LEVY.cost.gold * vs.length };
+          const why = !P.techs.has('levy') ? `Butuh riset ${TECHS.levy.name} (Pusat Kota, ${AGES[TECHS.levy.age]})` : !canAfford(P, cost) ? 'Emas kurang' : '';
+          this.setBtn(11, { glyph: '⚔', name: `Angkat Senjata (${vs.length})`, cost, desc: `Penduduk terpilih menjadi <b>${stat(W, G.me, lt).name || UNITS[lt].name}</b> (jalur pedangmu, dengan semua peningkatannya). Mereka berhenti bekerja dan menjatuhkan bawaannya; bisa kembali bekerja nanti.`, why, disabled: !!why, act: () => G.send({ t: 'levy', pid: G.me, ids: vs.map(u => u.id) }) });
+        }
         const nx = (this.page + 1) % VIL_PAGES.length;
         this.setBtn(9, { glyph: PAGE_NAME[nx].split(' ')[0], name: 'Halaman: ' + PAGE_NAME[nx].slice(3), desc: 'Ganti halaman bangunan (Ekonomi → Militer → Kehidupan Warga)', act: () => { this.page = nx; this.lastSig = ''; } });
       } else {
@@ -199,6 +204,8 @@ export class HUD {
           this.setBtn(11, { glyph: '🛡', name: 'Kawal', desc: 'Klik unit kawan untuk dikawal: mengikuti dan menyerang musuh yang mendekatinya (mis. kawal Biarawan atau Pendobrak).', act: () => G.startTarget('follow') });
           if (mil.some(u => stat(W, u.owner, u.type).splash)) this.setBtn(12, { glyph: '🎯', name: 'Serang Tanah', desc: 'Mesin pengepung menembaki titik tertentu (ledakan area), misalnya kerumunan di balik tembok.', act: () => G.startTarget('ground') });
         }
+        const levies = units.filter(u => u.levy);
+        if (levies.length) this.setBtn(12, { glyph: '🌾', name: `Kembali Bekerja (${levies.length})`, desc: 'Rakyat yang mengangkat senjata kembali menjadi penduduk desa (tanpa biaya). Kirim mereka bekerja lagi setelahnya.', act: () => G.send({ t: 'unlevy', pid: G.me, ids: levies.map(u => u.id) }) });
         const treb = units.filter(u => UNITS[u.type].packs);
         if (treb.length) { const packed = treb.some(u => u.type === 'trebuchet_p'); this.setBtn(12, { glyph: '🏗', name: packed ? 'Pasang Trebuchet' : 'Bongkar Trebuchet', desc: packed ? 'Pasang di tempat (4 detik) agar bisa menembak. Trebuchet juga memasang diri otomatis saat diperintah menyerang.' : 'Bongkar (4 detik) agar bisa berjalan. Terjadi otomatis saat diperintah bergerak.', act: () => G.send({ t: 'pack', pid: G.me, ids: treb.map(u => u.id) }) }); }
         const rams = units.filter(u => insideOf(W, u).soldiers);
@@ -276,7 +283,7 @@ export class HUD {
     const G = this.g, W = G.W, el = $('info');
     if (!sel.length) { if (el.dataset.k !== 'none') { el.dataset.k = 'none'; el.innerHTML = '<div class="empty">Pilih unit atau bangunan</div>'; } return; }
     if (sel.length > 1) {
-      const k = 'multi' + sel.map(e => e.id).join();
+      const k = 'multi' + sel.map(e => e.id + e.type).join();          // (a type change, e.g. villagers taking up arms, redraws it)
       if (el.dataset.k !== k) { el.dataset.k = k; el.innerHTML = '<div class="multi">' + sel.slice(0, 40).map(e => `<i data-id="${e.id}" style="${this.iconStyle(UNITS[e.type] ? this.spriteOf(e.owner, e.type) : e.type, 36 / 64)}"><b></b></i>`).join('') + '</div>'; el.querySelectorAll('i').forEach(i => i.onclick = (ev) => { G.select([+i.dataset.id], ev.shiftKey); }); }
       el.querySelectorAll('i').forEach(i => { const e = W.ents.get(+i.dataset.id); if (e) i.firstChild.style.width = (e.hp / e.maxHp * 100) + '%'; });
       return;

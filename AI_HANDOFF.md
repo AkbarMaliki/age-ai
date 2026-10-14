@@ -309,6 +309,20 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
 - UI: camp info panel (skill, unit stats, price, why not), Rekrut button (slot Q), company emblem floating over the camp (`campBadge`), campfire, minimap marks; poisoned units breathe green.
 - Tests: `tests/mercs.test.js` (in `npm test`); browser `tests/browser/mercs.cjs`.
 
+### v20: Wajib Militer Rakyat (villagers take up arms)
+- Tech `levy` (TC slot 13, Imperial Age, 400 food + 300 gold).
+- Commands `{ t: 'levy' | 'unlevy', pid, ids }`:
+  - `levy` turns own villagers into `trainType(P, LEVY.from)`: the sword line, so upgrades (Prajurit/Pendekar/Juara), specialists and civ unique units apply. Costs `LEVY.cost` (20 gold) each, stopping when the gold runs out.
+  - `unlevy` turns units with `u.levy` back into villagers, free.
+  - Both use `retype()` (sim.js): same entity, name and family, same share of HP, carried goods dropped, orders cleared.
+- UI: villager military page slot 11 (⚔ Angkat Senjata, locked until researched); levies get slot 12 (🌾 Kembali Bekerja). The multi-select panel key includes the unit type, so portraits refresh after a conversion.
+- AI `levyTick()`:
+  - Researches `levy` in the Imperial Age (40+ villagers and at war, raided or in total war).
+  - Arms up to 35% of villagers (max 25) when the capital is overrun by an enemy kingdom (threat power > 1.2 × the defenders + 3) and sends them at the raiders; once in Perang Total arms 20% (max 20).
+  - Disarms 60 s after the last threat from a kingdom (wild animals don't count).
+  - Levies are never sent on campaigns or made town guards. Chronicle kinds `levy` / `unlevy`.
+- Test: `tests/levy.test.js` (in `npm test`).
+
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
 - Changes from it: archer atk 5, +3 vs infantry, cost 30w/40g; pikeman 55 hp, 0 pierce armour, 40f/30w; cataphract 115 hp, 3/3 armour, 35 iron; militia atk 5, 1 melee armour, 55f/20g; fire archer atk 6. Wells and outposts (and children) no longer keep a kingdom alive; the AI resigns when crushed (< 15 pop vs > 5x, for 2 min); exhaustion no longer kills; town-watch patrols recover energy. Bug: the AI's life timer shared its name (`lcT`) with the lumber-camp timer, so taverns / wells / hospitals were rarely considered (now `lifeT`). Expansion reserves the Town Center's cost once a site is known (`expandNeed`). `expansionSite` uses a resource grid (was a 75 ms spike).

@@ -82,7 +82,7 @@ export class History {
 
 // ---------------------------------------------------------------- panel
 const TABS = [['sum', 'Ringkasan'], ['eco', 'Ekonomi'], ['mil', 'Militer'], ['war', 'Kronik Perang'], ['time', 'Linimasa']];
-const WAR_ICON = { declare: '📜', march: '🚩', siege: '🏹', fall: '🔥', next: '➡', hunt: '🔎', found: '👁', retreat: '↩', recall: '🛡', truce: '🕊', conquer: '👑', wonder: '🏛', hold: '🏛', defend: '🛡', alarm: '🔔', repel: '🛡', counter: '⚔', posture: '⚖', pact: '🤝', pactoffer: '✉', refuse: '✋', betray: '🗡', tribute: '💰', general: '⭐', generaldie: '⚰', totalwar: '🔥', post: '🏰', hire: '💰', mercoffer: '🤝', mercarrive: '🛡' };
+const WAR_ICON = { declare: '📜', march: '🚩', siege: '🏹', fall: '🔥', next: '➡', hunt: '🔎', found: '👁', retreat: '↩', recall: '🛡', truce: '🕊', conquer: '👑', wonder: '🏛', hold: '🏛', defend: '🛡', alarm: '🔔', repel: '🛡', counter: '⚔', posture: '⚖', pact: '🤝', pactoffer: '✉', refuse: '✋', betray: '🗡', tribute: '💰', general: '⭐', generaldie: '⚰', totalwar: '🔥', post: '🏰', hire: '💰', mercoffer: '🤝', mercarrive: '🛡', levy: '⚒', unlevy: '🌾' };
 const METRICS = [['score', 'Skor'], ['pop', 'Populasi'], ['army', 'Tentara'], ['vil', 'Penduduk desa'], ['gathered', 'Sumber daya terkumpul']];
 const DASH = [[], [7, 4], [2, 3], [9, 3, 2, 3]];     // per seat: second cue besides colour
 
