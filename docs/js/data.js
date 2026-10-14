@@ -83,6 +83,8 @@ export const BUILDINGS = {
   mill: { name: 'Penggilingan', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['food'], techs: ['horse_collar', 'heavy_plow', 'crop_rotation', 'granary'], reseed: true },
   lumber_camp: { name: 'Kamp Penebang', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['wood'], techs: ['double_bit_axe', 'bow_saw', 'two_man_saw'] },
   mining_camp: { name: 'Kamp Tambang', n: 2, hp: 600, ma: 0, pa: 7, cost: { wood: 100 }, time: 35, age: 1, los: 6, drop: ['gold', 'stone', 'iron'], techs: ['gold_mining', 'iron_smelting', 'stone_mining', 'gold_shaft', 'stone_shaft'] },
+  mine_shaft: { name: 'Tambang Bawah Tanah', n: 3, hp: 1500, ma: 1, pa: 7, cost: { wood: 300 }, time: 60, age: 2, los: 5, shaft: 4000, crew: 6, techs: ['mine_rails', 'deep_veins'],
+    desc: 'Terowongan ke urat bijih di bawah tanah: emas, batu ATAU besi (pilih di bangunan). Penambang turun (maks 6), lalu membawa hasilnya ke kota. Bijihnya terbatas — bila habis, tambang runtuh dan perlu digali di tempat lain.' },
   farm: { name: 'Ladang', n: 3, hp: 480, ma: 0, pa: 0, cost: { wood: 60 }, time: 15, age: 1, los: 1, block: false, food: 175, needs: ['mill'] },
   dock: { name: 'Dermaga', n: 3, hp: 1800, ma: 0, pa: 7, cost: { wood: 150 }, time: 35, age: 1, los: 7, water: true, drop: ['food'], trains: ['fishing_boat', 'transport_ship', 'war_ship', 'fire_ship', 'demo_ship', 'cannon_galleon', 'trade_cog'], techs: ['gillnets', 'careening', 'galleon'], fishtrap: true },
   barracks: { name: 'Barak', n: 3, hp: 1200, ma: 0, pa: 7, cost: { wood: 175 }, time: 50, age: 1, los: 6, trains: ['militia', 'spearman'], techs: ['man_at_arms', 'long_sword', 'champion', 'drill', 'pikes', 'halberdier'] },
@@ -171,6 +173,8 @@ export const TECHS = {
   crop_rotation: { name: 'Rotasi Tanaman', cost: { food: 250, wood: 250 }, time: 70, age: 4, at: 'mill', key: 'R', after: 'heavy_plow', farmFood: 175, desc: 'Ladang +175 makanan.' },
   stone_mining: { name: 'Penambangan Batu', cost: { food: 100, wood: 75 }, time: 30, age: 2, at: 'mining_camp', key: 'E', mods: { gather: { stone: 0.15 } }, desc: 'Menambang batu +15%.' },
   gold_shaft: { name: 'Tambang Poros Emas', cost: { food: 200, wood: 150 }, time: 50, age: 3, at: 'mining_camp', key: 'R', after: 'gold_mining', mods: { gather: { gold: 0.15 } }, desc: 'Menambang emas +15%.' },
+  mine_rails: { name: 'Rel Lori Tambang', cost: { food: 200, wood: 200 }, time: 45, age: 3, at: 'mine_shaft', key: 'A', glyph: '🛤', desc: 'Lori di atas rel: menambang di Tambang Bawah Tanah +25%.' },
+  deep_veins: { name: 'Urat Bijih Dalam', cost: { food: 300, gold: 200 }, time: 60, age: 4, at: 'mine_shaft', key: 'S', glyph: '💎', desc: 'Menggali lebih dalam: setiap Tambang Bawah Tanah berisi +50% bijih (juga yang sudah ada).' },
   stone_shaft: { name: 'Tambang Poros Batu', cost: { food: 200, wood: 150 }, time: 50, age: 3, at: 'mining_camp', key: 'T', after: 'stone_mining', mods: { gather: { stone: 0.15 } }, desc: 'Menambang batu +15%.' },
   hand_cart: { name: 'Kereta Tangan', cost: { food: 300, wood: 200 }, time: 55, age: 3, at: 'town_center', key: 'T', after: 'wheelbarrow', desc: 'Penduduk desa +10% kecepatan, +4 muatan.' },
   // ---- towers
@@ -370,7 +374,7 @@ export const DECKS = {
 };
 
 // gather rate per second (AoE2-like)
-export const RATE = { tree: 0.39, gold: 0.38, stone: 0.36, iron: 0.33, berry: 0.31, farm: 0.33, carcass: 0.41, fish: 0.42 };
+export const RATE = { tree: 0.39, gold: 0.38, stone: 0.36, iron: 0.33, berry: 0.31, farm: 0.33, carcass: 0.41, fish: 0.42, shaft: 0.32 };      // shaft: underground (any ore, the mine's choice; tool upgrades of that ore apply)
 export const CARRY = 10;
 export const PLAYER_COLORS = ['blue', 'red', 'green', 'yellow'];
 export const PLAYER_RGB = { blue: [45, 95, 235], red: [225, 35, 35], green: [45, 175, 45], yellow: [235, 210, 35] };

@@ -236,6 +236,7 @@ function onBuilt(W, b, silent) {
   const d = BUILDINGS[b.type], P = W.players[b.owner];
   b.built = true; b.progress = 1; b.hp = Math.max(b.hp, 1); if (silent) b.hp = b.maxHp;
   if (d.pop) { P.popRaw = (P.popRaw || 0) + d.pop; popRefresh(W, P); }
+  if (d.shaft && b.left === undefined) { b.left = d.shaft * (P.techs.has('deep_veins') ? 1.5 : 1); b.ore = b.ore || 'gold'; }
   if (d.wonder && !silent) { W.wonders.set(b.id, W.t); W.ev.push({ k: 'wonderbuilt', owner: b.owner, secs: WONDER_TIME }); }
   if (!silent) { P.stats.built++; addXp(W, P, costVal(d.cost) * XP.build); W.ev.push({ k: 'built', x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }
   if (!silent || b.type !== 'town_center') buildRoad(W, b);
@@ -513,7 +514,7 @@ function applyCmd0(W, c) {
           }
           if (vil && tgt.kind === 'building' && tgt.owner === u.owner) {
             if (!tgt.built) { setOrder(W, u, { t: 'build', id: tgt.id }); continue; }
-            if (tgt.type === 'farm') { setOrder(W, u, { t: 'gather', id: tgt.id }); continue; }
+            if (tgt.type === 'farm' || (BUILDINGS[tgt.type].shaft && tgt.left > 0)) { setOrder(W, u, { t: 'gather', id: tgt.id }); continue; }
             if (u.carry && u.carry.n > 0 && (BUILDINGS[tgt.type].drop || []).includes(u.carry.res)) { setOrder(W, u, { t: 'drop', id: tgt.id, then: null }); continue; }
             if (tgt.hp < tgt.maxHp) { setOrder(W, u, { t: 'repair', id: tgt.id }); continue; }
           }
@@ -594,6 +595,7 @@ function applyCmd0(W, c) {
     case 'garrison': { const b = alive(W, c.target); if (!b) break; for (const u of own(W, c.pid, c.ids)) if (canGarrison(W, u, b)) setOrder(W, u, { t: 'garrison', id: b.id }); break; }
     case 'ungarrison': { const b = alive(W, c.bid); if (!b || b.owner !== c.pid) break; for (const u of W.dyn.values()) if (u.kind === 'unit' && u.inside === b.id && u.order && u.order.t === 'garrison') { leaveHome(W, u); u.order = null; } break; }
     case 'pack': for (const u of own(W, c.pid, c.ids)) if (UNITS[u.type].packs && !(u.packT > 0)) { u.packT = 4; u.packTo = UNITS[u.type].packs; u.path = null; } break;
+    case 'ore': { const b = alive(W, c.bid); if (b && b.owner === c.pid && BUILDINGS[b.type].shaft && ['gold', 'stone', 'iron'].includes(c.ore)) b.ore = c.ore; break; }
     case 'lock': { const b = alive(W, c.bid); if (b && b.owner === c.pid && BUILDINGS[b.type].gate) { b.locked = !b.locked; W.regionDirty = true; } break; }
     case 'reseed': {       // pre-pay farms: an exhausted farm is replanted on the spot (mill queue)
       const cost = costOf(P, 'farm'), n = W.reseed[c.pid] || 0;
@@ -906,7 +908,7 @@ function unitTick(W, u) {
   const k = tileAt(W, u.x, u.y);
   if ((W.occ[k] || (u.nav ? W.terrain[k] !== TER.WATER : W.terrain[k] === TER.WATER && !W.frozen)) && !passable(W, Math.floor(u.x), Math.floor(u.y), u.owner, u.nav)) { unstick(W, u); u.path = null; }   // never stay inside a footprint (or in the water)
   if (!u.order && u.oq && u.oq.length) { u.order = u.oq.shift(); u.path = null; }     // next shift-queued order
-  if (u.inside && (!u.order || (u.order.t !== 'rest' && u.order.t !== 'garrison' && u.order.t !== 'visit'))) leaveHome(W, u);
+  if (u.inside && (!u.order || (u.order.t !== 'rest' && u.order.t !== 'garrison' && u.order.t !== 'visit' && !(u.order.t === 'gather' && u.order.id === u.inside)))) leaveHome(W, u);
   if (u.type === 'child' && !u.order && (W.tick + u.id) % 15 === 0) childTick(W, u);
   if (u.order && u.order.wander && u.order.t === 'move' && (u.stuck > 12 || (u.order.t0w ??= W.t) < W.t - 25)) { u.order = null; u.path = null; u.anim = 'idle'; }      // a stroll that leads nowhere ends
   if (d.packs) {          // trebuchet: 4 s to pack / unpack; it fires only unpacked and moves only packed
@@ -1339,7 +1341,7 @@ export function damage(W, t, dmg, src) {
   const P = pl(W, t.owner), S = src && src.owner !== undefined && src.owner !== t.owner && W.players[src.owner] ? W.players[src.owner].stats : null;
   const bld = t.kind === 'building', val = costVal(bld ? BUILDINGS[t.type].cost : UNITS[t.type].cost);
   if (S && !isAnimal(t)) { if (bld) S.razed++; else { S.killed++; if (t.type === 'villager') S.vilKilled++; if (UNITS[t.type].naval) S.shipsSunk++; } S.killVal += val; addXp(W, W.players[src.owner], val * XP.kill); }
-  if (!(bld && t.type === 'farm' && !src)) { if (bld) P.stats.bldLost++; else P.stats.lost++; P.stats.lostVal += val; }   // exhausted farms aren't losses
+  if (!(bld && (t.type === 'farm' || t.type === 'mine_shaft') && !src)) { if (bld) P.stats.bldLost++; else P.stats.lost++; P.stats.lostVal += val; }   // exhausted farms aren't losses
   del(W, t.id);
   if (t.kind === 'unit') {
     if (!UNITS[t.type].animal && t.owner !== GAIA) P.pop--;
@@ -1369,20 +1371,21 @@ export function skinOf(u) {
 const TASK_SKIN = { tree: 'vil_lumber', gold: 'vil_gold', stone: 'vil_stone', iron: 'vil_gold', berry: 'vil_forage', farm: 'vil_farm', carcass: 'vil_hunt', fish: 'vil_forage' };
 const WORK_ANIM = { tree: 'chop', gold: 'mine', stone: 'mine', iron: 'mine', berry: 'forage', farm: 'farm', carcass: 'hunt', fish: 'forage' };
 function rateOf(W, u, kind, src) {
-  const P = W.players[u.owner], S = W.season;
+  const P = W.players[u.owner], S = W.season, ore = kind === 'shaft' ? src.ore : kind;
   let r = RATE[kind];
   if (u.type === 'fishing_boat') r = 0.5;
   if (kind === 'carcass' && src && src.animal === 'sheep') r = 0.33;   // shepherding is slower than hunting
   if (kind === 'tree' && P.techs.has('double_bit_axe')) r *= 1.2;
-  if (kind === 'gold' && P.techs.has('gold_mining')) r *= 1.15;
-  if (kind === 'iron' && P.techs.has('iron_smelting')) r *= 1.2;
+  if (ore === 'gold' && P.techs.has('gold_mining')) r *= 1.15;
+  if (ore === 'iron' && P.techs.has('iron_smelting')) r *= 1.2;
+  if (kind === 'shaft' && P.techs.has('mine_rails')) r *= 1.25;
   if (kind === 'fish') { r *= 1 + P.mods.fish; if (P.techs.has('gillnets')) r *= 1.25; }
   if (kind === 'farm' && S.farm) r *= S.farm;
   if (kind === 'carcass' && S.hunt) r *= S.hunt;
   if (P.hungry) r *= DAY.hungry;
-  if (W.night && W.opts.night === 'full' && u.type === 'villager') r *= P.mods.nightWork ? 1 : 0.7;      // working by torchlight
+  if (W.night && W.opts.night === 'full' && u.type === 'villager' && kind !== 'shaft') r *= P.mods.nightWork ? 1 : 0.7;      // working by torchlight (underground it is always night)
   if (W.terr && W.terr[tileAt(W, u.x, u.y)] === u.owner + 1) r *= 1 + TERR_BONUS;          // our own land
-  return r * (1 + P.mods.gather[RES_TYPE[kind]]) * (u.wr ?? 1);
+  return r * (1 + P.mods.gather[RES_TYPE[ore]]) * (u.wr ?? 1);
 }
 export function openSide(W, e, nav = false) {
   if (e.type === 'carcass') return true;
@@ -1395,7 +1398,7 @@ export function nearestResource(W, kind, x, y, r = 10, owner = -1, skip = null, 
   for (const e of W.ents.values()) {
     if (skip && skip.has(e.id)) continue;
     if (owner >= 0 && unreachable(W, e.id, owner)) continue;
-    const k = e.kind === 'res' ? e.type : (e.kind === 'building' && e.type === 'farm' && e.built && e.owner === owner ? 'farm' : null);
+    const k = e.kind === 'res' ? e.type : e.kind !== 'building' || !e.built || e.owner !== owner ? null : e.type === 'farm' ? 'farm' : BUILDINGS[e.type].shaft && e.left > 0 ? 'shaft' : null;
     if (k !== kind || (e.kind === 'res' && e.amount <= 0)) continue;
     const dd = distTo(e, x, y); if (dd >= bd || dd > r) continue;
     if (known && !known[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
@@ -1417,8 +1420,9 @@ export function nearestDrop(W, owner, res, x, y, boat = false) {
 function villagerGather(W, u, o) {
   let r = alive(W, o.id);
   const boat = u.type === 'fishing_boat', nav = !!u.nav;
-  const kindOf = (e) => e.kind === 'res' ? e.type : 'farm';
-  if (r && r.kind === 'building' && (r.type !== 'farm' || !r.built || r.food <= 0)) r = null;
+  const kindOf = (e) => e.kind === 'res' ? e.type : e.type === 'farm' ? 'farm' : 'shaft';
+  if (r && r.kind === 'building' && (r.type === 'farm' ? !r.built || r.food <= 0 : !(BUILDINGS[r.type].shaft && r.built && r.left > 0 && r.owner === u.owner))) r = null;
+  if (u.inside && (!r || u.inside !== r.id)) leaveHome(W, u);          // the mine caved in: back up to daylight
   if (r && boat && r.type !== 'fish') r = null;
   if (!r) {
     const k = o.kind; const n = k && (nearestResource(W, k, u.x, u.y, boat ? 14 : 8, u.owner, null, null, nav) || (boat && farFish(W, u)));
@@ -1426,13 +1430,13 @@ function villagerGather(W, u, o) {
     u.order = null; u.anim = 'idle'; if (u.carry && u.carry.n > 0) { const dsite = nearestDrop(W, u.owner, u.carry.res, u.x, u.y, boat); if (dsite) u.order = { t: 'drop', id: dsite.id, then: null }; } return;
   }
   const kind = kindOf(r); o.kind = kind; if (boat) u.fished = true;
-  if (u.fails >= 2 && kind !== 'farm') {
+  if (u.fails >= 2 && kind !== 'farm' && kind !== 'shaft') {
     o.skip = o.skip || new Set(); o.skip.add(r.id); u.fails = 0; u.path = null; markUnreachable(W, r.id, u.owner);   // remembered, so nobody else is sent there either
     const n = nearestResource(W, kind, u.x, u.y, 10, u.owner, o.skip, null, nav); if (n) { o.id = n.id; return; }
     u.order = null; return;
   }
-  const res = RES_TYPE[kind];
-  u.task = TASK_SKIN[kind];
+  const res = kind === 'shaft' ? r.ore : RES_TYPE[kind];
+  u.task = kind === 'shaft' ? (res === 'stone' ? 'vil_stone' : 'vil_gold') : TASK_SKIN[kind];
   if (u.carry && u.carry.res !== res && u.carry.n > 0) u.carry = null;      // switching resource drops the load (like AoE2)
   if (u.carry && u.carry.n >= capOf(W, u)) {
     const dsite = nearestDrop(W, u.owner, res, u.x, u.y, boat);
@@ -1440,16 +1444,24 @@ function villagerGather(W, u, o) {
     return;
   }
   const reach = kind === 'farm' ? 0 : kind === 'fish' ? NEAR + 0.4 : NEAR;
-  const inside = kind === 'farm' && u.x > r.x && u.x < r.x + r.w && u.y > r.y && u.y < r.y + r.h;
+  const inside = (kind === 'farm' && u.x > r.x && u.x < r.x + r.w && u.y > r.y && u.y < r.y + r.h) || (kind === 'shaft' && u.inside === r.id);
   if (inside || (kind !== 'farm' && distTo(r, u.x, u.y) <= reach + SLACK)) {
     u.path = null;
+    if (kind === 'shaft' && u.inside !== r.id) {        // down the shaft: a crew of 6 at most, the others wait their turn at the mouth
+      const n = (W.garr && W.garr.get(r.id)) || 0;
+      if (n >= (BUILDINGS[r.type].crew || 6)) { u.anim = 'idle'; faceTo(u, r); return; }
+      u.inside = r.id; if (W.garr) W.garr.set(r.id, n + 1); W.ev.push({ k: 'enter', owner: u.owner, x: u.x, y: u.y });
+    }
     if (kind === 'farm') { r.farmer = u.id; if (!u.farmSpot) u.farmSpot = 1; } else faceTo(u, r);
     if (kind === 'farm') face(u, Math.cos(W.t * 0.3) * 0.5, 1);
     u.anim = boat ? 'work' : WORK_ANIM[kind];
     const amt = rateOf(W, u, kind, r) * TICK;
     if (!u.carry) u.carry = { res, n: 0 };
-    u.carry.k = kind;
-    if (kind === 'farm') { const take = Math.min(amt, r.food); r.food -= take; u.carry.n += take; if (u.aT > 1.15) { u.aT = 0; W.ev.push({ k: 'farm', x: u.x, y: u.y, owner: u.owner }); } if (r.food <= 0 && (W.reseed[r.owner] || 0) > 0) { W.reseed[r.owner]--; r.food = farmFood(W.players[r.owner]); W.ev.push({ k: 'reseed', x: r.x + 1.5, y: r.y + 1.5, owner: r.owner }); }
+    u.carry.k = kind === 'shaft' ? res : kind;
+    if (kind === 'shaft') {
+      const take = Math.min(amt, r.left); r.left -= take; u.carry.n += take;
+      if (r.left <= 0) { W.ev.push({ k: 'shaftdone', x: r.x + 1.5, y: r.y + 1.5, owner: r.owner }); damage(W, r, 1e9, null); }
+    } else if (kind === 'farm') { const take = Math.min(amt, r.food); r.food -= take; u.carry.n += take; if (u.aT > 1.15) { u.aT = 0; W.ev.push({ k: 'farm', x: u.x, y: u.y, owner: u.owner }); } if (r.food <= 0 && (W.reseed[r.owner] || 0) > 0) { W.reseed[r.owner]--; r.food = farmFood(W.players[r.owner]); W.ev.push({ k: 'reseed', x: r.x + 1.5, y: r.y + 1.5, owner: r.owner }); }
       if (r.food <= 0) { W.ev.push({ k: 'farmdone', x: r.x + 1.5, y: r.y + 1.5, owner: r.owner }); damage(W, r, 1e9, null); } }
     else {
       const take = Math.min(amt, r.amount); r.amount -= take; u.carry.n += take; if (kind === 'tree' && !r.felled) { r.felled = true; W.ev.push({ k: 'treefall', x: r.x + 0.5, y: r.y + 0.5 }); }
@@ -1492,8 +1504,8 @@ function villagerBuild(W, u, o) {
     const done = W.ents.get(o.id);
     u.order = null; u.task = null; u.anim = 'idle';
     if (done && done.kind === 'building') {
-      const auto = { lumber_camp: 'tree', mining_camp: 'gold', mill: 'berry', farm: 'farm', dock: 'fish' }[done.type];
-      if (auto === 'farm') { u.order = { t: 'gather', id: done.id, kind: 'farm' }; return; }
+      const auto = { lumber_camp: 'tree', mining_camp: 'gold', mill: 'berry', farm: 'farm', dock: 'fish', mine_shaft: 'shaft' }[done.type];
+      if (auto === 'farm' || auto === 'shaft') { u.order = { t: 'gather', id: done.id, kind: auto }; return; }
       if (auto) { let n = nearestResource(W, auto, done.x + done.w / 2, done.y + done.h / 2, 10, u.owner); if (!n && auto === 'gold') n = nearestResource(W, 'stone', done.x + 1, done.y + 1, 10) || nearestResource(W, 'iron', done.x + 1, done.y + 1, 10); if (n) { u.order = { t: 'gather', id: n.id }; return; } }
     }
     // otherwise help with the nearest unfinished foundation of ours close by
@@ -1611,7 +1623,7 @@ function spawn(W, b, type) {
   W.ev.push({ k: 'trained', x: u.x, y: u.y, owner: b.owner, type });
   if (b.rally) {
     const t = b.rally.id ? alive(W, b.rally.id) : null;
-    if (t && (type === 'villager' || UNITS[type].fisher) && (t.kind === 'res' || (t.kind === 'building' && t.type === 'farm'))) setOrder(W, u, { t: 'gather', id: t.id });
+    if (t && (type === 'villager' || UNITS[type].fisher) && (t.kind === 'res' || (t.kind === 'building' && (t.type === 'farm' || (BUILDINGS[t.type].shaft && type === 'villager'))))) setOrder(W, u, { t: 'gather', id: t.id });
     else if (t && t.kind === 'building' && t.owner !== b.owner) setOrder(W, u, { t: 'attack', id: t.id });
     else setOrder(W, u, { t: 'move', x: b.rally.x, y: b.rally.y });
   } else if (UNITS[type].fisher) { const f = nearestResource(W, 'fish', u.x, u.y, 14, b.owner, null, null, true) || farFish(W, u); if (f) setOrder(W, u, { t: 'gather', id: f.id }); }
@@ -1621,6 +1633,7 @@ function finishTech(W, b, tech) {
   P.techs.add(tech); P.stats.techs++; addXp(W, P, costVal(t.cost) * XP.tech);
   if (t.toAge) { P.age = t.toAge; W.ev.push({ k: 'age', owner: b.owner, age: P.age }); }
   else W.ev.push({ k: 'tech', owner: b.owner, tech });
+  if (tech === 'deep_veins') for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === b.owner && BUILDINGS[e.type].shaft && e.left > 0) e.left *= 1.5;
   if (tech === 'horse_collar') for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === b.owner && e.type === 'farm') e.food += 75;
   if (t.mods) applyMods(P, t.mods);
   if (t.farmFood) for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === b.owner && e.type === 'farm') e.food += t.farmFood;

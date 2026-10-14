@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261014105658';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261014105658';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261014113000';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261014113000';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -551,7 +551,7 @@ export class View {
         if (fires) {
           const flick = 0.85 + 0.15 * Math.sin(this.t * 9 + e.id) * Math.sin(this.t * 13.7 + e.id * 2);
           if (e.type !== 'farm' && !BUILDINGS[e.type].wall) { this.glows.put(sx, s.y - s.anchor.y * s.texture.height * 0.35, 0.9 + e.w * 0.45, 0xffa040, 0.28 * night * flick, sy + 500); this.light2(sx, sy - 10, 60 + e.w * 28, 0xffb46a, 0.42 * flick); }
-          if (['lumber_camp', 'mining_camp', 'barracks', 'town_center', 'castle'].includes(e.type)) {
+          if (['lumber_camp', 'mining_camp', 'mine_shaft', 'barracks', 'town_center', 'castle'].includes(e.type)) {
             const [fx, fy] = iso(e.x + e.w + 0.6, e.y + e.h * 0.5);
             this.glows.put(fx, fy - 8, 1.6, 0xff8a28, 0.45 * night * flick, fy + 500); this.light2(fx, fy - 6, 230, 0xff9a48, 0.95 * flick);
             if (Math.random() < dt * 20) this.parts.emit({ x: fx + (Math.random() - 0.5) * 8, y: fy - 4, vx: (Math.random() - 0.5) * 6, vy: -26, life: 0.55, size: 0.28, grow: 0.08, color: Math.random() < 0.5 ? 0xff7a1a : 0xffc23a, add: true, alpha: 0.9, z: fy + 2 });

@@ -1,23 +1,23 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js?v=20261014105658';
-import { openTechTree } from './techtree.js?v=20261014105658';
-import { Saves } from './saves.js?v=20261014105658';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014105658';
-import { townRing } from './sim.js?v=20261014105658';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014105658';
-import { generate } from './map.js?v=20261014105658';
-import { AI } from './ai.js?v=20261014105658';
-import { loadAll, vq } from './assets.js?v=20261014105658';
-import { View, iso, UNIT_BOX } from './render.js?v=20261014105658';
-import { HUD } from './ui.js?v=20261014105658';
-import { Sound } from './audio.js?v=20261014105658';
-import { History, StatsPanel, score } from './stats.js?v=20261014105658';
-import { CardPanel, DeckBuilder } from './cards.js?v=20261014105658';
-import { Advisor } from './advisor.js?v=20261014105658';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014105658';
-import { Lockstep } from './lockstep.js?v=20261014105658';
-import { Lobby } from './lobby.js?v=20261014105658';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js?v=20261014113000';
+import { openTechTree } from './techtree.js?v=20261014113000';
+import { Saves } from './saves.js?v=20261014113000';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014113000';
+import { townRing } from './sim.js?v=20261014113000';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014113000';
+import { generate } from './map.js?v=20261014113000';
+import { AI } from './ai.js?v=20261014113000';
+import { loadAll, vq } from './assets.js?v=20261014113000';
+import { View, iso, UNIT_BOX } from './render.js?v=20261014113000';
+import { HUD } from './ui.js?v=20261014113000';
+import { Sound } from './audio.js?v=20261014113000';
+import { History, StatsPanel, score } from './stats.js?v=20261014113000';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261014113000';
+import { Advisor } from './advisor.js?v=20261014113000';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014113000';
+import { Lockstep } from './lockstep.js?v=20261014113000';
+import { Lobby } from './lobby.js?v=20261014113000';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -259,6 +259,7 @@ class Game {
       case 'wonderbuilt': { const o = W.players[e.owner]; this.snd.play('age'); this.hud.notify(o.team === P.team ? `🏛 Keajaiban ${o.name} berdiri! Pertahankan ${Math.round(e.secs / 60)} menit untuk menang.` : `🏛 ${o.name} menyelesaikan Keajaiban Dunia! Hancurkan dalam ${Math.round(e.secs / 60)} menit atau kalah!`, o.team === P.team ? 'age' : 'bad'); break; }
       case 'wonderlost': this.hud.notify('🏛 Sebuah Keajaiban Dunia runtuh!', 'age'); break;
       case 'colony': if (mine) this.hud.notify('⛵ Pemukim berlayar untuk mendirikan kota di pulau lain.', 'age'); else if (vis) this.hud.notify(`⛵ ${W.players[e.owner].name} mengirim pemukim ke pulau lain!`, 'enemy'); break;
+      case 'shaftdone': if (mine) this.hud.notify('⛏ Urat bijih sebuah Tambang Bawah Tanah habis — tambangnya runtuh. Gali tambang baru di tempat lain.', 'bad'); break;
       case 'colonyland': if (mine) this.hud.notify('🏰 Pemukim mendarat — Pusat Kota baru sedang dibangun.', 'age'); break;
       case 'birth': if (mine) { this.snd.play('trainedVil'); this.hud.notify(`👶 Bayi lahir di keluarga ${e.fam}: ${e.name.split(' ')[0]}!`, 'age'); } break;
       case 'grownup': if (mine) this.hud.notify(`🧑 ${e.name} kini dewasa dan siap bekerja.`); break;
@@ -827,9 +828,9 @@ async function boot() {
   $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
   window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
-  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014105658);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
+  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014113000);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014105658);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014113000);background-position:-${p[0]}px -${p[1]}px` : ''; };
   let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;

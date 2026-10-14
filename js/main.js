@@ -259,6 +259,7 @@ class Game {
       case 'wonderbuilt': { const o = W.players[e.owner]; this.snd.play('age'); this.hud.notify(o.team === P.team ? `🏛 Keajaiban ${o.name} berdiri! Pertahankan ${Math.round(e.secs / 60)} menit untuk menang.` : `🏛 ${o.name} menyelesaikan Keajaiban Dunia! Hancurkan dalam ${Math.round(e.secs / 60)} menit atau kalah!`, o.team === P.team ? 'age' : 'bad'); break; }
       case 'wonderlost': this.hud.notify('🏛 Sebuah Keajaiban Dunia runtuh!', 'age'); break;
       case 'colony': if (mine) this.hud.notify('⛵ Pemukim berlayar untuk mendirikan kota di pulau lain.', 'age'); else if (vis) this.hud.notify(`⛵ ${W.players[e.owner].name} mengirim pemukim ke pulau lain!`, 'enemy'); break;
+      case 'shaftdone': if (mine) this.hud.notify('⛏ Urat bijih sebuah Tambang Bawah Tanah habis — tambangnya runtuh. Gali tambang baru di tempat lain.', 'bad'); break;
       case 'colonyland': if (mine) this.hud.notify('🏰 Pemukim mendarat — Pusat Kota baru sedang dibangun.', 'age'); break;
       case 'birth': if (mine) { this.snd.play('trainedVil'); this.hud.notify(`👶 Bayi lahir di keluarga ${e.fam}: ${e.name.split(' ')[0]}!`, 'age'); } break;
       case 'grownup': if (mine) this.hud.notify(`🧑 ${e.name} kini dewasa dan siap bekerja.`); break;

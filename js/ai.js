@@ -86,7 +86,8 @@ export class AI {
       if (ht && ht !== tc) this.withTown(ht, () => this.build('house', this.base, 4, 10)); else this.build('house', this.base, 4, 10);
     }
     // ---- drop sites and economy buildings
-    const vilsOn = (k) => vils.filter(v => v.order && ((v.order.t === 'gather' && v.order.kind === k) || (v.order.t === 'drop' && v.order.then && v.order.then.kind === k) || (k === 'carcass' && v.order.t === 'attack' && v.order.hunt))).length;
+    const gk = (o) => o.kind === 'shaft' ? (W.ents.get(o.id) || {}).ore : o.kind;          // a miner underground counts for the ore its mine digs
+    const vilsOn = (k) => vils.filter(v => v.order && ((v.order.t === 'gather' && gk(v.order) === k) || (v.order.t === 'drop' && v.order.then && gk(v.order.then) === k) || (k === 'carcass' && v.order.t === 'attack' && v.order.hunt))).length;
     this.vilsOn = vilsOn;
     if (!count('mill') && vils.length >= 6 && P.res.wood >= 100) { const b = this.res('berry', this.base[0], this.base[1], 16); if (b) this.build('mill', [b.x, b.y], 2, 6); }
     if (count('lumber_camp') < Math.min(2, 1 + Math.floor(vilsOn('tree') / 8)) && vils.length >= 7 && P.res.wood >= 100 && !building('lumber_camp')) {
@@ -120,6 +121,7 @@ export class AI {
     this.lifeCare(P, mine, vils);
     this.expand(P, mine, vils, tcs, ageing, target);
     this.towns(P, mine, vils, tcs);
+    this.mines(P, mine, vils, tcs);
     this.diplomacy(P);
     if (!tc && vils.length && canAfford(P, BUILDINGS.town_center.cost)) this.build('town_center', this.base, 0, 10);     // rebuild a lost Town Center
     if (P.age >= 2 && !count('market') && vils.length >= 24 && P.res.wood >= 260) this.build('market', this.base, 8, 15);
@@ -179,7 +181,7 @@ export class AI {
       let tgt = null;
       if (res === 'food') { const [hx, hy] = this.homeOf(v); tgt = this.meat(vilsOn('carcass')) || this.res('berry', hx, hy, 16) || (vilsOn('fish') < 8 && this.shoreFish(v)) || this.freeFarm(v) || this.shoreFish(v); }
       else if (res === 'wood') tgt = this.nearDropRes('tree', 'wood', v);
-      else tgt = this.nearDropRes(res, res, v);
+      else tgt = this.nearDropRes(res, res, v) || this.shaftFor(res, v);
       if (!tgt) tgt = this.nearDropRes('tree', 'wood', v);
       if (tgt) { command(W, { t: 'smart', pid: this.pid, ids: [v.id], target: tgt.id, x: tgt.x, y: tgt.y }); now[res]++; }
     }
@@ -195,9 +197,10 @@ export class AI {
     if (pile && W.t > (this.rbT || 0)) { this.rbT = W.t + 4;
       const kinds = { food: ['berry', 'farm', 'carcass', 'fish'], wood: ['tree'], gold: ['gold'], stone: ['stone'], iron: ['iron'] }[pile];
       const movers = vils.filter(v => v.order && v.order.t === 'gather' && kinds.includes(v.order.kind)).slice(0, 2);
-      const need = ['wood', 'food', 'gold', 'iron', 'stone'].filter(k => k !== pile && (k !== 'iron' || P.age >= 2) && (k !== 'stone' || (P.age >= 2 && P.res.stone < 400))).sort((a, b) => P.res[a] - P.res[b])[0];     // stone too: new towns, towers, a castle
+      const needs = ['wood', 'food', 'gold', 'iron', 'stone'].filter(k => k !== pile && (k !== 'iron' || P.age >= 2) && (k !== 'stone' || (P.age >= 2 && P.res.stone < 400))).sort((a, b) => P.res[a] - P.res[b]);     // stone too: new towns, towers, a castle
+      const find = (need, v) => need === 'food' ? (this.freeFarm(v) || this.res('berry', ...this.homeOf(v), 16)) : this.nearDropRes(need === 'wood' ? 'tree' : need, need, v) || this.shaftFor(need, v);
       for (const v of movers) {
-        const f = need === 'food' ? (this.freeFarm() || this.res('berry', this.base[0], this.base[1], 16)) : this.nearDropRes(need === 'wood' ? 'tree' : need, need, v);
+        let f = null; for (const need of needs) if ((f = find(need, v))) break;          // the scarcest resource we can actually reach (no gold left: food, ...)
         if (f) command(W, { t: 'smart', pid: this.pid, ids: [v.id], target: f.id, x: f.x, y: f.y });
       }
     }
@@ -792,6 +795,45 @@ export class AI {
       else if (W.map && W.map.water === 'islands') { const s2 = this.expansionSite(true); if (s2) this.startColony(s2, vils); }
     }
   }
+  // ---------------------------------------------------------------- underground mines
+  // When the gold, stone or iron round our towns runs out, a mine is dug by the town: it is set to the ore we need,
+  // switched when another ore runs short, and a new one is dug when it caves in.
+  shaftFor(res, v) {
+    if (!['gold', 'stone', 'iron'].includes(res)) return null;
+    let best = null, bd = 1e9;
+    for (const b of this.m.bld) {
+      if (!b.id || !b.built || !BUILDINGS[b.type].shaft || b.ore !== res || !(b.left > 0)) continue;
+      const crew = this.m.units.filter(u => u.order && u.order.t === 'gather' && u.order.id === b.id).length; if (crew >= BUILDINGS[b.type].crew) continue;
+      const d = Math.hypot(b.x - v.x, b.y - v.y); if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  }
+  mines(P, mine, vils, tcs) {
+    const W = this.W; if (P.age < 2 || W.t < (this.mineT || 0)) return; this.mineT = W.t + 12;
+    const shafts = mine.bld.filter(b => b.id && BUILDINGS[b.type].shaft);
+    const want = (k) => k === 'gold' ? P.res.gold < 3000 : k === 'stone' ? P.res.stone < 500 : P.res.iron < 400 && (this.S.iron > 0 || P.age >= 3);
+    const surface = (k) => (tcs.length ? tcs : [{ x: this.base[0] - 2, y: this.base[1] - 2 }]).some(t => this.res(k, t.x + 2, t.y + 2, 32));
+    const need = (k) => P.res[k] / { gold: 1, stone: 0.6, iron: 0.5 }[k];          // gold matters most
+    const lack = ['gold', 'stone', 'iron'].filter(k => want(k) && !surface(k)).sort((a, b) => need(a) - need(b));
+    // the ore each mine digs: what we lack most and no other mine digs; switched only when another ore is far scarcer
+    this.oreSet = this.oreSet || new Set();
+    for (const s of shafts) {
+      const best = lack.find(k => !shafts.some(o => o !== s && o.ore === k && o.left > 0)) || lack[0];
+      if (!best || s.ore === best) { this.oreSet.add(s.id); continue; }
+      if (!this.oreSet.has(s.id) || !want(s.ore) || need(s.ore) > need(best) * 2 + 100) { this.oreSet.add(s.id); command(W, { t: 'ore', pid: this.pid, bid: s.id, ore: best }); }
+    }
+    // a new mine for an ore no mine digs yet (three, then two per town)
+    const missing = lack.find(k => !shafts.some(s => s.ore === k && (s.left > 0 || !s.built)));
+    if (missing && shafts.length < Math.max(3, 2 * tcs.length) && vils.length >= 15 && P.res.wood >= 320 && !mine.bld.some(b => b.type === 'mine_shaft' && !b.built)) this.build('mine_shaft', this.base, 6, 14);
+    // crews: woodcutters go down a mine that is short of hands while its ore is needed
+    if (restNow(W, P)) return;
+    for (const s of shafts) {
+      if (!s.built || !(s.left > 0) || !lack.includes(s.ore)) continue;
+      const crew = vils.filter(v => v.order && v.order.id === s.id).length; if (crew >= 5) continue;
+      const go = vils.filter(v => v.order && v.order.t === 'gather' && v.order.kind === 'tree' && !(v.carry && v.carry.n > 3)).sort((a, b) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(b.x - s.x, b.y - s.y)).slice(0, Math.min(2, 5 - crew));
+      if (go.length && (P.res.wood > 250 || vils.length > 30)) command(W, { t: 'smart', pid: this.pid, ids: go.map(v => v.id), target: s.id, x: s.x + 1, y: s.y + 1 });
+    }
+  }
   // ---------------------------------------------------------------- the other towns
   // Every Town Center after the first grows into a town of its own: houses round its plaza, camps by the nearby wood
   // and ore, its own field district and mill, a well and a tavern, then a market, a barracks and a tower to hold it.
@@ -1220,7 +1262,7 @@ export class AI {
     this.fieldDistrict(T);
     const d = BUILDINGS[type], n = d.n;
     const mil = ['barracks', 'archery_range', 'stable', 'castle', 'siege_workshop'].includes(type);
-    const civic = ['market', 'blacksmith', 'academy', 'monastery', 'tavern', 'hospital'].includes(type), house = type === 'house', rural = type === 'barn';
+    const civic = ['market', 'blacksmith', 'academy', 'monastery', 'tavern', 'hospital'].includes(type), house = type === 'house', rural = type === 'barn' || type === 'mine_shaft';
     const [r0, r1] = mil ? [6, 15] : civic ? [2, 10] : house ? [2, 15] : rural ? [8, 16] : [3, 15];
     let best = null, bs = 1e9;
     for (let j = T.y - 3 - 3 * 8; j <= T.y + T.h + 24; j += 3) for (let i = T.x - 3 - 3 * 8; i <= T.x + T.w + 24; i += 3) {

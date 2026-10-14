@@ -9,19 +9,19 @@ const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
 // villager build menu, two pages
 const VIL_PAGES = [
-  [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['dock', 5], ['market', 6], ['blacksmith', 7], ['academy', 8], ['monastery', 10], ['wonder', 11], ['town_center', 12]],
+  [['house', 0], ['mill', 1], ['lumber_camp', 2], ['mining_camp', 3], ['farm', 4], ['dock', 5], ['market', 6], ['blacksmith', 7], ['academy', 8], ['mine_shaft', 9], ['monastery', 10], ['wonder', 11], ['town_center', 12]],
   [['barracks', 0], ['archery_range', 1], ['stable', 2], ['siege_workshop', 3], ['castle', 4], ['watch_tower', 5], ['palisade', 6], ['stone_wall', 7], ['gate', 8], ['outpost', 10]],
   [['house', 0], ['well', 1], ['tavern', 2], ['hospital', 3], ['barn', 4], ['market', 5], ['monastery', 6], ['farm', 7], ['mill', 8]],
 ];
 const PAGE_NAME = ['🏠 Ekonomi', '⚔ Militer & Pertahanan', '🍺 Kehidupan Warga'];
-const BLD_DESC = { house: '+5 populasi', mill: 'Tempat setor makanan, membuka ladang', lumber_camp: 'Tempat setor kayu', mining_camp: 'Tempat setor emas, batu & besi', farm: 'Sumber makanan tak terbatas (perlu ditanam ulang)',
+const BLD_DESC = { house: '+5 populasi', mill: 'Tempat setor makanan, membuka ladang', lumber_camp: 'Tempat setor kayu', mining_camp: 'Tempat setor emas, batu & besi', mine_shaft: 'Tambang Bawah Tanah: penambang turun menggali emas, batu atau besi (pilih) lalu membawa hasilnya ke kota. Bijih terbatas; bila habis tambang runtuh.', farm: 'Sumber makanan tak terbatas (perlu ditanam ulang)',
   barracks: 'Melatih infanteri dan Pendobrak', archery_range: 'Melatih pemanah dan penembak mesiu', stable: 'Melatih kavaleri', watch_tower: 'Menembakkan panah ke musuh', stone_wall: 'Tarik garis untuk membangun tembok',
   gate: 'Gerbang untuk pasukanmu', castle: 'Benteng kuat, melatih ksatria', market: 'Jual-beli makanan, kayu, batu dan besi dengan emas', dock: 'Dibangun di tepi air: kapal nelayan, angkut dan perang',
   blacksmith: 'Peningkatan senjata & zirah, dan memilih DOKTRIN perang pertama', academy: 'Riset: mata-mata, mesiu, pasukan khusus dan DOKTRIN kedua',
   monastery: 'Melatih Biarawan; simpan relik di sini untuk emas', palisade: 'Pagar kayu murah dan cepat (Zaman Kegelapan). Tarik garis seperti tembok.', siege_workshop: 'Melatih Pendobrak, Mangonel dan Skorpion',
   wonder: `Keajaiban Dunia: pertahankan ${WONDER_TIME / 60} menit untuk MENANG`,
   outpost: 'Pos Perbatasan: memperluas wilayah kekuasaan (radius 9) dan mengawasi. Di wilayah sendiri pengumpulan +10%; di wilayah musuh hanya bangunan militer yang boleh dibangun.',
-  town_center: 'Kota baru: wilayah kekuasaan radius 18, setor semua sumber daya, latih penduduk. Satu Pusat Kota per zaman (2 di Feodal, 3 di Kastil, 4 di Imperial).',
+  town_center: 'Kota baru: wilayah kekuasaan radius 18, setor semua sumber daya, latih penduduk. Maks 2 di Feodal, 4 di Kastil, 10 di Imperial; tiap kota baru menaikkan batas populasi +30.',
   well: 'Air bersih untuk warga dalam 10 petak. Warga yang haus bekerja lambat dan bisa jatuh sakit.', tavern: 'Kedai: hiburan, makan dan minum — warga mampir saat senja. Tanpa hiburan warga bosan, malas, lalu pergi.',
   hospital: 'Balai Pengobatan: menyembuhkan yang sakit dan menahan wabah.', barn: 'Kandang dengan padang: domba/sapi di sini bertambah gemuk dan menghasilkan susu. Bisa membeli ternak.' };
 // fixed slots per building (some have more commands than keys follow from the data)
@@ -38,7 +38,7 @@ const SLOTS = {
   tavern: { brewery: 5, minstrels: 6 }, hospital: { herbalism: 5, quarantine: 6, sanitation: 7 }, barn: { sheep: 0, cow: 1, fodder: 5 },
   castle: { knight: 0, unique: 1, trebuchet_p: 2, conscription: 5, $out: 11 }, monastery: { monk: 0, fervor: 5, sanctity: 6, illumination: 7 },
   mill: { horse_collar: 0, heavy_plow: 0, crop_rotation: 0, granary: 1, $reseed: 5 }, mining_camp: { gold_mining: 0, gold_shaft: 0, iron_smelting: 1, stone_mining: 2, stone_shaft: 2 },
-  lumber_camp: { double_bit_axe: 0, bow_saw: 0, two_man_saw: 0 }, market: { trade_cart: 8, guilds: 3, trade_route: 4 }, watch_tower: { guard_tower: 0, keep: 0, $out: 11 }, gate: { $lock: 0 },
+  lumber_camp: { double_bit_axe: 0, bow_saw: 0, two_man_saw: 0 }, mine_shaft: { $ore: 0, mine_rails: 5, deep_veins: 6 }, market: { trade_cart: 8, guilds: 3, trade_route: 4 }, watch_tower: { guard_tower: 0, keep: 0, $out: 11 }, gate: { $lock: 0 },
 };
 // buildings with more commands than fit: extra pages (slot 14 flips)
 const PAGES = { academy: [null, { $name: 'Pasukan Khusus', spec_samurai: 0, spec_ninja: 1, spec_fire: 5, spec_crossbow: 6, spec_cataphract: 10, spec_lancer: 11 }] };
@@ -248,6 +248,8 @@ export class HUD {
       const n = insideOf(W, b).soldiers;
       this.setBtn(slots.$out ?? 11, { glyph: '⏏', name: 'Keluarkan Garnisun', desc: `${n} / ${garrisonCapOf(W, b)} tentara di dalam. Tentara di dalam menambah panah bangunan dan sembuh perlahan. Masukkan tentara: pilih lalu klik kanan bangunan ini.`, disabled: !n, why: n ? '' : 'Tidak ada garnisun', act: () => G.send({ t: 'ungarrison', pid: G.me, bid: b.id }) });
     }
+    if (d.shaft && b.built && shown('$ore')) ['gold', 'stone', 'iron'].forEach((r, i) => this.setBtn((slots.$ore ?? 0) + i, { icon: 'res_' + r, glyph: { gold: '🪙', stone: '🪨', iron: '⛓' }[r], name: 'Gali ' + RES_NAME[r], active: b.ore === r,
+      desc: `Penambang menggali ${RES_NAME[r].toLowerCase()} di tambang ini${b.ore === r ? ' (sekarang)' : ''}. Peningkatan alat untuk ${RES_NAME[r].toLowerCase()} (Kamp Tambang) ikut berlaku.`, act: () => G.send({ t: 'ore', pid: G.me, bid: b.id, ore: r }) }));
     if (d.gate && shown('$lock')) this.setBtn(slots.$lock ?? 0, { glyph: b.locked ? '🔒' : '🔓', name: b.locked ? 'Buka Kunci Gerbang' : 'Kunci Gerbang', active: !!b.locked, desc: b.locked ? 'Gerbang terkunci: tidak ada yang bisa lewat, termasuk pasukanmu.' : 'Kunci gerbang agar tidak bisa dilewati siapa pun (pasukan sendiri dan sekutu biasanya bisa lewat).', act: () => G.send({ t: 'lock', pid: G.me, bid: b.id }) });
     if (d.reseed && shown('$reseed')) {
       const q = W.reseed[G.me] || 0, fc = costOf(P, 'farm');
@@ -324,6 +326,7 @@ export class HUD {
       const d = BUILDINGS[e.type], bs = bstat(W, e.owner, e.type);
       if (!e.built) st = `Membangun… ${Math.floor(e.progress * 100)}%` + (e.progress <= 0.001 ? ' · <i>fondasi belum dikerjakan (tak bisa diserang)</i>' : '');
       else if (e.type === 'farm') st = `Makanan: <b>${Math.ceil(e.food)}</b>`;
+      else if (d.shaft) { let n = 0; for (const u of W.dyn.values()) if (u.inside === e.id) n++; st = `⛏ Menggali <b>${RES_NAME[e.ore] || '-'}</b> · bijih tersisa <b>${Math.ceil(e.left || 0)}</b> · ${n}/${d.crew} penambang di bawah tanah`; }
       else if (e.queue[0]) { const q = e.queue[0]; const T = q.unit ? stat(W, e.owner, q.unit).time : TECHS[q.tech].time; st = `${q.unit ? 'Melatih ' + UNITS[q.unit].name : 'Meneliti ' + TECHS[q.tech].name} ${Math.floor(q.t / T * 100)}%${W.players[e.owner].housed && q.unit ? ' — <b class="warn">butuh rumah!</b>' : ''}`; }
       else if (bs.attack) st = `⚔ ${bs.attack.atk} · 🏹 ${bs.attack.range} · 🛡 ${bs.ma}/${bs.pa}`;
       else if (d.market) { const P = W.players[e.owner]; st = 'Harga per 100: ' + Object.keys(MARKET.base).map(r => `<span class="mp"><i class="si" style="${this.iconStyle('res_' + r)}"></i>beli <b>${buyPrice(W, P, r)}</b> / jual <b>${sellPrice(W, P, r)}</b></span>`).join(' · ') + (P.techs.has('trade_route') ? ' · +24 emas/menit' : ''); }
