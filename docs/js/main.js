@@ -1,23 +1,23 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js?v=20261014170741';
-import { openTechTree } from './techtree.js?v=20261014170741';
-import { Saves } from './saves.js?v=20261014170741';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014170741';
-import { townRing, pacted, POST } from './sim.js?v=20261014170741';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014170741';
-import { generate } from './map.js?v=20261014170741';
-import { AI } from './ai.js?v=20261014170741';
-import { loadAll, vq } from './assets.js?v=20261014170741';
-import { View, iso, UNIT_BOX, FX } from './render.js?v=20261014170741';
-import { HUD } from './ui.js?v=20261014170741';
-import { Sound } from './audio.js?v=20261014170741';
-import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261014170741';
-import { CardPanel, DeckBuilder } from './cards.js?v=20261014170741';
-import { Advisor } from './advisor.js?v=20261014170741';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014170741';
-import { Lockstep } from './lockstep.js?v=20261014170741';
-import { Lobby } from './lobby.js?v=20261014170741';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js?v=20261014172537';
+import { openTechTree } from './techtree.js?v=20261014172537';
+import { Saves } from './saves.js?v=20261014172537';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014172537';
+import { townRing, pacted, POST } from './sim.js?v=20261014172537';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014172537';
+import { generate } from './map.js?v=20261014172537';
+import { AI } from './ai.js?v=20261014172537';
+import { loadAll, vq } from './assets.js?v=20261014172537';
+import { View, iso, UNIT_BOX, FX } from './render.js?v=20261014172537';
+import { HUD } from './ui.js?v=20261014172537';
+import { Sound } from './audio.js?v=20261014172537';
+import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261014172537';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261014172537';
+import { Advisor } from './advisor.js?v=20261014172537';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014172537';
+import { Lockstep } from './lockstep.js?v=20261014172537';
+import { Lobby } from './lobby.js?v=20261014172537';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -523,7 +523,8 @@ class Game {
   zoomAt(px, py, f) {
     this.camZoom = null;                    // the viewer's zoom wins over the director's
     const v = this.view, c = v.cam, s = this.app.screen, z0 = c.zoom;
-    const z = Math.max(this.watch || this.lost ? 0.1 : 0.18, Math.min(1.6, z0 * f)); if (z === z0) return;      // (was 0.22 / 0.3: big empires need a wider view)
+    const zmin = (this.watch || this.lost ? 0.1 : 0.18) * Math.min(1, 280 / this.W.size) ** 0.7;      // bigger maps may be seen further out
+    const z = Math.max(zmin, Math.min(1.6, z0 * f)); if (z === z0) return;
     const X = (px - (s.width / 2 - c.x * z0)) / z0, Y = (py - (s.height / 2 - c.y * z0)) / z0;
     c.x = (s.width / 2 - (px - X * z)) / z; c.y = (s.height / 2 - (py - Y * z)) / z; c.zoom = z;
   }
@@ -855,7 +856,7 @@ async function boot() {
   await app.init({ resizeTo: window, background: '#000000', antialias: false, autoDensity: true, resolution: Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2), preference: 'webgl' });
   $('game').appendChild(app.canvas);
   // menu state
-  const opts = store.get('opts', { diff: 'normal', color: 'blue', size: 144, seed: 0, players: 2, name: '', mode: 'play' });
+  const opts = store.get('opts', { diff: 'normal', color: 'blue', size: 288, seed: 0, players: 2, name: '', mode: 'play', sizeV: 2 });
   if (!opts.mode) opts.mode = 'play';
   if (!opts.map) opts.map = 'random';
   if (!opts.season) opts.season = 'random';
@@ -863,7 +864,9 @@ async function boot() {
   if (!opts.civ) opts.civ = 'random';
   if (!opts.relicWin) opts.relicWin = 'off';
   for (const [k, v] of Object.entries({ life: 'on', victory: 'conquest', teams: 'ffa', treaty: 0, popLimit: 200, startRes: 'standar', speed: 1 })) if (opts[k] === undefined) opts[k] = v;
-  if (![112, 144, 180, 220, 280].includes(opts.size)) opts.size = 144;
+  // map sizes were doubled (Kecil 224 ... Kolosal 560): a choice saved before that becomes its new, twice-as-big version
+  if (!opts.sizeV) { opts.size = { 112: 224, 144: 288, 180: 360, 220: 440, 280: 560 }[opts.size] || opts.size; opts.sizeV = 2; }
+  if (!(opts.size >= 64 && opts.size <= 600)) opts.size = 288;
   const segs = document.querySelectorAll('.seg');
   segs.forEach(s => { const k = s.dataset.k; s.querySelectorAll('button').forEach(b => { b.classList.toggle('on', String(opts[k]) === b.dataset.v); b.onclick = () => { opts[k] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); store.set('opts', opts); Sound.ui(); }; }); });
   $('nameIn').value = opts.name || ''; $('nameIn').oninput = () => { opts.name = $('nameIn').value.slice(0, 16); store.set('opts', opts); };
@@ -910,9 +913,9 @@ async function boot() {
   $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
   window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
-  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014170741);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
+  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014172537);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014170741);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014172537);background-position:-${p[0]}px -${p[1]}px` : ''; };
   let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;

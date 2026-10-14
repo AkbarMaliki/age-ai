@@ -9,7 +9,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGEERR ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push('error: ' + m.text()); });
   await p.goto(BASE, { waitUntil: 'networkidle' }); await p.waitForTimeout(500);
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, seed: 4242, players: 2, name: '' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, sizeV: 2, seed: 4242, players: 2, name: '' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500);
   await p.click('#btnPlay'); await p.waitForFunction(() => window.__ak && __ak.game, null, { timeout: 60000 }); await p.waitForTimeout(1500);
   const G = (f, a) => p.evaluate(f, a);

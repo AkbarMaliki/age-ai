@@ -9,7 +9,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 180, seed: 12, players: 4, name: '', mode: 'watch' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 180, sizeV: 2, seed: 12, players: 4, name: '', mode: 'watch' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay'); await p.waitForFunction(() => window.__ak && __ak.game && __ak.game.W, null, { timeout: 60000 }); await p.waitForTimeout(1500);
   await p.evaluate(async () => { const { step } = await import('/js/sim.js'); const g = __ak.game; for (let i = 0; i < 12 * 600; i++) { for (const ai of g.ais) ai.tick(); step(g.W); g.W.ev.length = 0; } });
   await p.mouse.move(800, 400);

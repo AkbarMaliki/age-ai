@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const ctx = await b.newContext({ viewport: { width: 1280, height: 760 } }); const p = await ctx.newPage();
     p.on('pageerror', e => errs.push(`${who} PAGEERR ${e.message}`)); p.on('console', m => { if (m.type() === 'error' || /desync/.test(m.text())) errs.push(`${who} ${m.type()}: ${m.text()}`); });
     await p.goto(BASE, { waitUntil: 'networkidle' });
-    await p.evaluate((name) => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, seed: 0, players: 2, name, mode: 'play', map: 'padang', season: 'semi', night: 'full' })), name);
+    await p.evaluate((name) => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, sizeV: 2, seed: 0, players: 2, name, mode: 'play', map: 'padang', season: 'semi', night: 'full' })), name);
     await p.reload({ waitUntil: 'networkidle' });
     return p;
   };

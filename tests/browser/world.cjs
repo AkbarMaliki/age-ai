@@ -18,7 +18,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   await p.click('#btnAch'); await p.waitForTimeout(300); await p.screenshot({ path: `${SP}/wd_ach.png` }); await p.click('#achClose');
   for (const cs of cases) {
     const [map, season] = cs.split(':');
-    await p.evaluate(([map, season]) => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, seed: 0, players: 2, name: '', mode: 'play', map, season, night: 'full' })), [map, season]);
+    await p.evaluate(([map, season]) => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, sizeV: 2, seed: 0, players: 2, name: '', mode: 'play', map, season, night: 'full' })), [map, season]);
     await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay'); await p.waitForTimeout(4500);
     await G(async () => { const { AI } = await import('/js/ai.js'); const g = __ak.game; g.ais.push(new AI(g.W, 0, 'hard')); });
     await ff(60 * 16);

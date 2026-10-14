@@ -11,7 +11,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   p.on('pageerror', e => errs.push('PAGEERR ' + e.message + ' ' + (e.stack || '').split('\n')[1])); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   const G = (f, a) => p.evaluate(f, a);
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await G(() => { localStorage.clear(); localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, seed: 0, players: 2, name: 'Uji', mode: 'play', map: 'padang', season: 'semi', night: 'full', civ: 'jepang', relicWin: 'on' })); });
+  await G(() => { localStorage.clear(); localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, sizeV: 2, seed: 0, players: 2, name: 'Uji', mode: 'play', map: 'padang', season: 'semi', night: 'full', civ: 'jepang', relicWin: 'on' })); });
   await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay'); await p.waitForFunction(() => window.__ak && __ak.game, null, { timeout: 90000 });
   // play 8 minutes: the brain's orders go through game.send (recorded) exactly like a player's
   const A = await G(async () => {

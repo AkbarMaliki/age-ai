@@ -10,7 +10,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const errs = []; p.on('pageerror', e => errs.push('PAGEERR ' + e.message)); p.on('console', m => { if (['error', 'warning'].includes(m.type())) errs.push(m.type() + ': ' + m.text()); });
   const G = (f, a) => p.evaluate(f, a);
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await G(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'easy', color: 'blue', size: 144, seed: 21, players: 2, name: '', mode: 'play', map: 'kepulauan', season: 'semi', night: 'off' })));
+  await G(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'easy', color: 'blue', size: 144, sizeV: 2, seed: 21, players: 2, name: '', mode: 'play', map: 'kepulauan', season: 'semi', night: 'off' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay'); await p.waitForTimeout(4000);
   const where = await G(async () => {
     const { addUnit, passable } = await import('/js/sim.js'); const g = __ak.game, W = g.W, P = W.players[0], [sx, sy] = P.start;

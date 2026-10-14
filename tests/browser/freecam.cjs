@@ -9,7 +9,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const p = await b.newPage({ viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, seed: 5, players: 2, name: '', mode: 'watch' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, sizeV: 2, seed: 5, players: 2, name: '', mode: 'watch' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay'); await p.waitForTimeout(4000);
   const cam = () => p.evaluate(() => [Math.round(__ak.game.view.cam.x), Math.round(__ak.game.view.cam.y)]);
   const c0 = await cam();

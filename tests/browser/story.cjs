@@ -9,7 +9,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const p = await b.newPage({ viewport: { width: 1536, height: 760 } });
   const errs = []; p.on('pageerror', e => errs.push('PAGEERR ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => { localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 144, seed: 21, players: 4, name: '', mode: 'watch' })); localStorage.removeItem('ak_score'); });
+  await p.evaluate(() => { localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 144, sizeV: 2, seed: 21, players: 4, name: '', mode: 'watch' })); localStorage.removeItem('ak_score'); });
   await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay');
   await p.waitForFunction(() => window.__ak && __ak.game && __ak.game.W, null, { timeout: 60000 }); await p.waitForTimeout(1200);
   console.log('score box shown', await p.evaluate(() => !document.getElementById('scoreBox').classList.contains('hidden')));

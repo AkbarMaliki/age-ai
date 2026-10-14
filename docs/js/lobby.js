@@ -1,14 +1,14 @@
 // Online lobby: create a room, share its link, seat players and AIs, pick teams and the map, start.
-import { Net, MAX_SEATS, BOT_NAME } from './net.js?v=20261014170741';
-import { PLAYER_COLORS, PLAYER_RGB, DECKS, CIVS, CIV_KEYS } from './data.js?v=20261014170741';
-import { Sound } from './audio.js?v=20261014170741';
+import { Net, MAX_SEATS, BOT_NAME } from './net.js?v=20261014172537';
+import { PLAYER_COLORS, PLAYER_RGB, DECKS, CIVS, CIV_KEYS } from './data.js?v=20261014172537';
+import { Sound } from './audio.js?v=20261014172537';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const CFG = {
   relicWin: [['', 'Mati'], ['1', 'Aktif']],
   map: [['random', 'Acak'], ['padang', 'Padang'], ['rimba', 'Rimba'], ['danau', 'Danau'], ['sungai', 'Sungai'], ['tambang', 'Tambang'], ['pegunungan', 'Gunung'], ['kepulauan', 'Pulau']],
-  size: [[112, 'Kecil'], [144, 'Sedang'], [180, 'Besar'], [220, 'Raksasa'], [280, 'Kolosal']],
+  size: [[224, 'Kecil'], [288, 'Sedang'], [360, 'Besar'], [440, 'Raksasa'], [560, 'Kolosal']],
   season: [['random', 'Acak'], ['semi', 'Semi'], ['kemarau', 'Kemarau'], ['gugur', 'Gugur'], ['salju', 'Salju']],
   night: [['full', 'Penuh'], ['visual', 'Visual'], ['off', 'Mati']],
   life: [['on', 'Aktif'], ['off', 'Mati (klasik)']],
@@ -66,7 +66,7 @@ export class Lobby {
     try {
       const net = new Net(); this.bind(net);
       const o = this.opts;
-      await net.create(this.name, this.deck(), { map: o.map || 'random', size: o.size || 144, season: o.season || 'random', night: o.night || 'full' });
+      await net.create(this.name, this.deck(), { map: o.map || 'random', size: o.size || 288, season: o.season || 'random', night: o.night || 'full' });
       this.setUrl(net.code);
       this.note('Room dibuat. Bagikan link di atas — teman yang membukanya langsung masuk.');
       this.render();
@@ -135,7 +135,7 @@ export class Lobby {
     const deckKeys = Object.keys(DECKS), cfg = net.meta.cfg || {};
     const seats = net.seated().map(([pid, p]) => ({ pid, name: p.name, color: p.color, team: p.team, deck: p.bot ? null : (p.deck || null), bot: !!p.bot, diff: p.diff || 'normal', style: p.bot ? deckKeys[(Math.random() * deckKeys.length) | 0] : null,
       civ: CIVS[p.civ] ? p.civ : CIV_KEYS[(Math.random() * CIV_KEYS.length) | 0] }));      // 'random' is settled here, once, by the host
-    const game = { cfg: { seed: (Math.random() * 1e9) | 0, map: cfg.map || 'random', size: cfg.size || 144, season: cfg.season || 'random', night: cfg.night || 'full', relicWin: !!cfg.relicWin,
+    const game = { cfg: { seed: (Math.random() * 1e9) | 0, map: cfg.map || 'random', size: cfg.size || 288, season: cfg.season || 'random', night: cfg.night || 'full', relicWin: !!cfg.relicWin,
       life: cfg.life || 'on', victory: cfg.victory || 'conquest', treaty: +cfg.treaty || 0, startRes: cfg.startRes || 'standar', popLimit: +cfg.popLimit || 200, speed: +cfg.speed || 1 }, seats, run: Date.now() };
     try { await net.startGame(game); } catch (e) { this.note('Gagal memulai: ' + e.message, true); $('olStartBtn').disabled = false; }
   }

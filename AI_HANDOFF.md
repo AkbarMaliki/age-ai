@@ -280,6 +280,13 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
   - Profile tool: a script that fast-forwards, then `node:inspector` profiles the late phase (see git history of this section).
 - Tests: `tests/general.test.js`, `tests/firewar.test.js`, `tests/posts.test.js` (in `npm test`); browser `tests/browser/story.cjs`.
 
+### v18: maps twice as big
+- Menu sizes doubled: Kecil 224, Sedang 288, Besar 360, Raksasa 440, Kolosal 560 (index.html, lobby.js). A size saved before is doubled once (`opts.sizeV`); any size from 64 to 600 is accepted (the browser tests set `sizeV: 2` and keep their small maps).
+- `nearestResource` uses `W.rgrid` (resources filed by 8×8 cell in `add()`; dead ones dropped lazily) instead of scanning every entity. A 560 map holds ~30k trees. Farms and mines still come from `W.dyn`. `secondForest` checks the distance before the costly drop-site search.
+- The zoom-out limit scales with the map: × min(1, 280 / size)^0.7.
+- Measured at 560 (4 players): generation ≤ 0.25 s; game ready in ~10 s with 33k entities; 52–60 fps at 2x, 41 fps fully zoomed out; ~110 MB heap. 20x gives ~21–24 game-s/s by minute 25. The first wars start around minute 38 (longer marches).
+- Checks: `SIZES=224,288,360,440,560 node tests/map.test.js 5` (fairness ≤ 14%, no cut-off towns); browser `tests/browser/bigmap.cjs` (`SIZE=`, `MOBILE=1`).
+
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
 - Changes from it: archer atk 5, +3 vs infantry, cost 30w/40g; pikeman 55 hp, 0 pierce armour, 40f/30w; cataphract 115 hp, 3/3 armour, 35 iron; militia atk 5, 1 melee armour, 55f/20g; fire archer atk 6. Wells and outposts (and children) no longer keep a kingdom alive; the AI resigns when crushed (< 15 pop vs > 5x, for 2 min); exhaustion no longer kills; town-watch patrols recover energy. Bug: the AI's life timer shared its name (`lcT`) with the lumber-camp timer, so taverns / wells / hospitals were rarely considered (now `lifeT`). Expansion reserves the Town Center's cost once a site is known (`expandNeed`). `expansionSite` uses a resource grid (was a 75 ms spike).

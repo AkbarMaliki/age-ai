@@ -10,7 +10,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const p = await b.newPage(MOBILE ? { viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: 1600, height: 900 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 180, seed: 12, players: 4, name: '', mode: 'watch', night: 'off' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 180, sizeV: 2, seed: 12, players: 4, name: '', mode: 'watch', night: 'off' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay');
   await p.waitForFunction(() => window.__ak && __ak.game && __ak.game.W, null, { timeout: 60000 }); await p.waitForTimeout(1500);
   await p.evaluate(() => { const g = __ak.game; for (let n = 0; n < 35 * 600; n++) g.tickOnce(false); });

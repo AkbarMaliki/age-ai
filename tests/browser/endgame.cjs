@@ -11,7 +11,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const G = (f, a) => p.evaluate(f, a);
   const ff = (min) => G(async (min) => { const { step } = await import('/js/sim.js'); const g = __ak.game; for (let i = 0; i < min * 600; i++) { for (const ai of g.ais) ai.tick(); step(g.W); g.hist.tick(); for (const e of g.W.ev) g.onEvent(e); g.W.ev.length = 0; } }, min);
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, seed: 777, players: 3, name: '', mode: 'play', map: 'padang' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, sizeV: 2, seed: 777, players: 3, name: '', mode: 'play', map: 'padang' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.click('#btnPlay'); await p.waitForTimeout(4500);
   // an AI plays our side to reach the Feudal Age with a market, then hands back control
   const ai0 = await G(async () => { const { AI } = await import('/js/ai.js'); const g = __ak.game; g.ais.push(new AI(g.W, 0, 'hard')); return g.ais.length; });

@@ -10,7 +10,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const errs = []; p.on('pageerror', e => errs.push('PAGEERR ' + e.message)); p.on('console', m => { if (['error', 'warning'].includes(m.type())) errs.push(m.type() + ': ' + m.text()); });
   p.on('requestfailed', r => errs.push('FAIL ' + r.url()));
   await p.goto(BASE, { waitUntil: 'networkidle' }); await p.waitForTimeout(500);
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, seed: 4242, players: 2, name: '' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, sizeV: 2, seed: 4242, players: 2, name: '' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(500);
   await p.screenshot({ path: `${SP}/v2_menu.png` });
   await p.click('#btnPlay'); const tLoad = Date.now(); await p.waitForFunction(() => window.__ak && __ak.game, null, { timeout: 60000 }); console.log('game ready in', Date.now() - tLoad, 'ms'); await p.waitForTimeout(1500);

@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014170741';
-import { DAY, RELICS, RES_NAME } from './data.js?v=20261014170741';
-import { timeOfDay, unreachable, restNow, targetable, generalName, pacted, pactSince, offerOf, brokeAt, tributeAt } from './sim.js?v=20261014170741';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014170741';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014172537';
+import { DAY, RELICS, RES_NAME } from './data.js?v=20261014172537';
+import { timeOfDay, unreachable, restNow, targetable, generalName, pacted, pactSince, offerOf, brokeAt, tributeAt } from './sim.js?v=20261014172537';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014172537';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const TOWNS = ['Sukamaju', 'Karangsari', 'Tanjungpura', 'Wanasari', 'Giriwangi', 'Sumberjaya', 'Mekarsari', 'Banyuasri', 'Purwasari', 'Rejosari', 'Kalisari', 'Gunungsari', 'Tirtamaya', 'Candirejo', 'Batursari', 'Lembahhijau'];     // town names in the war chronicle
@@ -1624,9 +1624,10 @@ export class AI {
   secondForest(kind) {
     const W = this.W; let best = null, bd = 1e9;
     for (const e of W.ents.values()) {
-      if (e.kind !== 'res' || e.type !== kind || !this.P.exp[idx(W, e.x, e.y)]) continue;
+      if (e.kind !== 'res' || e.type !== kind) continue;
+      const dd = Math.hypot(e.x - this.base[0], e.y - this.base[1]); if (dd >= bd || dd >= 24 || !this.P.exp[idx(W, e.x, e.y)]) continue;     // (distance first: the drop-site search is the costly part)
       const d = nearestDrop(W, this.pid, 'wood', e.x, e.y); if (d && distTo(d, e.x, e.y) < 7) continue;
-      const dd = Math.hypot(e.x - this.base[0], e.y - this.base[1]); if (dd < bd && dd < 24) { bd = dd; best = e; }
+      bd = dd; best = e;
     }
     return best;
   }

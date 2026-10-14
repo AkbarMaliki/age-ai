@@ -10,7 +10,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push('PAGEERR ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, seed: 31, players: 2, name: '', mode: 'play' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 112, sizeV: 2, seed: 31, players: 2, name: '', mode: 'play' })));
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(800);
   console.log('touch class', await p.evaluate(() => document.body.classList.contains('touch')));
   await p.screenshot({ path: `${SP}/m_menu.png` });

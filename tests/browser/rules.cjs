@@ -13,7 +13,7 @@ let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') 
   const errs = []; p.on('pageerror', e => errs.push('PAGEERR ' + e.message)); p.on('console', m => { if (['error'].includes(m.type())) errs.push(m.type() + ': ' + m.text()); });
   const G = (f, a) => p.evaluate(f, a);
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'easy', color: 'blue', size: 144, seed: 4242, players: 4, name: '', mode: 'play', map: 'padang', season: 'semi', night: 'off' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'easy', color: 'blue', size: 144, sizeV: 2, seed: 4242, players: 4, name: '', mode: 'play', map: 'padang', season: 'semi', night: 'off' })));
   await p.reload({ waitUntil: 'networkidle' });
   // tech tree from the home menu
   await p.click('#btnTreeHome'); await p.waitForTimeout(400);

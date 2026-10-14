@@ -523,7 +523,8 @@ class Game {
   zoomAt(px, py, f) {
     this.camZoom = null;                    // the viewer's zoom wins over the director's
     const v = this.view, c = v.cam, s = this.app.screen, z0 = c.zoom;
-    const z = Math.max(this.watch || this.lost ? 0.1 : 0.18, Math.min(1.6, z0 * f)); if (z === z0) return;      // (was 0.22 / 0.3: big empires need a wider view)
+    const zmin = (this.watch || this.lost ? 0.1 : 0.18) * Math.min(1, 280 / this.W.size) ** 0.7;      // bigger maps may be seen further out
+    const z = Math.max(zmin, Math.min(1.6, z0 * f)); if (z === z0) return;
     const X = (px - (s.width / 2 - c.x * z0)) / z0, Y = (py - (s.height / 2 - c.y * z0)) / z0;
     c.x = (s.width / 2 - (px - X * z)) / z; c.y = (s.height / 2 - (py - Y * z)) / z; c.zoom = z;
   }
@@ -855,7 +856,7 @@ async function boot() {
   await app.init({ resizeTo: window, background: '#000000', antialias: false, autoDensity: true, resolution: Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2), preference: 'webgl' });
   $('game').appendChild(app.canvas);
   // menu state
-  const opts = store.get('opts', { diff: 'normal', color: 'blue', size: 144, seed: 0, players: 2, name: '', mode: 'play' });
+  const opts = store.get('opts', { diff: 'normal', color: 'blue', size: 288, seed: 0, players: 2, name: '', mode: 'play', sizeV: 2 });
   if (!opts.mode) opts.mode = 'play';
   if (!opts.map) opts.map = 'random';
   if (!opts.season) opts.season = 'random';
@@ -863,7 +864,9 @@ async function boot() {
   if (!opts.civ) opts.civ = 'random';
   if (!opts.relicWin) opts.relicWin = 'off';
   for (const [k, v] of Object.entries({ life: 'on', victory: 'conquest', teams: 'ffa', treaty: 0, popLimit: 200, startRes: 'standar', speed: 1 })) if (opts[k] === undefined) opts[k] = v;
-  if (![112, 144, 180, 220, 280].includes(opts.size)) opts.size = 144;
+  // map sizes were doubled (Kecil 224 ... Kolosal 560): a choice saved before that becomes its new, twice-as-big version
+  if (!opts.sizeV) { opts.size = { 112: 224, 144: 288, 180: 360, 220: 440, 280: 560 }[opts.size] || opts.size; opts.sizeV = 2; }
+  if (!(opts.size >= 64 && opts.size <= 600)) opts.size = 288;
   const segs = document.querySelectorAll('.seg');
   segs.forEach(s => { const k = s.dataset.k; s.querySelectorAll('button').forEach(b => { b.classList.toggle('on', String(opts[k]) === b.dataset.v); b.onclick = () => { opts[k] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); store.set('opts', opts); Sound.ui(); }; }); });
   $('nameIn').value = opts.name || ''; $('nameIn').oninput = () => { opts.name = $('nameIn').value.slice(0, 16); store.set('opts', opts); };

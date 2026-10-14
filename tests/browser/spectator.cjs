@@ -10,7 +10,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const errs = []; p.on('pageerror', e => errs.push('PAGEERR ' + e.message)); p.on('console', m => { if (['error', 'warning'].includes(m.type())) errs.push(m.text()); });
   p.on('requestfailed', r => errs.push('FAIL ' + r.url()));
   await p.goto(BASE, { waitUntil: 'networkidle' });
-  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 112, seed: 99, players: 3, name: '', mode: 'watch' })));
+  await p.evaluate(() => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'hard', color: 'blue', size: 112, sizeV: 2, seed: 99, players: 3, name: '', mode: 'watch' })));
   await p.reload({ waitUntil: 'networkidle' });
   await p.screenshot({ path: `${SP}/w_menu.png` });
   await p.click('#btnPlay'); await p.waitForTimeout(4000);

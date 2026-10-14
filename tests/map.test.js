@@ -1,5 +1,5 @@
 // Map generator check: every map type x player count -> per-player home resources, seat positions, generation time.
-//   node tests/map.test.js [seeds=3]
+//   node tests/map.test.js [seeds=3]      env SIZES=224,288,360,440,560 for the menu sizes
 import { generate, MAP_KEYS, homeResources } from '../js/map.js';
 import { passable } from '../js/sim.js';
 const seeds = +(process.argv[2] || 3);
@@ -9,7 +9,7 @@ const linked = (W) => { const S = W.size, seen = new Uint8Array(S * S), [x0, y0]
   for (let h = 0; h < q.length; h++) { const i = q[h] % S, j = (q[h] / S) | 0; for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) { const k = (j + b) * S + i + a; if (!seen[k] && passable(W, i + a, j + b) && passable(W, i + a, j) && passable(W, i, j + b)) { seen[k] = 1; q.push(k); } } }
   return W.players.every(P => seen[(P.start[1] + 3) * S + P.start[0]]); };
 for (const type of MAP_KEYS) for (const np of [2, 3, 4]) for (let s = 1; s <= seeds; s++) {
-  const size = [112, 144, 180][s % 3], t0 = performance.now();
+  const size = (process.env.SIZES ? process.env.SIZES.split(',').map(Number) : [112, 144, 180])[s % (process.env.SIZES ? process.env.SIZES.split(',').length : 3)], t0 = performance.now();      // SIZES=224,288,... to check the menu sizes
   const W = generate({ size, seed: s * 7919 + np, type, players: Array.from({ length: np }, (_, i) => ({ name: 'P' + i, color: 'c' + i })) });
   const ms = performance.now() - t0;
   const home = W.players.map(P => homeResources(W, P.start[0], P.start[1]));

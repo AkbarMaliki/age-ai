@@ -12,7 +12,7 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   const ff = (min) => G(async (min) => { const { step } = await import('/js/sim.js'); const g = __ak.game; for (let i = 0; i < min * 600; i++) { for (const ai of g.ais) ai.tick(); step(g.W); g.hist.tick(); for (const e of g.W.ev) if (e.k === 'victory') g.W.ev.length = 0; g.W.ev.length = 0; } }, min);
   for (const [mode, map] of [['play', 'sungai'], ['watch', 'random']]) {
     await p.goto(BASE, { waitUntil: 'networkidle' });
-    await p.evaluate(([mode, map]) => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, seed: 0, players: 3, name: '', mode, map })), [mode, map]);
+    await p.evaluate(([mode, map]) => localStorage.setItem('ak_opts', JSON.stringify({ diff: 'normal', color: 'blue', size: 144, sizeV: 2, seed: 0, players: 3, name: '', mode, map })), [mode, map]);
     await p.reload({ waitUntil: 'networkidle' });
     if (mode === 'play') await p.screenshot({ path: `${SP}/st_menu.png` });
     await p.click('#btnPlay'); await p.waitForTimeout(4500);

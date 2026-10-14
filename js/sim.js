@@ -178,7 +178,11 @@ export const unitCost = (P, type) => {
   return f ? Object.fromEntries(Object.entries(c).map(([r, n]) => [r, Math.round(n * f)])) : c;
 };
 
-function add(W, e) { e.id = W.nextId++; W.ents.set(e.id, e); if (e.kind !== 'res' || e.type === 'carcass') W.dyn.set(e.id, e); return e; }
+function add(W, e) {
+  e.id = W.nextId++; W.ents.set(e.id, e); if (e.kind !== 'res' || e.type === 'carcass') W.dyn.set(e.id, e);
+  if (e.kind === 'res') { const g = W.rgrid || (W.rgrid = new Map()), k = (Math.floor(e.x) >> 3) + (Math.floor(e.y) >> 3) * 1024; let a = g.get(k); if (!a) g.set(k, a = []); a.push(e); }   // resources never move: filed by 8x8 cell
+  return e;
+}
 export function del(W, id) { W.ents.delete(id); W.dyn.delete(id); }
 // units bucketed on a coarse grid once per tick: neighbourhood queries stay cheap on big maps
 const GC = 8;
@@ -1463,18 +1467,26 @@ export function openSide(W, e, nav = false) {
   return false;
 }
 // known: optional explored-tiles mask (the AI only goes for resources it has actually seen)
+// resources come from the 8x8 cells within reach (a big map holds over ten thousand trees); farms and mines are buildings
 export function nearestResource(W, kind, x, y, r = 10, owner = -1, skip = null, known = null, nav = false) {
   let best = null, bd = 1e9;
-  for (const e of W.ents.values()) {
-    if (skip && skip.has(e.id)) continue;
-    if (owner >= 0 && unreachable(W, e.id, owner)) continue;
+  const test = (e) => {
+    if (skip && skip.has(e.id)) return;
+    if (owner >= 0 && unreachable(W, e.id, owner)) return;
     const k = e.kind === 'res' ? e.type : e.kind !== 'building' || !e.built || e.owner !== owner ? null : e.type === 'farm' ? 'farm' : BUILDINGS[e.type].shaft && e.left > 0 ? 'shaft' : null;
-    if (k !== kind || (e.kind === 'res' && e.amount <= 0)) continue;
-    const dd = distTo(e, x, y); if (dd >= bd || dd > r) continue;
-    if (known && !known[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
-    if (k === 'farm' && e.farmer && alive(W, e.farmer) && alive(W, e.farmer).order?.id === e.id) continue;
-    if (e.kind === 'res' && !openSide(W, e, nav)) continue;
+    if (k !== kind || (e.kind === 'res' && e.amount <= 0)) return;
+    const dd = distTo(e, x, y); if (dd >= bd || dd > r) return;
+    if (known && !known[idx(W, Math.floor(e.x), Math.floor(e.y))]) return;
+    if (k === 'farm' && e.farmer && alive(W, e.farmer) && alive(W, e.farmer).order?.id === e.id) return;
+    if (e.kind === 'res' && !openSide(W, e, nav)) return;
     bd = dd; best = e;
+  };
+  if (kind === 'farm' || kind === 'shaft') { for (const e of W.dyn.values()) if (e.kind === 'building') test(e); return best; }
+  const g = W.rgrid; if (!g) return null;
+  const R = Math.min(r, W.size * 1.5) + 1, c0 = Math.max(0, Math.floor((x - R) / 8)), c1 = Math.floor((x + R) / 8), d0 = Math.max(0, Math.floor((y - R) / 8)), d1 = Math.floor((y + R) / 8);
+  for (let cj = d0; cj <= d1; cj++) for (let ci = c0; ci <= c1; ci++) {
+    const a = g.get(ci + cj * 1024); if (!a) continue;
+    let w = 0; for (const e of a) { if (!W.ents.has(e.id)) continue; a[w++] = e; test(e); } a.length = w;      // gone ones are dropped as we pass
   }
   return best;
 }
