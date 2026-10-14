@@ -109,7 +109,7 @@ const MIN_GAP = { gunshot: 0.08, cannon: 0.25, boom: 0.2, farm: 0.3, forage: 0.3
 
 // ---------------- music
 const EXT = (() => { try { return new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? '.ogg' : '.m4a'; } catch { return '.m4a'; } })();
-const PLAYLIST = { menu: ['menu'], game: ['game1', 'game2', 'game3'] };
+const PLAYLIST = { menu: ['menu'], game: ['game1', 'game2', 'game3', 'game4'] };
 let cur = null, curName = null, listIdx = 0;
 function fade(a, to, ms, done) { const from = a.volume, t0 = performance.now(); const f = () => { const k = Math.min(1, (performance.now() - t0) / ms); a.volume = Math.max(0, Math.min(1, from + (to - from) * k)); if (k < 1) setTimeout(f, 40); else done && done(); }; f(); }
 function playMusic(name) {
