@@ -12,9 +12,9 @@ const CELL = 8;   // exploration grid (tiles per cell side)
 const segDist = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); };
 
 const DIFF = {
-  easy:   { think: 2.0, vil: [18, 24, 28], wave: 12, firstAttack: 900, armyCap: 16, mil: 0.6 },
-  normal: { think: 1.0, vil: [20, 28, 36], wave: 9, firstAttack: 660, armyCap: 32, mil: 0.85 },
-  hard:   { think: 0.6, vil: [22, 32, 44], wave: 7, firstAttack: 480, armyCap: 50, mil: 1.0 },
+  easy:   { think: 2.0, vil: [18, 24, 28, 32], wave: 12, firstAttack: 900, armyCap: 16, mil: 0.6, fill: 0.5 },
+  normal: { think: 1.0, vil: [20, 28, 36, 42], wave: 9, firstAttack: 660, armyCap: 32, mil: 0.85, fill: 0.8 },
+  hard:   { think: 0.6, vil: [22, 32, 44, 52], wave: 7, firstAttack: 480, armyCap: 50, mil: 1.0, fill: 1.0 },
 };
 // personality: tweaks on top of the difficulty
 const STYLE = {
@@ -66,7 +66,14 @@ export class AI {
 
     // ---- villagers
     const tcs = mine.bld.filter(b => b.type === 'town_center' && b.built);
-    const target = Math.max(12, this.D.vil[P.age - 1] + S.vil) + Math.max(0, tcs.length - 1) * 12;      // every new town adds villagers
+    // an empire fills its land: once it has a second town, the villager and army targets grow with the kingdom's
+    // population limit (which every town raises) right up to it (an easy AI fills half of the extra room)
+    const extra = Math.max(0, tcs.length - 1), baseVil = Math.max(12, this.D.vil[Math.min(P.age, this.D.vil.length) - 1] + S.vil);     // (Imperial has its own entry: a missing one made every target NaN)
+    const foePop = Math.max(1, ...W.players.filter(q => q.alive && q.team !== P.team).map(q => q.pop));
+    this.ahead = P.pop / foePop >= 2 && P.pop >= 40;          // far stronger: the watches thin out and the army goes to finish it
+    const grow = extra ? Math.max(0, (P.popLim || 0) - baseVil - this.D.armyCap - 8) * this.D.fill : 0;
+    const target = baseVil + Math.max(extra * 12, Math.round(grow * 0.55));
+    this.armyCap = this.D.armyCap + Math.round(grow * 0.45);
     this.tcs = tcs;
     const ageing = tc && tc.queue.some(q => q.tech && TECHS[q.tech].toAge);
     // dawn brings the food upkeep: keep enough in the granary as night approaches
@@ -196,7 +203,7 @@ export class AI {
     }
     this.repair(vils);
     // ---- military
-    if (army.length < this.D.armyCap && (P.age >= 2 || this.threat() || (S.early && vils.length >= 14)) && vils.length >= this.D.vil[0] * 0.7) this.trainArmy(army, ageing, target, vils);
+    if (army.length < this.armyCap && (P.age >= 2 || this.threat() || (S.early && vils.length >= 14)) && vils.length >= this.D.vil[0] * 0.7) this.trainArmy(army, ageing, target, vils);
     // ---- treasures: the scout grabs free ones, an idle army clears guarded ones nearby (AoE3)
     if (W.t > (this.thT || 0)) { this.thT = W.t + 3; this.treasureHunt(army); }
     // ---- scouting: one fast unit explores (home ring first, then out towards where enemies may live)
@@ -205,7 +212,7 @@ export class AI {
     if (this.inv && this.invasion(army)) return;
     const threat = this.threat();
     const guard = this.homeGuard(army, threat);                   // the town watch stays home; the rest is the field army
-    const field = army.filter(u => !guard.has(u.id));
+    const field = army.filter(u => !guard.has(u.id) && !this.onWatch(u.id));        // (the new towns' watches stay too)
     const idleArmy = field.filter(u => (!u.order || u.order.amove) && u.id !== this.explorer);
     if (threat) this.defend(army, guard, threat);
     else {
@@ -794,6 +801,23 @@ export class AI {
     this.base = [t.x + 2, t.y + 2]; this.tc = t; this.town = t;
     try { return fn(); } finally { [this.base, this.tc, this.town] = keep; }
   }
+  // each new town keeps a few soldiers of its own who walk its rounds (the field army never takes them)
+  onWatch(id) { if (this.tw) for (const s of this.tw.values()) if (s.has(id)) return true; return false; }
+  townWatch(t) {
+    const W = this.W, tw = this.tw || (this.tw = new Map()), cx = t.x + 2, cy = t.y + 2;
+    for (const [id, s] of tw) { if (!W.ents.has(id)) tw.delete(id); else for (const u of s) if (!W.ents.has(u)) s.delete(u); }
+    const set = tw.get(t.id) || new Set(); tw.set(t.id, set);
+    const army = this.m.units.filter(u => MILITARY(u.type) && !u.nav && !UNITS[u.type].hero && !UNITS[u.type].trade && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && u.id !== this.explorer && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert);
+    const want = army.length < 10 ? 0 : this.ahead ? 2 : Math.min(6, 2 + Math.round(army.length * 0.04));
+    if (set.size > want) { const out = [...set].slice(want); for (const id of out) set.delete(id); command(W, { t: 'stop', pid: this.pid, ids: out }); }     // released to the field army
+    if (set.size < want) {
+      const pool = army.filter(u => !set.has(u.id) && !(this.guard && this.guard.has(u.id)) && !this.onWatch(u.id) && (!u.order || u.order.t === 'patrol' || (u.order.amove && u.order.t !== 'attack')))
+        .sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
+      for (const u of pool.slice(0, want - set.size)) { set.add(u.id); if (u.order) command(W, { t: 'stop', pid: this.pid, ids: [u.id] }); }
+    }
+    const idle = [...set].map(id => W.ents.get(id)).filter(u => u && (!u.order || (u.order.t !== 'patrol' && u.order.t !== 'attack')));
+    if (idle.length) { const pts = townRing(W, this.pid, 10, 6, t); if (pts.length >= 3) command(W, { t: 'patrol', pid: this.pid, ids: idle.map(u => u.id), pts, guard: true }); }
+  }
   houseTown(tcs, mine) {
     let best = null, bn = 1e9;
     for (const t of tcs) { const n = mine.bld.filter(b => b.type === 'house' && b.x !== undefined && Math.hypot(b.x - t.x - 2, b.y - t.y - 2) < 16).length; if (t !== this.tc && n >= 10) continue; if (n < bn) { bn = n; best = t; } }
@@ -812,6 +836,7 @@ export class AI {
       const go = vils.filter(v => !inTown(v, 30) && v.order && v.order.t === 'gather' && ['tree', 'gold', 'stone', 'berry'].includes(v.order.kind)).slice(0, 2);
       if (r && go.length) command(W, { t: 'smart', pid: this.pid, ids: go.map(v => v.id), target: r.id, x: r.x, y: r.y });
     }
+    this.townWatch(t);
     if (!folk.length) return;
     this.withTown(t, () => {
       // drop sites by the wood and ore round the town (the Town Center itself takes what lies next to it)
@@ -862,7 +887,7 @@ export class AI {
     const W = this.W, ship = this.m.units.find(u => u.type === 'transport_ship' && !u.order && !u.cargo.length && !(this.inv && this.inv.ships.includes(u.id)));
     if (!ship) { const dk = this.m.bld.find(b => b.type === 'dock' && b.built && !b.queue.length); if (dk && this.afford(UNITS.transport_ship.cost)) command(W, { t: 'train', pid: this.pid, bid: dk.id, type: 'transport_ship' }); return; }
     const settlers = vils.filter(v => !v.inside && (!v.order || !['build', 'repair', 'board'].includes(v.order.t))).slice(0, 5);
-    const escort = this.m.units.filter(u => MILITARY(u.type) && !u.nav && !(this.guard && this.guard.has(u.id)) && (!u.order || u.order.amove)).slice(0, 3);
+    const escort = this.m.units.filter(u => MILITARY(u.type) && !u.nav && !(this.guard && this.guard.has(u.id)) && !this.onWatch(u.id) && (!u.order || u.order.amove)).slice(0, 3);
     if (settlers.length < 4) return;
     this.colony = { ship: ship.id, settlers: settlers.map(u => u.id), escort: escort.map(u => u.id), site, state: 'board', t: W.t };
     W.ev.push({ k: 'colony', owner: this.pid, x: site[0], y: site[1] });
@@ -967,11 +992,11 @@ export class AI {
     for (const id of G) if (!W.ents.has(id)) G.delete(id);
     const fit = (u) => u.id !== this.explorer && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && !UNITS[u.type].hero && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert;
     const cand = army.filter(fit);
-    const share = ({ eko: 0.28, serbu: 0.15, benteng: 0.4, ilmu: 0.3, laut: 0.25 }[this.style] ?? 0.25) + (this.attacked >= 2 && W.t - this.lastHit < 300 ? 0.12 : 0);
+    const share = (({ eko: 0.28, serbu: 0.15, benteng: 0.4, ilmu: 0.3, laut: 0.25 }[this.style] ?? 0.25) + (this.attacked >= 2 && W.t - this.lastHit < 300 ? 0.12 : 0)) * (this.ahead ? 0.5 : 1);
     const want = cand.length < 5 ? 0 : Math.min(16, Math.max(2, Math.round(cand.length * share)));
     if (G.size < want) {             // recruit from the soldiers at home: archers and spearmen first, then the rest
       const sc = (u) => (stat(W, u.owner, u.type).range ? -3 : 0) + (['spearman', 'pikeman'].includes(u.type) ? -2 : 0) + Math.hypot(u.x - bx, u.y - by) / 10;
-      const pool = cand.filter(u => !G.has(u.id) && Math.hypot(u.x - bx, u.y - by) < 28 && (!u.order || u.order.t === 'patrol' || (!u.order.amove && u.order.t !== 'attack'))).sort((a, b) => sc(a) - sc(b));
+      const pool = cand.filter(u => !G.has(u.id) && !this.onWatch(u.id) && Math.hypot(u.x - bx, u.y - by) < 28 && (!u.order || u.order.t === 'patrol' || (!u.order.amove && u.order.t !== 'attack'))).sort((a, b) => sc(a) - sc(b));
       for (const u of pool.slice(0, want - G.size)) G.add(u.id);
     } else if (G.size > want + 2) {    // too many at home: the furthest go back to the field army
       const ex = [...G].map(id => W.ents.get(id)).filter(Boolean).sort((a, b) => Math.hypot(b.x - bx, b.y - by) - Math.hypot(a.x - bx, a.y - by));

@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX } from './data.js?v=20261014100310';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX } from './data.js?v=20261014103502';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -1764,8 +1764,8 @@ function waterFor(W, u, wells) {
   return best;
 }
 // guard posts round a player's Town Center (the town watch walks them in turn)
-export function townRing(W, pid, R = 13, n = 8) {
-  const P = W.players[pid], tc = P && (W.ents.get(P.tc) || [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === pid && e.type === 'town_center'));
+export function townRing(W, pid, R = 13, n = 8, at = null) {          // at: another town's centre (default: the capital)
+  const P = W.players[pid], tc = at || (P && (W.ents.get(P.tc) || [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === pid && e.type === 'town_center')));
   if (!tc) return [];
   const cx = tc.x + tc.w / 2, cy = tc.y + tc.h / 2, out = [];
   for (let k = 0; k < n; k++) {

@@ -1764,8 +1764,8 @@ function waterFor(W, u, wells) {
   return best;
 }
 // guard posts round a player's Town Center (the town watch walks them in turn)
-export function townRing(W, pid, R = 13, n = 8) {
-  const P = W.players[pid], tc = P && (W.ents.get(P.tc) || [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === pid && e.type === 'town_center'));
+export function townRing(W, pid, R = 13, n = 8, at = null) {          // at: another town's centre (default: the capital)
+  const P = W.players[pid], tc = at || (P && (W.ents.get(P.tc) || [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === pid && e.type === 'town_center')));
   if (!tc) return [];
   const cx = tc.x + tc.w / 2, cy = tc.y + tc.h / 2, out = [];
   for (let k = 0; k < n; k++) {

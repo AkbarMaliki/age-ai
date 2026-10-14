@@ -34,7 +34,7 @@ const tcsOf = (W, p) => [...W.dyn.values()].filter(e => e.kind === 'building' &&
       const main = W.players[p].tc, town = tcs.find(t => t.id !== main) || tcs[1];
       const near = [...W.dyn.values()].filter(e => e.owner === p && e.kind === 'building' && e !== town && Math.hypot(e.x - town.x - 2, e.y - town.y - 2) < 20);
       const folk = [...W.dyn.values()].filter(e => e.owner === p && e.type === 'villager' && Math.hypot(e.x - town.x - 2, e.y - town.y - 2) < 22).length;
-      if (W.t - (town.bornT ??= W.t) > 600) best = { p, near, folk, lim: W.players[p].popLim, pop: W.players[p].pop };
+      if (W.t - (town.bornT ??= W.t) > 600) best = { p, near, folk, lim: W.players[p].popLim, pop: W.players[p].pop, cap: ais[p].armyCap, watch: ais[p].tw && ais[p].tw.get(town.id) ? ais[p].tw.get(town.id).size : 0 };
     }
   }
   check(!!best, `a second town stood for 10 minutes (minute ${Math.round(W.t / 60)})`);
@@ -44,6 +44,8 @@ const tcsOf = (W, p) => [...W.dyn.values()].filter(e => e.kind === 'building' &&
     check(best.near.length >= 6 && (kinds.house || 0) >= 2, `the new town has ${best.near.length} buildings round it`);
     check(best.folk >= 4, `people live and work in the new town (${best.folk})`);
     check(best.lim > (W.opts.popLimit || 125), `the kingdom's limit grew (${best.lim})`);
+    check(best.cap > 50, `the army may grow with the empire (cap ${best.cap})`);
+    check(best.watch >= 2, `the new town keeps its own watch (${best.watch} soldiers)`);
   }
 }
 console.log(fails ? `${fails} town checks FAILED` : 'all town checks passed');
