@@ -1,23 +1,23 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js?v=20261014152526';
-import { openTechTree } from './techtree.js?v=20261014152526';
-import { Saves } from './saves.js?v=20261014152526';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014152526';
-import { townRing } from './sim.js?v=20261014152526';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014152526';
-import { generate } from './map.js?v=20261014152526';
-import { AI } from './ai.js?v=20261014152526';
-import { loadAll, vq } from './assets.js?v=20261014152526';
-import { View, iso, UNIT_BOX, FX } from './render.js?v=20261014152526';
-import { HUD } from './ui.js?v=20261014152526';
-import { Sound } from './audio.js?v=20261014152526';
-import { History, StatsPanel, score, exploredPct } from './stats.js?v=20261014152526';
-import { CardPanel, DeckBuilder } from './cards.js?v=20261014152526';
-import { Advisor } from './advisor.js?v=20261014152526';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014152526';
-import { Lockstep } from './lockstep.js?v=20261014152526';
-import { Lobby } from './lobby.js?v=20261014152526';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD } from './data.js?v=20261014170741';
+import { openTechTree } from './techtree.js?v=20261014170741';
+import { Saves } from './saves.js?v=20261014170741';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261014170741';
+import { townRing, pacted, POST } from './sim.js?v=20261014170741';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261014170741';
+import { generate } from './map.js?v=20261014170741';
+import { AI } from './ai.js?v=20261014170741';
+import { loadAll, vq } from './assets.js?v=20261014170741';
+import { View, iso, UNIT_BOX, FX } from './render.js?v=20261014170741';
+import { HUD } from './ui.js?v=20261014170741';
+import { Sound } from './audio.js?v=20261014170741';
+import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261014170741';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261014170741';
+import { Advisor } from './advisor.js?v=20261014170741';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261014170741';
+import { Lockstep } from './lockstep.js?v=20261014170741';
+import { Lobby } from './lobby.js?v=20261014170741';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -45,7 +45,7 @@ class Game {
     const tc = this.W.ents.get(this.W.players[this.me].tc); this.centerOn(tc.x + 2, tc.y + 3);
     this.hud = new HUD(this);
     this.hist = new History(this.W); this.hist.onFound = (f) => this.onFound(f);
-    this.stats = new StatsPanel(this, this.hist);
+    this.stats = new StatsPanel(this, this.hist); this.story = new StoryView(this, this.hist);
     this.cards = new CardPanel(this);
     this.advisor = new Advisor(this);
     this.track = { feudalAt: 0, maxVil: 0, spies: 0, lostTC: false };
@@ -172,10 +172,13 @@ class Game {
       this.lock.update(dt);
       const st = this.lock.status(); if (st !== this.netSt) { this.netSt = st; $('netStatus').textContent = st; $('netStatus').classList.toggle('hidden', !st); }
     } else if (!this.paused && !this.over) {
-      this.acc += dt * GAME_SPEED * this.speed;
+      const slow = this.slowUntil > performance.now();             // the director's slow-motion moment
+      if (!slow && document.body.classList.contains('cine')) document.body.classList.remove('cine');
+      this.acc += dt * GAME_SPEED * this.speed * (slow ? Math.min(1, 0.6 / this.speed) : 1);
       // up to 16 ticks a frame within ~32 ms (20x needs ~5 a frame at 60 fps; a slow late game just runs as fast as it can)
       let n = 0; const t0 = performance.now();
-      while (this.acc >= TICK && n++ < 16 && (n <= 2 || performance.now() - t0 < 32)) {
+      const budget = this.speed >= 20 ? 40 : 32;          // at 20x the simulation gets more of each frame (speed over smoothness)
+      while (this.acc >= TICK && n++ < 16 && (n <= 2 || performance.now() - t0 < budget)) {
         if (this.replay && this.replay.mode === 'watch' && this.W.tick >= this.feedEnd && this.feedI >= this.rec.cmds.length) {
           if (!this.replayDone) { this.replayDone = true; this.hud.notify('🎬 Replay selesai.', 'age'); } this.acc = 0; break;
         }
@@ -184,12 +187,12 @@ class Game {
       if (!this.watch && !this.online && !this.replay && this.W.t - (this.lastAuto || 0) > 120 && this.W.winner < 0) { this.lastAuto = this.W.t; this.saveGame('auto', 'auto'); }
       if (this.acc >= TICK * 4) this.acc = 0;        // fell behind: don't try to catch up (that would freeze the screen)
     }
-    if (this.watch) this.spectatorCam(dt);
+    if (this.watch) { this.spectatorCam(dt); this.scoreBox(dt); }
     this.scroll(dt);
     this.view.applyCam();
     this.sel = this.sel.filter(id => this.W.ents.has(id));
     this.view.sync(Math.min(1, this.acc / TICK), this.paused && !this.lock ? 0 : dt * this.speed, this.sel, this.hover);
-    this.hud.update(dt); this.stats.update(dt); this.cards.update(dt); this.advisor.update(dt);
+    this.hud.update(dt); this.stats.update(dt); this.story.update(dt); this.cards.update(dt); this.advisor.update(dt);
     if ((this.trackT = (this.trackT || 0) - dt) <= 0) { this.trackT = 2; let v = 0; for (const e of this.W.dyn.values()) if (e.kind === 'unit' && e.owner === this.me && e.type === 'villager') v++; this.track.maxVil = Math.max(this.track.maxVil, v); }
     if (this.placing) this.updateGhost();
   }
@@ -213,7 +216,7 @@ class Game {
       case 'spec': if (mine) this.hud.notify(`Pasukan khusus: semua ${UNITS[e.from].name} kini menjadi ${UNITS[e.to].name}!`, 'age'); break;
       case 'repairstop': if (mine && W.t - (this.lastRepNote || -99) > 15) { this.lastRepNote = W.t; this.hud.notify('Perbaikan berhenti: sumber daya kurang.', 'bad'); } break;
       case 'board': case 'unload': if (mine) this.sfx('forage', e.x, e.y); break;
-      case 'collapse': if (vis || mine) this.sfx('collapse', e.x, e.y); if (!P.alive) break; if (mine && e.type === 'town_center') this.track.lostTC = true; if (mine && (e.hit || e.type !== 'farm')) this.hud.notify(`${BUILDINGS[e.type].name} kita hancur!`, 'bad'); else if (mine) this.hud.notify('Ladang habis — tanam ulang.'); break;
+      case 'collapse': if (vis || mine) this.sfx('collapse', e.x, e.y); if (!P.alive) break; if (mine && e.type === 'town_center') this.track.lostTC = true; if (mine && (e.hit || e.type !== 'farm')) this.hud.notify(`${BUILDINGS[e.type].name} kita hancur!`, 'bad', [e.x, e.y]); else if (mine) this.hud.notify('Ladang habis — tanam ulang.'); break;
       case 'built': if (mine) { this.snd.play('built'); this.hud.notify(`${BUILDINGS[e.type].name} selesai dibangun.`); } break;
       case 'trained': if (mine) this.snd.play(e.type === 'villager' ? 'trainedVil' : 'trained'); break;
       case 'tech': if (mine) { this.snd.play('tech'); this.hud.notify(`Riset selesai: ${TECHS[e.tech].name}.`); } break;
@@ -224,7 +227,7 @@ class Game {
         break;
       }
       case 'housed': if (mine && W.t - this.lastHoused > 20) { this.lastHoused = W.t; this.snd.play('alert'); this.hud.notify('Butuh lebih banyak rumah!', 'bad'); } break;
-      case 'hit': if (mine && W.t - this.lastAttackNote > 15) { this.lastAttackNote = W.t; this.snd.play('alert'); this.hud.notify('Kita diserang!', 'bad'); this.attackAt = [e.x, e.y]; } break;
+      case 'hit': if (mine && W.t - this.lastAttackNote > 15) { this.lastAttackNote = W.t; this.snd.play('alert'); this.hud.notify('Kita diserang!', 'bad', [e.x, e.y]); this.attackAt = [e.x, e.y]; } break;
       case 'ack': break;   // voiced immediately when the order is given (see rightClickWorld)
       case 'hunt': if (vis) this.sfx('hunt', e.x, e.y); break;
       case 'treasure':
@@ -271,11 +274,15 @@ class Game {
       case 'penned': if (mine && W.t - (this.lastPenned || -99) > 30) { this.lastPenned = W.t; this.hud.notify('🐑 Ternak masuk padang kandang — akan bertambah gemuk dan menghasilkan susu.'); } break;
       case 'prosperhold': { const o = W.players[e.owner]; this.snd.play('alert'); this.hud.notify(o.team === P.team ? `⭐ Kerajaan ${o.name} makmur! Pertahankan 10 menit untuk menang.` : `⭐ ${o.name} mencapai kemakmuran — menang dalam 10 menit kecuali dihentikan!`, o.team === P.team ? 'age' : 'bad'); break; }
       case 'prosperlost': if (mine) this.hud.notify('⭐ Kemakmuran turun di bawah batas — hitungan mundur berhenti.', 'bad'); break;
+      case 'totalwar': this.snd.play('alert'); this.hud.notify('🔥 ' + e.text, 'bad'); break;
+      case 'postcapture': if (e.owner === this.me) { this.snd.play('tech'); this.hud.notify(`🏰 Kita merebut ${e.name}! +${Math.round(POST.gold * 60)} emas/menit dan penglihatan luas.`, 'age', [e.x, e.y]); } else if (e.from === this.me) { this.snd.play('alert'); this.hud.notify(`🏰 ${e.name} direbut ${W.players[e.owner].name}!`, 'bad', [e.x, e.y]); } break;
+      case 'generaldie': if (e.owner === this.me) { this.snd.play('alert'); this.hud.notify(`⚰ Panglima ${e.name} gugur! Pasukan di dekatnya tercerai-berai.`, 'bad'); } else if (e.by === this.me) this.hud.notify(`⚔ Panglima musuh ${e.name} tewas!`, 'age'); break;
       case 'war': {        // the war commanders' chronicle: wars on us and our allies in full, elsewhere only fallen towns
         const o = W.players[e.owner], vs = e.foe >= 0 ? W.players[e.foe] : null, onUs = vs && vs.team === P.team, ours = o.team === P.team;
-        if (onUs) { if (['declare', 'march', 'siege', 'fall', 'conquer', 'wonder'].includes(e.kind)) this.snd.play('alert'); this.hud.notify('⚔ ' + e.text, e.kind === 'retreat' || e.kind === 'truce' ? 'age' : 'bad'); if (e.kind === 'siege' || e.kind === 'march') this.attackAt = [e.x, e.y]; }
-        else if (ours && e.kind !== 'alarm') this.hud.notify('⚔ ' + e.text, 'age');
-        else if (e.kind === 'fall' || e.kind === 'conquer') this.hud.notify('⚔ ' + e.text, 'enemy');
+        const at = e.x !== undefined ? [e.x, e.y] : null;
+        if (onUs) { if (['declare', 'march', 'siege', 'fall', 'conquer', 'wonder'].includes(e.kind)) this.snd.play('alert'); this.hud.notify('⚔ ' + e.text, e.kind === 'retreat' || e.kind === 'truce' ? 'age' : 'bad', at); if (e.kind === 'siege' || e.kind === 'march') this.attackAt = [e.x, e.y]; }
+        else if (ours && e.kind !== 'alarm') this.hud.notify('⚔ ' + e.text, 'age', at);
+        else if (e.kind === 'fall' || e.kind === 'conquer') this.hud.notify('⚔ ' + e.text, 'enemy', at);
         break;
       }
       case 'kothcapture': { const o = W.players[e.owner]; if (!o) break; this.snd.play('alert'); this.hud.notify(o.team === P.team ? `⛰ Monumen dikuasai ${o.name}! Pertahankan ${Math.round(e.secs / 60)} menit.` : `⛰ ${o.name} merebut Monumen! Rebut kembali dalam ${Math.round(e.secs / 60)} menit!`, o.team === P.team ? 'age' : 'bad'); break; }
@@ -284,14 +291,16 @@ class Game {
   // first sighting of an enemy building (stats History). Players only hear about their own discoveries.
   onFound(f) {
     const W = this.W, by = W.players[f.by], of = W.players[f.of];
-    if (this.watch) { this.hud.notify(`${by.name} menemukan wilayah ${of.name}!`, 'enemy'); if (!this.hot || W.t - this.hot.t > 3) this.hot = { x: f.x, y: f.y, t: W.t }; }
-    else if (f.by === this.me) { this.snd.play('alert'); this.hud.notify(`Pengintai kita menemukan wilayah ${of.name}!`, 'age'); }
+    if (this.watch) { this.hud.notify(`${by.name} menemukan wilayah ${of.name}!`, 'enemy', [f.x, f.y]); if (!this.hot || W.t - this.hot.t > 3) this.hot = { x: f.x, y: f.y, t: W.t }; }
+    else if (f.by === this.me) { this.snd.play('alert'); this.hud.notify(`Pengintai kita menemukan wilayah ${of.name}!`, 'age', [f.x, f.y]); }
   }
   // ---------------------------------------------------------------- spectator (bot vs bot)
   setupSpectator() {
     document.body.classList.add('watch'); $('specBar').classList.remove('hidden');
     this.view.reveal = true; this.autoCam = false; this.camT = 0; this.hot = null;   // free camera by default
     this.fogButton();
+    let sc = null; try { sc = localStorage.getItem('ak_score'); } catch { }
+    this.toggleScore(sc ? sc === '1' : !IS_TOUCH);
     $('spSpeed').onclick = () => this.stepSpeed(1);
     $('spSpeed').oncontextmenu = (e) => { e.preventDefault(); this.stepSpeed(-1); };
     this.setSpeed(2);
@@ -313,7 +322,7 @@ class Game {
   stepSpeed(d) { const L = [1, 2, 4, 8, 20], i = Math.max(0, L.indexOf(this.speed)); this.setSpeed(L[(i + d + L.length) % L.length]); this.snd.play('click'); }
   toggleAutoCam() { this.autoCam = !this.autoCam; $('spCam').classList.toggle('on', this.autoCam); this.camT = 0; this.camGoal = null; this.snd.play('click'); }
   // any hand-made camera move hands control back to the viewer
-  userCam() { this.camGoal = null; if (this.watch && this.autoCam) { this.autoCam = false; $('spCam').classList.remove('on'); } }
+  userCam() { this.camGoal = null; this.camZoom = null; if (this.watch && this.autoCam) { this.autoCam = false; $('spCam').classList.remove('on'); } }
   cyclePov(step = 1) {
     const live = this.W.players.filter(p => p.alive); if (!live.length) return;
     const i = (live.findIndex(p => p.id === this.me) + step + live.length) % live.length;
@@ -335,10 +344,15 @@ class Game {
       case 'mine': this.sfx(e.res === 'gold' ? 'mine_gold' : 'mine_stone', e.x, e.y); break;
       case 'deposit': this.sfx('drop_' + (e.res || 'food'), e.x, e.y); break;
       case 'die': this.sfx(UNITS[e.type].animal ? e.type : e.type === 'villager' ? 'dieVil' : 'die', e.x, e.y); break;
-      case 'collapse': this.sfx('collapse', e.x, e.y); break;
-      case 'hit': if (!this.hot || W.t - this.hot.t > 3) this.hot = { x: e.x, y: e.y, t: W.t }; break;
+      case 'collapse': this.sfx('collapse', e.x, e.y); if (e.hit && ['town_center', 'castle', 'wonder'].includes(e.type)) this.cine(e.x, e.y); break;
+      case 'hit': if (!e.fire) this.heatAdd(e.x, e.y, e.u ? 1 : 0.4); break;
+      case 'firespread': this.heatAdd(e.x, e.y, 2); break;
+      case 'postcapture': this.hud.notify(`🏰 ${W.players[e.owner].name} merebut ${e.name}.`, 'enemy', [e.x, e.y]); break;
+      case 'totalwar': this.snd.play('alert'); this.hud.notify('🔥 ' + e.text, 'bad'); break;
+      case 'generaldie': this.hud.notify(`⚰ Panglima ${e.name} (${W.players[e.owner].name}) gugur!`, 'age', [e.x, e.y]); this.cine(e.x, e.y); break;
       case 'war':
-        this.hud.notify('⚔ ' + e.text, ['fall', 'conquer', 'declare', 'wonder', 'hold'].includes(e.kind) ? 'age' : 'enemy');
+        this.hud.notify('⚔ ' + e.text, ['fall', 'conquer', 'declare', 'wonder', 'hold'].includes(e.kind) ? 'age' : 'enemy', e.x !== undefined ? [e.x, e.y] : null);
+        if (e.kind === 'fall' || e.kind === 'conquer') this.cine(e.x, e.y);
         if (['declare', 'fall', 'conquer', 'wonder'].includes(e.kind)) this.snd.play('alert');
         if (['march', 'siege', 'fall'].includes(e.kind)) this.hot = { x: e.x, y: e.y, t: W.t + 8 };      // the auto camera goes to see the battle
         break;
@@ -369,20 +383,53 @@ class Game {
       case 'tribute': this.hud.notify(`🎁 ${W.players[e.owner].name} → ${W.players[e.to].name}: ${e.n} ${RES_NAME[e.res]}`); break;
     }
   }
+  // the director: fighting is gathered into hot spots (hits add heat, which cools with game time); the camera goes to
+  // the biggest battle, else to the latest story (a march, a siege), else tours the towns. Closer for battles.
+  heatAdd(x, y, w = 1) {
+    const H = this.heat || (this.heat = []);
+    let c = null, bd = 14; for (const h of H) { const d = Math.hypot(h.x - x, h.y - y); if (d < bd) { bd = d; c = h; } }
+    if (c) { c.x += (x - c.x) * w / (c.w + w); c.y += (y - c.y) * w / (c.w + w); c.w += w; } else if (H.length < 24) H.push({ x, y, w });
+  }
   spectatorCam(dt) {
+    const W = this.W, H = this.heat || (this.heat = []), gdt = W.t - (this.heatT ?? W.t); this.heatT = W.t;
+    if (gdt > 0) { const f = Math.exp(-gdt * 0.12); for (const h of H) h.w *= f; this.heat = H.filter(h => h.w > 0.5); }
     if (!this.autoCam) return;
     this.camT -= dt;
     if (this.camT <= 0) {
-      this.camT = 7;
-      const W = this.W, h = this.hot;
-      if (h && W.t - h.t < 12) this.camGoal = [h.x, h.y];
+      this.camT = 6;
+      const top = (this.heat || []).reduce((a, h) => !a || h.w > a.w ? h : a, null), h = this.hot;
+      if (top && top.w > 6) { this.camGoal = [top.x, top.y]; this.camZoom = 0.95; }
+      else if (h && W.t - h.t < 12) { this.camGoal = [h.x, h.y]; this.camZoom = 0.8; }
       else {   // nothing happening: visit a random town
         const live = W.players.filter(p => p.alive), p = live[Math.floor(Math.random() * live.length)], tc = p && W.ents.get(p.tc);
-        if (tc) this.camGoal = [tc.x + 2, tc.y + 2];
+        if (tc) { this.camGoal = [tc.x + 2, tc.y + 2]; this.camZoom = 0.65; }
       }
     }
-    if (this.camGoal) { const [gx, gy] = iso(this.camGoal[0], this.camGoal[1]), c = this.view.cam, k = Math.min(1, dt * 1.8); c.x += (gx - c.x) * k; c.y += (gy - c.y) * k; }
+    const c = this.view.cam;
+    if (this.camGoal) { const [gx, gy] = iso(this.camGoal[0], this.camGoal[1]), k = Math.min(1, dt * 1.8); c.x += (gx - c.x) * k; c.y += (gy - c.y) * k; }
+    if (this.camZoom) c.zoom += (this.camZoom - c.zoom) * Math.min(1, dt * 0.8);
   }
+  // a great moment (a capital or a wonder falls, a general is killed): slow motion, cinematic bars, the camera goes there
+  cine(x, y) {
+    if (!this.watch || !this.autoCam || this.slowUntil > performance.now() - 6000) return;
+    this.slowUntil = performance.now() + 2600; document.body.classList.add('cine');
+    this.camGoal = [x, y]; this.camZoom = 1.05; this.camT = 5;
+  }
+  // live score (spectator): people, army, towns and what each kingdom's commander is up to; click a row to follow it
+  scoreBox(dt) {
+    const el = $('scoreBox'); if (!el || el.classList.contains('hidden') || (this.scoreT = (this.scoreT || 0) - dt) > 0) return; this.scoreT = 1;
+    const W = this.W, n = W.players.map(() => ({ army: 0, towns: 0 }));
+    for (const e of W.dyn.values()) { const o = n[e.owner]; if (!o) continue; if (e.kind === 'unit' && e.type !== 'villager' && e.type !== 'child' && !UNITS[e.type].animal && UNITS[e.type].cls !== 'trade') o.army++; else if (e.kind === 'building' && e.type === 'town_center' && e.built) o.towns++; }
+    const ai = (id) => (this.ais || []).find(a => a.pid === id);
+    const rows = [...W.players].sort((a, b) => (b.alive - a.alive) || b.pop - a.pop).map(P => {
+      const st = !P.alive ? 'Kalah' : ai(P.id) && ai(P.id).warStatus ? ai(P.id).warStatus() : '';
+      return `<div class="sr${P.id === this.me ? ' me' : ''}${P.alive ? '' : ' dead'}" data-p="${P.id}" title="Ikuti ${P.name}"><i style="background:rgb(${PLAYER_RGB[P.color]})"></i><b>${P.name}</b><span title="Populasi">👤${P.pop}</span><span title="Tentara">⚔${n[P.id].army}</span><span title="Kota">🏰${n[P.id].towns}</span>${st ? `<div class="st">${st}</div>` : ''}</div>`;
+    }).join('');
+    el.innerHTML = `<div class="sh"><span>Skor langsung</span><button title="Tutup (L)">✖</button></div>` + rows;
+    el.querySelector('.sh button').onclick = () => this.toggleScore(false);
+    el.querySelectorAll('.sr').forEach(r => r.onclick = () => { const id = +r.dataset.p; if (!W.players[id].alive) return; this.me = id; this.cyclePov(0); this.userCam(); const tc = W.ents.get(W.players[id].tc); if (tc) this.centerOn(tc.x + 2, tc.y + 2); this.scoreT = 0; });
+  }
+  toggleScore(on = $('scoreBox').classList.contains('hidden')) { $('scoreBox').classList.toggle('hidden', !on); this.scoreT = 0; try { localStorage.setItem('ak_score', on ? '1' : '0'); } catch { } }
   end(win) {
     if (this.watch) {
       this.over = true; this.snd.play('victory'); this.snd.music(null);
@@ -427,8 +474,8 @@ class Game {
   toggleDiplo(on = $('diploPanel').classList.contains('hidden')) {
     $('diploPanel').classList.toggle('hidden', !on); if (!on) return;
     const W = this.W, me = W.players[this.me], RN = { food: '🍖', wood: '🪵', gold: '🪙', stone: '🪨' };
-    const row = (p) => { const rel = p.id === this.me ? 'Kamu' : p.team === me.team ? '🤝 Sekutu' : '⚔ Musuh';
-      return `<tr class="${p.alive ? '' : 'dead'}"><td><i class="dot" style="background:rgb(${PLAYER_RGB[p.color]})"></i> <b>${p.name}</b> ${CIVS[p.civ] ? CIVS[p.civ].glyph : ''}</td><td>${rel}${p.alive ? '' : ' · kalah'}</td><td>${AGES[p.age].split(' ')[1]}</td>
+    const row = (p) => { const rel = p.id === this.me ? 'Kamu' : p.team === me.team ? '🤝 Sekutu' : pacted(W, this.me, p.id) ? '🕊 Pakta' : '⚔ Musuh', pp = W.players.filter(q => q.alive && q !== p && pacted(W, p.id, q.id)).map(q => q.name), rel2 = pp.length ? ` <small>🕊 pakta: ${pp.join(', ')}</small>` : '';
+      return `<tr class="${p.alive ? '' : 'dead'}"><td><i class="dot" style="background:rgb(${PLAYER_RGB[p.color]})"></i> <b>${p.name}</b> ${CIVS[p.civ] ? CIVS[p.civ].glyph : ''}</td><td>${rel}${rel2}${p.alive ? '' : ' · kalah'}</td><td>${AGES[p.age].split(' ')[1]}</td>
         <td class="trib">${p.id !== this.me && p.alive ? Object.keys(RN).map(r => `<button data-to="${p.id}" data-r="${r}" title="Kirim 100 ${RES_NAME[r]} (80 tiba)">${RN[r]}+100</button>`).join('') : ''}</td></tr>`; };
     $('diploBody').innerHTML = `<table class="diplo"><tr><th>Kerajaan</th><th>Hubungan</th><th>Zaman</th><th>Upeti (komisi 20%)</th></tr>${W.players.map(row).join('')}</table>
       <p class="hint">Tim ditetapkan di awal permainan. Sekutu berbagi pandangan dan tidak bisa saling menyerang. ${W.opts.treaty && W.t < W.opts.treaty ? `🕊 Gencatan senjata berakhir dalam ${Math.ceil((W.opts.treaty - W.t) / 60)} menit.` : ''}</p>
@@ -462,6 +509,7 @@ class Game {
     $('endStats').innerHTML = `<tr><th></th><th>Skor</th><th>Unit dilatih</th><th>Membunuh</th><th>Kehilangan</th><th>Bangunan dibangun</th><th>Bangunan dihancurkan</th><th>Sumber daya</th><th>Zaman</th></tr>` +
       P.map(p => `<tr><td style="color:rgb(${PLAYER_RGB[p.color]})"><b>${p.name}</b></td><td><b>${score(this.W, p).total}</b></td><td>${p.stats.units}</td><td>${p.stats.killed}</td><td>${p.stats.lost}</td><td>${p.stats.built}</td><td>${p.stats.razed}</td><td>${Math.floor(p.stats.gathered)}</td><td>${AGES[p.age]}</td></tr>`).join('');
     $('endFull').onclick = () => { this.stats.tab = 'time'; this.stats.toggle(true); };
+    $('endStory').onclick = () => this.story.open(); $('endStory').classList.toggle('hidden', this.hist.terrs.length < 2);
     if (!this.watch && !this.recorded) {
       this.recorded = true;
       const r = recordGame(this.summary(this.W.winner === this.W.players[this.me].team)), rk = rankOf(r.profile.xp);
@@ -473,6 +521,7 @@ class Game {
   // ---------------------------------------------------------------- camera
   // zoom keeping the world point under (px, py) fixed; far zoom-out for an overview of big maps
   zoomAt(px, py, f) {
+    this.camZoom = null;                    // the viewer's zoom wins over the director's
     const v = this.view, c = v.cam, s = this.app.screen, z0 = c.zoom;
     const z = Math.max(this.watch || this.lost ? 0.1 : 0.18, Math.min(1.6, z0 * f)); if (z === z0) return;      // (was 0.22 / 0.3: big empires need a wider view)
     const X = (px - (s.width / 2 - c.x * z0)) / z0, Y = (py - (s.height / 2 - c.y * z0)) / z0;
@@ -770,6 +819,7 @@ class Game {
         if (e.key === 'Tab') { e.preventDefault(); this.cyclePov(); return; }
         if (e.key === 'c' || e.key === 'C') { this.toggleAutoCam(); return; }
         if (e.key === 'v' || e.key === 'V') { this.toggleFog(); return; }
+        if (e.key === 'l' || e.key === 'L') { this.toggleScore(); return; }
         if (/^[12480]$/.test(e.key) && !e.ctrlKey) { this.setSpeed(e.key === '0' ? 20 : +e.key); this.snd.play('click'); return; }
       }
       if (/^[0-9]$/.test(e.key)) {
@@ -860,9 +910,9 @@ async function boot() {
   $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
   window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
-  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014152526);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
+  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261014170741);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014152526);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261014170741);background-position:-${p[0]}px -${p[1]}px` : ''; };
   let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;

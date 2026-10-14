@@ -245,6 +245,41 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
 - Settings (main menu → Pengaturan): **Efek perang** Penuh/Hemat (phones default to Hemat) and **Darah** Nyala/Mati → `FX` in render.js, stored as `ak_fxq` / `ak_fxBlood`.
 - Benchmark: `tests/browser/battlefx.cjs` (15 buildings burning + 100 soldiers fighting; fps at zoom 1 and 0.3, 1x and 8x; `MOBILE=1` for the phone viewport). Desktop: 60 fps at 1x; 8x went from 27 to 47 fps because the fire no longer floods the sorted `sky` layer.
 
+### v17: diplomacy, generals & morale, total war, fire spread, old forts, director camera, Kisah Perang
+- **Pacts** (sim): `W.pact[a*8+b]` = when sealed; `enemies()` is false between pact partners. Teams stay fixed, so victory still needs one kingdom left.
+  - Command `{ t: 'pact', pid, with, on }`. A pact is sealed when both sides offered within 60 s (`W.offer`); `on: false` breaks it (`W.broke`).
+  - `W.tribT` records tributes.
+  - Helpers: `pacted`, `pactSince`, `offerOf`, `brokeAt`, `tributeAt`.
+- **AI diplomacy** (`diplomacy()`): free-for-all with 3+ kingdoms, from minute 15. Power = pop + towns × 8.
+  - Coalition offer against a leader that is 1.6× us and 1.35× everyone else, from minute 25 (`this.against`). `pickFoe` prefers that enemy.
+  - Offers are accepted for a coalition, or for peace when the offerer just paid tribute, is weaker, and we have other rivals.
+  - A beaten AI on the defensive pays tribute for peace, but not to someone who refused it in the last 10 min or whom it betrayed in the last 20 min.
+  - Betrayal: when every living kingdom is at peace, the strongest breaks with its weakest partner (after 4 min); or the strongest by 1.5× breaks after 8 min once the common enemy is gone.
+  - Betrayed kingdoms gain a grudge. `hostile(q)` replaces team checks everywhere in ai.js; a partner's known buildings are shelved (`this.shelf`) and come back if the pact breaks.
+- **Panglima** (`UNITS.general`, trained at the TC from the Castle Age, `limit: 1` checked in `canTrain`).
+  - `moraleTick` (every 0.5 s): soldiers within 7 tiles get `insp` (+15% attack in `dmgOf`, no routing).
+  - A wounded (<50%), outnumbered (2:1 + 2) soldier routs with 12%/check: runs home for 8 s (`routUntil`, 🏳 badge).
+  - When the general dies (`generaldie` event): 45% of his men within 10 tiles rout.
+  - AI `generalTick`: trains one when at war, keeps him at the army's centre (not a siege member), pulls him home below 35% HP; chronicle `general` / `generaldie`.
+- **Perang Total** (`ruleTick`): after minute 75, 20 min with no Town Center destroyed and no kingdom beaten (`W.lastProg`).
+  - Effects: `W.totalWar`, all pacts dissolve, buildings take ×1.5 damage.
+  - The AI drops the defensive stance, uses minimum musters, halves its watches, and makes no pacts.
+- **Fire**: burning does max(3, 0.8% of max HP)/s. Every 2 s each neighbouring flammable building (not stone, walls, farms, outposts) catches at 10% (15 s).
+  - Repairers douse it: burn time shrinks by `nr` per second, ×2.5 with an own well within 11 tiles.
+- **Old forts** (`kind: 'post'`, `POST`): placed in map.js between each pair of neighbouring seats (deterministic ring search, no rng, so older seeds and saves are unchanged).
+  - Capture: soldiers of one side alone within 4 tiles for 8 s. Rewards: +0.6 gold/s and 12-tile vision.
+  - Shown on the minimap and in the info panel. AI `holdPosts()` sends 3–5 spare soldiers; chronicle `post`.
+- **Director camera** (spectator, 🎥 on): `heatAdd` builds hot spots from hits; the camera goes to the biggest battle (zoom 0.95), else the latest story (0.8), else tours towns (0.65). Any user camera move or zoom hands control back.
+  - `cine(x, y)`: slow motion for 2.6 s with cinematic bars on a capital/castle/wonder falling, a town falling or a general's death.
+- **UX**: `hud.notify(msg, cls, at)` makes a note clickable (📍 → camera). Live score panel `#scoreBox` (spectator, key L, remembered in `ak_score`): pop / army / towns / commander status; click a row to follow that kingdom.
+- **Kisah Perang** (`StoryView` in stats.js): `History.sampleLand()` stores land at quarter resolution plus towns and forts every 30 game-s.
+  - The modal replays it as an animated iso map with the chronicle alongside, and saves a PNG.
+  - Opened from the end screen or Statistik → Kronik Perang (when everything may be shown).
+- **Performance**: profiled minutes 60–64 of a 4-player 220 map (~520 units): ~10 ms per tick (sim 85%, AI 15%), so the ceiling is ≈11 game-s per real second whatever the renderer does. A Web Worker would only add ~20%, so it was not done.
+  - Done instead: per-search walkability cache in `findPath` (same paths, −10%), unit grid buckets reused, and a 40 ms sim budget per frame at 20x.
+  - Profile tool: a script that fast-forwards, then `node:inspector` profiles the late phase (see git history of this section).
+- Tests: `tests/general.test.js`, `tests/firewar.test.js`, `tests/posts.test.js` (in `npm test`); browser `tests/browser/story.cjs`.
+
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
 - Changes from it: archer atk 5, +3 vs infantry, cost 30w/40g; pikeman 55 hp, 0 pierce armour, 40f/30w; cataphract 115 hp, 3/3 armour, 35 iron; militia atk 5, 1 melee armour, 55f/20g; fire archer atk 6. Wells and outposts (and children) no longer keep a kingdom alive; the AI resigns when crushed (< 15 pop vs > 5x, for 2 min); exhaustion no longer kills; town-watch patrols recover energy. Bug: the AI's life timer shared its name (`lcT`) with the lumber-camp timer, so taverns / wells / hospitals were rarely considered (now `lifeT`). Expansion reserves the Town Center's cost once a site is known (`expandNeed`). `expansionSite` uses a resource grid (was a 75 ms spike).

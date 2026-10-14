@@ -22,7 +22,7 @@ export function createWorld({ size, terrain, players, seed = 1, opts = {} }) {
     cmds: [], ev: [], rnd: rng(seed), seed, paths: 0, nodes: 0, winner: -1, unreach: new Map(),
     market: { ...MARKET.base },
     opts: { night: opts.night || 'full', season, relicWin: !!opts.relicWin, life: opts.life !== false && opts.life !== 'off', victory: opts.victory || 'conquest', treaty: (+opts.treaty || 0) * 60, popLimit: +opts.popLimit || POP_LIMIT },
-    wonders: new Map(), reseed: {}, season: SEASONS[season], frozen: !!SEASONS[season].frozen,
+    wonders: new Map(), reseed: {}, pact: new Float64Array(64), offer: new Float64Array(64), broke: new Float64Array(64), tribT: new Float64Array(64), season: SEASONS[season], frozen: !!SEASONS[season].frozen,
     night: false, day: 1, rainUntil: 0, weatherT: 90,
   };
   for (const P of W.players) {                 // civilization: lasting bonuses, start, unique unit at the Castle
@@ -183,7 +183,7 @@ export function del(W, id) { W.ents.delete(id); W.dyn.delete(id); }
 // units bucketed on a coarse grid once per tick: neighbourhood queries stay cheap on big maps
 const GC = 8;
 function buildGrid(W) {
-  const g = W.ugrid; g.clear();
+  const g = W.ugrid; for (const a of g.values()) a.length = 0;         // the buckets are reused (no garbage every tick)
   for (const e of W.dyn.values()) if (e.kind === 'unit') { const k = Math.floor(e.x / GC) + Math.floor(e.y / GC) * 1024; let a = g.get(k); if (!a) g.set(k, a = []); a.push(e); }
 }
 export function unitsNear(W, x, y, r, fn) {
@@ -216,6 +216,21 @@ export function addUnit(W, owner, type, x, y) {
   if (d.convert) u.faith = 1;
   if (!d.animal && owner !== GAIA) { P.pop++; P.stats.units++; P.stats.tr[type] = (P.stats.tr[type] || 0) + 1; }
   return u;
+}
+// old forts (strategic points) between the kingdoms: soldiers of one side alone round one for `hold` seconds take it;
+// it pays its holder gold and watches far around (kind 'post', owner -1 = nobody)
+export const POST = { gold: 0.6, los: 12, r: 4, hold: 8, names: ['Benteng Tua Garuda', 'Benteng Tua Naga', 'Benteng Tua Harimau', 'Benteng Tua Rajawali', 'Benteng Tua Banteng', 'Benteng Tua Merak'] };
+export function addPost(W, i, j, q) { return add(W, { kind: 'post', type: 'post', x: i + 0.5, y: j + 0.5, w: 1, h: 1, owner: -1, hold: 0, name: POST.names[q % POST.names.length] }); }
+function postTick(W) {
+  for (const p of W.dyn.values()) {
+    if (p.kind !== 'post') continue;
+    const owners = new Set();
+    unitsNear(W, p.x, p.y, POST.r, (e) => { if (e.kind === 'unit' && e.owner >= 0 && e.hp > 0 && !e.inside && MILITARY(e.type) && !isAnimal(e) && Math.hypot(e.x - p.x, e.y - p.y) <= POST.r) owners.add(e.owner); });
+    const o = [...owners][0], one = owners.size && [...owners].every(q => !enemies(W, q, o));
+    if (one && (p.owner < 0 || enemies(W, p.owner, o))) { p.hold++; if (p.hold >= POST.hold) { const from = p.owner; p.owner = o; p.hold = 0; W.ev.push({ k: 'postcapture', owner: o, from, x: p.x, y: p.y, name: p.name }); } }
+    else p.hold = Math.max(0, p.hold - 1);
+    if (p.owner >= 0) { const P = W.players[p.owner]; if (!P.alive) p.owner = -1; else { P.res.gold += POST.gold; P.stats.gathered += POST.gold; P.stats.gres.gold += POST.gold; } }
+  }
 }
 // King of the Hill: the monument in the middle (x, y = centre; tx, ty = top-left tile of its 3x3 footprint)
 export function addMonument(W, i, j) { return W.monument = add(W, { kind: 'monument', type: 'monument', x: i + 1.5, y: j + 1.5, tx: i, ty: j, w: 3, h: 3, team: -1, owner: -1, since: 0 }); }
@@ -294,7 +309,13 @@ export function distTo(e, x, y) {
 export const center = (e) => e.kind === 'unit' ? [e.x, e.y] : [e.x + e.w / 2, e.y + e.h / 2];
 export const alive = (W, id) => { const e = W.ents.get(id); return e && (e.kind !== 'unit' || e.hp > 0) && (e.kind !== 'building' || e.hp > 0) && (e.kind !== 'res' || e.amount > 0) ? e : null; };
 // treaty: no fighting between players until it runs out (nature stays hostile)
-const enemies = (W, a, b) => a !== b && pl(W, a).team !== pl(W, b).team && !(a >= 0 && b >= 0 && W.opts.treaty && W.t < W.opts.treaty);
+const enemies = (W, a, b) => a !== b && pl(W, a).team !== pl(W, b).team && !(a >= 0 && b >= 0 && ((W.opts.treaty && W.t < W.opts.treaty) || W.pact[a * 8 + b]));
+// pacts between kingdoms of different teams (AI diplomacy in free-for-all): W.pact[a * 8 + b] = game time it was sealed
+export const pacted = (W, a, b) => a >= 0 && b >= 0 && W.pact[a * 8 + b] > 0;
+export const pactSince = (W, a, b) => W.pact[a * 8 + b];
+export const offerOf = (W, from, to) => W.offer[from * 8 + to];             // when `from` last offered `to` a pact
+export const brokeAt = (W, from, to) => W.broke[from * 8 + to];             // when `from` last broke a pact with `to`
+export const tributeAt = (W, from, to) => W.tribT[from * 8 + to];           // when `from` last sent `to` a tribute
 export const isEnemy = (W, a, b) => enemies(W, a, b);
 export const onHill = (W, x, y) => W.terrain[tileAt(W, x, y)] === TER.HILL;
 // connected walkable regions (gates count as open), one map for land and one for water
@@ -350,15 +371,18 @@ class Heap {   // binary min-heap on two flat arrays (no per-node allocations)
     F[i] = f; Nn[i] = v; return top;
   }
 }
-const G = { g: null, from: null, stamp: null, cur: 0 };
+const G = { g: null, from: null, stamp: null, ps: null, pv: null, cur: 0 };
 // cost: hills cost more to climb, roads less. raw = keep the unsmoothed tile path (roads use it)
 export function findPath(W, owner, sx, sy, goal, tx, ty, maxNodes = 0, nav = false, raw = false) {
   // long trips: weighted A* (explores far fewer nodes on open maps) and a bigger node allowance
   const far = Math.hypot(tx - sx, ty - sy), hw = far > 24 ? 1.8 : 1.15;
   if (!maxNodes) maxNodes = Math.min(W.size > 200 ? 16000 : 9000, 2500 + far * 45);
   const N = W.size * W.size, S = W.size, T = W.terrain, Rd = W.road;
-  if (!G.g || G.g.length !== N) { G.g = new Float32Array(N); G.from = new Int32Array(N); G.stamp = new Uint32Array(N); }
-  G.cur++; const st = G.cur;
+  if (!G.g || G.g.length !== N) { G.g = new Float32Array(N); G.from = new Int32Array(N); G.stamp = new Uint32Array(N); G.ps = new Uint32Array(N); G.pv = new Uint8Array(N); }
+  G.cur++; const st = G.cur, PS = G.ps, PV = G.pv;
+  // walkability is asked of the same tiles again and again (8 neighbours + the corners of every diagonal): remembered
+  // for this search (nothing on the map changes while it runs, so the path is exactly the same)
+  const pass = (i, j) => { if (i < 0 || j < 0 || i >= S || j >= S) return false; const q = j * S + i; if (PS[q] === st) return PV[q] === 1; const v = passable(W, i, j, owner, nav); PS[q] = st; PV[q] = v ? 1 : 0; return v; };
   let si = Math.floor(sx), sj = Math.floor(sy);
   if (!passable(W, si, sj, owner, nav)) { const f = nearestFree(W, sx, sy, owner, 3, nav); if (f) { si = f[0]; sj = f[1]; } }
   const s = idx(W, si, sj);
@@ -371,8 +395,8 @@ export function findPath(W, owner, sx, sy, goal, tx, ty, maxNodes = 0, nav = fal
     const hk = h(i, j); if (hk < bestH) { bestH = hk; best = k; }
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       if (!di && !dj) continue;
-      const ni = i + di, nj = j + dj; if (!passable(W, ni, nj, owner, nav)) continue;
-      if (di && dj && (!passable(W, i + di, j, owner, nav) || !passable(W, i, j + dj, owner, nav))) continue;
+      const ni = i + di, nj = j + dj; if (!pass(ni, nj)) continue;
+      if (di && dj && (!pass(i + di, j) || !pass(i, j + dj))) continue;
       const nk = nj * S + ni, ter = T[nk];
       const ng = G.g[k] + (di && dj ? SQ2 : 1) * (nav ? 1 : ter === TER.HILL ? 1.45 : Rd[nk] ? 0.85 : 1);
       if (G.stamp[nk] === st && G.g[nk] <= ng) continue;
@@ -431,6 +455,7 @@ export function canBuild(W, pid, type) {
 }
 export function canTrain(W, pid, type) {
   const d = UNITS[type], P = W.players[pid]; if (!d) return false;
+  if (d.limit) { let n = 0; for (const e of W.dyn.values()) if (e.owner === pid && (e.type === type && e.kind === 'unit' || (e.kind === 'building' && e.queue && e.queue.some(q => q.unit === type)))) n++; if (n >= d.limit) return false; }
   return P.age >= d.age && (!d.needsTech || P.techs.has(d.needsTech) || (P.spec && P.spec.unique === type));   // a civ's unique unit skips its research
 }
 export function placementOk(W, pid, type, i, j, axis = 'x') {
@@ -619,6 +644,18 @@ function applyCmd0(W, c) {
     case 'tribute': {      // send resources to another player (20% lost on the way)
       const Q = W.players[c.to], n = Math.floor(+c.n || 0); if (!Q || !Q.alive || c.to === c.pid || !RES.includes(c.res) || n <= 0 || P.res[c.res] < n) break;
       P.res[c.res] -= n; Q.res[c.res] += Math.floor(n * 0.8); W.ev.push({ k: 'tribute', owner: c.pid, to: c.to, res: c.res, n: Math.floor(n * 0.8) });
+      W.tribT[c.pid * 8 + c.to] = W.t;
+      break;
+    }
+    case 'pact': {      // offer a pact (sealed when the other side offered too within a minute), or break one
+      const Q = W.players[c.with], a = c.pid, b = +c.with; if (!Q || !Q.alive || a === b || P.team === Q.team) break;
+      if (c.on === false) { if (W.pact[a * 8 + b]) { W.pact[a * 8 + b] = W.pact[b * 8 + a] = 0; W.broke[a * 8 + b] = W.t; W.ev.push({ k: 'pactbreak', owner: a, with: b }); } break; }
+      if (W.pact[a * 8 + b]) break;
+      if (W.offer[b * 8 + a] && W.t - W.offer[b * 8 + a] < 60) {
+        W.pact[a * 8 + b] = W.pact[b * 8 + a] = W.t; W.offer[b * 8 + a] = 0;
+        for (const u of W.dyn.values()) if (u.kind === 'unit' && (u.owner === a || u.owner === b) && u.order && u.order.id) { const t = W.ents.get(u.order.id); if (t && t.owner !== u.owner && (t.owner === a || t.owner === b) && (u.order.t === 'attack' || u.order.t === 'convert')) setOrder(W, u, null); }
+        W.ev.push({ k: 'pact', owner: a, with: b });
+      } else { W.offer[a * 8 + b] = W.t; W.ev.push({ k: 'pactoffer', owner: a, with: b }); }
       break;
     }
     case 'flare': W.ev.push({ k: 'flare', owner: c.pid, x: +c.x, y: +c.y }); break;
@@ -696,6 +733,7 @@ export function step(W) {
   for (const e of list) if (e.kind === 'unit') { e.px = e.x; e.py = e.y; }
   buildGrid(W);
   if (W.tick % 5 === 0) formationTick(W);
+  if (W.tick % 5 === 2) moraleTick(W);
   for (const e of list) {
     if (!W.ents.has(e.id)) continue;
     if (e.kind === 'unit') unitTick(W, e);
@@ -1267,7 +1305,7 @@ function findEnemy(W, u, r) {
 // damage of one hit: attack - armour (with formation, high ground, class bonuses, charges)
 export function dmgOf(W, a, t) {
   const s = stat(W, a.owner, a.type); const rg = s.range || hunting(a, t);
-  let atk = s.atk * (a.wr !== undefined ? 0.8 + 0.2 * Math.min(1, a.wr) : 1);       // tired, sick or miserable soldiers hit softer
+  let atk = s.atk * (a.wr !== undefined ? 0.8 + 0.2 * Math.min(1, a.wr) : 1) * (a.insp > W.t ? 1.15 : 1);       // tired, sick or miserable soldiers hit softer; a general's presence, harder
   let arm;
   if (t.kind === 'unit') {
     const ts = stat(W, t.owner, t.type), fb = t.fb;
@@ -1278,6 +1316,7 @@ export function dmgOf(W, a, t) {
   if (t.kind === 'unit') { const c = stat(W, t.owner, t.type).cls; if (s.bonus && s.bonus[c]) dmg += s.bonus[c]; if (a.fb && a.fb.vsCav && c === 'cavalry') dmg += a.fb.vsCav; }
   if (s.vsBuilding && t.kind === 'building') dmg += s.vsBuilding;      // melee soldiers / siege can actually knock buildings down
   if (t.kind === 'building' && a.type === 'villager') dmg = Math.max(1, dmg * 0.5);
+  if (t.kind === 'building' && W.totalWar) dmg *= 1.5;                             // Perang Total
   if (!a.nav && onHill(W, a.x, a.y) && !onHill(W, ...center(t))) dmg *= 1.25;   // high ground
   if (!rg && t.kind === 'unit' && t.dir !== undefined && !isAnimal(t)) {           // struck from the side or behind
     const dx = a.x - t.x, dy = a.y - t.y, ang = (Math.atan2((dx + dy) / 2, dx - dy) * 180 / Math.PI + 360) % 360;
@@ -1304,6 +1343,32 @@ function attack(W, u, t) {
     u.hitAt = 0.45 * s.reload * 0.5; u.hitTgt = t.id;
     W.ev.push({ k: 'swing', x: u.x, y: u.y, owner: u.owner, type: u.type });
     setTimeoutTick(W, u.hitAt + 0.05, () => { u.lastAtk = W.t; });
+  }
+}
+// ---------------------------------------------------------------- morale
+// A general inspires the soldiers round him (+15% attack, they hold their ground). A wounded soldier who is badly
+// outnumbered may break and run home for a few seconds; when a general falls, many of his men near him do.
+const GEN_NAMES = ['Wiraguna', 'Arya Kencana', 'Bima Seta', 'Surya Pamungkas', 'Mahesa Anabrang', 'Lembu Sora', 'Rangga Jaladri', 'Jaya Nambi', 'Wira Mandala', 'Kebo Taruna', 'Gagak Rimang', 'Banyak Wide'];
+export const generalName = (u) => personName(u) || GEN_NAMES[u.id % GEN_NAMES.length];
+const canRout = (u) => u.kind === 'unit' && u.hp > 0 && !u.inside && !u.nav && MILITARY(u.type) && !UNITS[u.type].general && !UNITS[u.type].hero && UNITS[u.type].cls !== 'siege' && !UNITS[u.type].packs;
+function rout(W, u) {
+  const P = W.players[u.owner], home = P && (alive(W, P.tc) || [...W.dyn.values()].find(e => e.kind === 'building' && e.owner === u.owner && e.type === 'town_center'));
+  let x = u.x, y = u.y;
+  if (home) { const dx = home.x + 2 - u.x, dy = home.y + 2 - u.y, d = Math.hypot(dx, dy) || 1, k = Math.min(d, 12); x = u.x + dx / d * k; y = u.y + dy / d * k; }
+  const f = nearestFree(W, x, y, u.owner, 4); if (!f) return;
+  setOrder(W, u, { t: 'move', x: f[0] + 0.5, y: f[1] + 0.5 }); u.routUntil = W.t + 8;
+  W.ev.push({ k: 'rout', x: u.x, y: u.y, owner: u.owner });
+}
+function moraleTick(W) {
+  for (const g of W.dyn.values()) {
+    if (g.kind !== 'unit' || !UNITS[g.type].general || g.inside) continue;
+    unitsNear(W, g.x, g.y, 7, (e) => { if (e.owner === g.owner && e.kind === 'unit') e.insp = W.t + 1.2; });
+  }
+  for (const u of W.dyn.values()) {
+    if (u.kind !== 'unit' || !(W.t - (u.hitT ?? -99) < 4) || u.hp >= u.maxHp * 0.5 || u.insp > W.t || u.routUntil > W.t || !canRout(u)) continue;
+    let own = 0, foe = 0;
+    unitsNear(W, u.x, u.y, 6, (e) => { if (e.kind !== 'unit' || e.hp <= 0 || !MILITARY(e.type) || isAnimal(e)) return; if (e.owner === u.owner) own++; else if (enemies(W, e.owner, u.owner)) foe++; });
+    if (foe >= own * 2 + 2 && W.rnd() < 0.12) rout(W, u);
   }
 }
 function setTimeoutTick(W, s, fn) { add(W, { kind: 'timer', t: s, fn }); }
@@ -1350,12 +1415,17 @@ export function damage(W, t, dmg, src) {
     if (food) add(W, { kind: 'res', type: 'carcass', animal: t.type, x: t.x - 0.5, y: t.y - 0.5, w: 1, h: 1, amount: food, max: food, dir: t.dir, variant: 0 });
     else add(W, { kind: 'corpse', type: t.type, owner: t.owner, x: t.x, y: t.y, dir: t.dir, t: 0, skin: skinOf(t), sk: t.id % 2 });
     W.ev.push({ k: 'die', x: t.x, y: t.y, owner: t.owner, type: t.type });
+    if (UNITS[t.type].general) {
+      W.ev.push({ k: 'generaldie', x: t.x, y: t.y, owner: t.owner, name: generalName(t), by: src ? src.owner : -1 });
+      unitsNear(W, t.x, t.y, 10, (e) => { if (e.owner === t.owner && canRout(e) && W.rnd() < 0.45) rout(W, e); });
+    }
   } else {
     const d = BUILDINGS[t.type];
     for (let a = 0; a < t.w; a++) for (let c = 0; c < t.h; c++) { const k = idx(W, t.x + a, t.y + c); if (W.occ[k] === t.id) W.occ[k] = 0; if (W.focc[k] === t.id) W.focc[k] = 0; }
     W.regionDirty = true; W.regionDirtyW = true;
     if (t.built && d.pop) { P.popRaw = Math.max(0, (P.popRaw || 0) - d.pop); popRefresh(W, P, t); }
     if (d.terr) W.terrDirty = true;
+    if (t.type === 'town_center' && W.players[t.owner] && W.players[t.owner].tc === t.id) W.lastProg = W.t;      // a capital falls
     if (t.type !== 'farm') add(W, { kind: 'rubble', n: Math.min(4, Math.max(t.w, t.h)), x: t.x + t.w / 2, y: t.y + t.h / 2, t: 0 });
     W.ev.push({ k: 'collapse', x: t.x + t.w / 2, y: t.y + t.h / 2, owner: t.owner, type: t.type, n: t.w, hit: !!src });
     for (const q of t.queue) { const c = q.cost || (q.unit ? UNITS[q.unit].cost : TECHS[q.tech].cost); for (const r of RES) P.res[r] += c[r] || 0; }
@@ -1557,11 +1627,22 @@ function villagerRepair(W, u, o) {
 }
 
 // ---------------------------------------------------------------- buildings
+const flammable = (b) => !BUILDINGS[b.type].wall && !BUILDINGS[b.type].gate && !['castle', 'watch_tower', 'wonder', 'mine_shaft', 'farm', 'outpost'].includes(b.type);
 function buildingTick(W, b) {
   const d = BUILDINGS[b.type], P = W.players[b.owner];
   b.nb = b.builders || 0; b.builders = 0; b.nr = b.repairers || 0; b.repairers = 0;
   if (!b.built) return;
-  if (b.burn && W.t < b.burn) damage(W, b, 3 * TICK, { owner: b.burnBy, kind: 'fire' });
+  if (b.burn && W.t < b.burn) {
+    damage(W, b, Math.max(3, b.maxHp * 0.008) * TICK, { owner: b.burnBy, kind: 'fire' });
+    if (b.nr) { if (W.t > (b.wellT || 0)) { b.wellT = W.t + 5; b.well = [...W.dyn.values()].some(e => e.kind === 'building' && e.type === 'well' && e.built && e.owner === b.owner && Math.hypot(e.x - b.x, e.y - b.y) < 11); } b.burn -= TICK * b.nr * (b.well ? 2.5 : 1); }     // repairers douse it
+    if (W.tick % 20 === b.id % 20 && b.hp > 0 && flammable(b)) {          // sparks jump to wooden neighbours
+      const seen = new Set();
+      for (let j = b.y - 2; j < b.y + b.h + 2; j++) for (let i = b.x - 2; i < b.x + b.w + 2; i++) {
+        if (!inb(W, i, j)) continue; const o = W.occ[idx(W, i, j)]; if (!o || o === b.id || seen.has(o)) continue; seen.add(o);
+        const n = W.ents.get(o); if (n && n.kind === 'building' && n.built && flammable(n) && !(n.burn > W.t) && W.rnd() < 0.1) { n.burn = W.t + 15; n.burnBy = b.burnBy; W.ev.push({ k: 'firespread', x: n.x + n.w / 2, y: n.y + n.h / 2, owner: n.owner }); }
+      }
+    }
+  }
   if (!W.ents.has(b.id)) return;
   if (d.market && P.techs.has('trade_route')) { P.res.gold += MARKET.tradeGold * TICK; P.stats.gathered += MARKET.tradeGold * TICK; P.stats.gres.gold += MARKET.tradeGold * TICK; }
   if (b.cool > 0) b.cool -= TICK;
@@ -1683,6 +1764,7 @@ function updateVision(W) {
   };
   const spies = W.players.filter(P => P.alive && P.spyUntil > W.t);
   for (const e of W.dyn.values()) {
+    if (e.kind === 'post') { if (e.owner >= 0) mark(W.players[e.owner], e.x, e.y, POST.los); continue; }
     if (e.kind !== 'unit' && e.kind !== 'building') continue;
     const [cx, cy] = center(e);
     for (const Q of spies) if (e.owner >= 0 && W.players[e.owner].team !== Q.team) mark(Q, cx, cy, 1.5);     // spies report enemy positions
@@ -1712,6 +1794,15 @@ export function spyReport(W, pid) {
 function ruleTick(W) {
   if (W.opts.treaty && !W.treatyOver && W.t >= W.opts.treaty) { W.treatyOver = true; W.ev.push({ k: 'treatyend' }); }
   if (W.winner >= 0) return;
+  postTick(W);
+  // Perang Total: after 75 minutes, 20 minutes without a capital falling or a kingdom beaten -> pacts dissolve,
+  // soldiers hit buildings 50% harder, and the computer commanders hold nothing back
+  if (!W.totalWar && W.t > 4500 && W.t - (W.lastProg || 0) > 1200 && W.players.filter(P => P.alive).length >= 2) {
+    W.totalWar = W.t; W.pact.fill(0);
+    const lead = W.players.filter(P => P.alive).sort((a, b) => b.pop - a.pop)[0];
+    const text = 'PERANG TOTAL! Dua puluh menit tanpa satu ibu kota pun jatuh — semua pakta bubar, serangan ke bangunan +50%, para panglima mengerahkan segalanya.';
+    W.ev.push({ k: 'totalwar', text }); (W.chron || (W.chron = [])).push({ t: W.t, kind: 'totalwar', owner: lead.id, foe: -1, text, all: true });
+  }
   const win = (team, kind) => {
     for (const P of W.players) if (P.alive && P.team !== team) { P.alive = false; W.ev.push({ k: 'defeated', owner: P.id }); }
     W.winner = team; W.ev.push({ k: 'victory', team, [kind]: true });
@@ -1965,7 +2056,7 @@ function checkVictory(W) {
   const live = new Set();
   for (const e of W.dyn.values()) if (keepsAlive(e)) live.add(e.owner);
   for (const P of W.players) if (P.alive && (!live.has(P.id) || P.resigned)) {
-    P.alive = false; P.shipment = null; W.ev.push({ k: 'defeated', owner: P.id, resign: !!P.resigned });
+    P.alive = false; P.shipment = null; W.lastProg = W.t; W.ev.push({ k: 'defeated', owner: P.id, resign: !!P.resigned });
     for (const e of [...W.dyn.values()]) if (e.owner === P.id && (e.kind === 'unit' || e.kind === 'building')) damage(W, e, 1e9, null);   // leftovers crumble
   }
   const teams = new Set(W.players.filter(p => p.alive).map(p => p.team));

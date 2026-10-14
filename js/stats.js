@@ -1,6 +1,6 @@
 // War statistics: score, live kingdom snapshot, timeline history, first-contact log, and the "Statistik Perang" panel.
 // Playing: only your own kingdom in full, plus fog-limited intel on enemies. Watching bot vs bot: every kingdom side by side.
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, CARDS } from './data.js';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, CARDS, TER } from './data.js';
 
 const $ = (id) => document.getElementById(id);
 const sum = (c) => RES.reduce((s, r) => s + ((c && c[r]) || 0), 0);
@@ -41,9 +41,10 @@ export function snapshot(W) {
 
 // timeline samples + who discovered whom (an enemy building seen for the first time)
 export class History {
-  constructor(W, every = 10) { this.W = W; this.every = every; this.rows = []; this.next = 0; this.found = []; this.fset = new Set(); this.ct = 0; this.onFound = null; }
+  constructor(W, every = 10) { this.W = W; this.every = every; this.rows = []; this.next = 0; this.found = []; this.fset = new Set(); this.ct = 0; this.onFound = null; this.terrs = []; this.tt = 0; }
   tick() {
     const W = this.W;
+    if (W.terr && W.t >= this.tt) this.sampleLand();
     if (W.t >= this.ct) { this.ct = W.t + 2; this.contacts(); }
     if (W.t < this.next) return; this.next = W.t + this.every;
     const snap = snapshot(W);
@@ -61,6 +62,14 @@ export class History {
       }
     }
   }
+  // the map of the kingdoms every 30 game-s, at a quarter of the resolution (plus where the towns stand): Kisah Perang
+  sampleLand() {
+    const W = this.W, S = W.size, n = Math.ceil(S / 4), d = new Uint8Array(n * n); this.tt = W.t + 30;
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) d[j * n + i] = W.terr[Math.min(S - 1, j * 4 + 2) * S + Math.min(S - 1, i * 4 + 2)];
+    const towns = []; for (const e of W.dyn.values()) if (e.kind === 'building' && e.type === 'town_center' && e.built) towns.push([e.x + 2, e.y + 2, e.owner]);
+    const forts = []; for (const e of W.dyn.values()) if (e.kind === 'post') forts.push([e.x, e.y, e.owner]);
+    this.terrs.push({ t: W.t, n, d, towns, forts, alive: W.players.map(P => P.alive) });
+  }
   foundAt(by, of) { const f = this.found.find(f => f.by === by && f.of === of); return f ? f.t : null; }
   // gather rate per minute over the last `win` game-seconds
   rate(pid, res, win = 60) {
@@ -73,7 +82,7 @@ export class History {
 
 // ---------------------------------------------------------------- panel
 const TABS = [['sum', 'Ringkasan'], ['eco', 'Ekonomi'], ['mil', 'Militer'], ['war', 'Kronik Perang'], ['time', 'Linimasa']];
-const WAR_ICON = { declare: '📜', march: '🚩', siege: '🏹', fall: '🔥', next: '➡', hunt: '🔎', found: '👁', retreat: '↩', recall: '🛡', truce: '🕊', conquer: '👑', wonder: '🏛', hold: '🏛', defend: '🛡', alarm: '🔔', repel: '🛡', counter: '⚔', posture: '⚖' };
+const WAR_ICON = { declare: '📜', march: '🚩', siege: '🏹', fall: '🔥', next: '➡', hunt: '🔎', found: '👁', retreat: '↩', recall: '🛡', truce: '🕊', conquer: '👑', wonder: '🏛', hold: '🏛', defend: '🛡', alarm: '🔔', repel: '🛡', counter: '⚔', posture: '⚖', pact: '🤝', pactoffer: '✉', refuse: '✋', betray: '🗡', tribute: '💰', general: '⭐', generaldie: '⚰', totalwar: '🔥', post: '🏰' };
 const METRICS = [['score', 'Skor'], ['pop', 'Populasi'], ['army', 'Tentara'], ['vil', 'Penduduk desa'], ['gathered', 'Sumber daya terkumpul']];
 const DASH = [[], [7, 4], [2, 3], [9, 3, 2, 3]];     // per seat: second cue besides colour
 
@@ -163,12 +172,14 @@ export class StatsPanel {
     const ais = (G.ais || []).filter(a => W.players[a.pid].alive && (all || side(a.pid)));
     let h = '<h3>Komandan Perang <small>(apa yang sedang dilakukan pasukan tiap kerajaan)</small></h3>';
     h += ais.length ? '<table class="st">' + ais.map(a => { const P = W.players[a.pid]; return `<tr><td style="color:${rgb(P)}"><b>${P.name}</b></td><td>${a.warStatus ? a.warStatus() : '—'}</td></tr>`; }).join('') + '</table>' : '<p><i>Tidak ada komandan komputer di pihakmu.</i></p>';
-    const log = (W.chron || []).filter(c => all || side(c.owner) || side(c.foe) || c.kind === 'fall' || c.kind === 'conquer');
+    const log = (W.chron || []).filter(c => all || c.all || side(c.owner) || side(c.foe) || c.kind === 'fall' || c.kind === 'conquer');
+    if (all && this.h.terrs.length > 1) h += '<p><button id="storyOpen" class="tb">🗺 Putar Kisah Perang di peta</button></p>';
     h += '<h3>Kronik <small>(kisah perang dari awal sampai sekarang)</small></h3>';
     h += log.length ? '<div class="chron">' + log.slice().reverse().slice(0, 200).map(c => `<div class="ce ${c.kind}"><span class="ct">${mmss(c.t)}</span><i>${WAR_ICON[c.kind] || '⚔'}</i><span style="border-color:${rgb(W.players[c.owner])}">${c.text}</span></div>`).join('') + '</div>'
       : '<p><i>Belum ada perang besar. Para panglima masih membangun kekuatan — perang biasanya pecah di Zaman Kastil.</i></p>';
     if (body.dataset.k !== 'war') { body.dataset.k = 'war'; body.scrollTop = 0; }
     body.innerHTML = h;
+    const so = $('storyOpen'); if (so) so.onclick = () => { this.toggle(false); this.g.story.open(); };
   }
   contactsOf(P) {
     const W = this.g.W, foes = W.players.filter(Q => Q.team !== P.team);
@@ -248,5 +259,67 @@ export class StatsPanel {
     for (const P of ps) { g.fillStyle = rgb(P); g.strokeStyle = '#241b13'; g.lineWidth = 2; g.beginPath(); g.arc(x, Y(val(row, P)), 4, 0, 6.29); g.fill(); g.stroke(); }
     tip.style.display = 'block'; tip.innerHTML = `<b>Menit ${mmss(row.t)}</b>` + [...ps].sort((a, b) => val(row, b) - val(row, a)).map(P => `<div><i style="background:${rgb(P)}"></i>${P.name}<b>${fmt(val(row, P))}</b></div>`).join('');
     tip.style.left = Math.min(x + 12, w - tip.offsetWidth - 4) + 'px';
+  }
+}
+
+// ---------------------------------------------------------------- Kisah Perang: the war told on the map
+// The kingdoms' land every 30 game-s replayed as an animated map (towns as dots), with the chronicle running alongside;
+// the current frame can be saved as an image.
+export class StoryView {
+  constructor(game, hist) {
+    this.g = game; this.h = hist; this.i = 0; this.playing = false; this.acc = 0;
+    $('storyClose').onclick = () => this.close();
+    $('storyPlay').onclick = () => { if (this.i >= this.h.terrs.length - 1) this.i = 0; this.playing = !this.playing; this.draw(); };
+    $('storySlider').oninput = (e) => { this.i = +e.target.value; this.playing = false; this.draw(); };
+    $('storySave').onclick = () => this.save();
+  }
+  open() {
+    const T = this.h.terrs; if (T.length < 2) return;
+    $('storyModal').classList.remove('hidden'); this.isOpen = true;
+    this.base = this.terrainImage();
+    $('storySlider').max = T.length - 1; this.i = 0; this.playing = true; this.draw();
+  }
+  close() { $('storyModal').classList.add('hidden'); this.isOpen = false; this.playing = false; }
+  update(dt) {
+    if (!this.isOpen || !this.playing) return;
+    this.acc += dt; if (this.acc < 0.09) return; this.acc = 0;         // ~11 frames a second: 5.5 game-minutes a second
+    if (this.i < this.h.terrs.length - 1) { this.i++; this.draw(); } else { this.playing = false; this.draw(); }
+  }
+  // land and water once, at the samples' resolution
+  terrainImage() {
+    const W = this.g.W, S = W.size, n = this.h.terrs[0].n, out = new Uint8Array(n * n);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const t = W.terrain[Math.min(S - 1, j * 4 + 2) * S + Math.min(S - 1, i * 4 + 2)]; out[j * n + i] = t; }
+    return out;
+  }
+  draw() {
+    const W = this.g.W, T = this.h.terrs, f = T[Math.min(this.i, T.length - 1)], cv = $('storyCanvas'), g = cv.getContext('2d');
+    const w = cv.width, hh = cv.height, n = f.n, cw = w / n, ch = hh / n;
+    const P = (i, j) => [(i - j) * cw / 2 + w / 2, (i + j) * ch / 2];
+    g.fillStyle = '#120d08'; g.fillRect(0, 0, w, hh);
+    const ter = (t) => t === TER.WATER ? '#2c5a86' : t === TER.ROCK ? '#5d5a55' : t === TER.HILL ? '#6a6a3a' : t === TER.FOREST ? '#2a4320' : t === TER.DIRT ? '#5a4a30' : '#3d5a2a';
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const o = f.d[j * n + i], [x, y] = P(i, j);
+      g.fillStyle = o ? `rgb(${PLAYER_RGB[W.players[o - 1].color].map(c => Math.round(c * 0.8 + 20)).join(',')})` : ter(this.base[j * n + i]);
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + cw / 2 + 0.6, y + ch / 2); g.lineTo(x, y + ch + 0.6); g.lineTo(x - cw / 2 - 0.6, y + ch / 2); g.fill();
+    }
+    for (const [fx, fy, o] of f.forts || []) { const [x, y] = P(fx / 4, fy / 4); g.fillStyle = o >= 0 ? `rgb(${PLAYER_RGB[W.players[o].color]})` : '#d8d0c0'; g.strokeStyle = '#000'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y + ch / 2 - 6); g.lineTo(x + 5, y + ch / 2); g.lineTo(x, y + ch / 2 + 6); g.lineTo(x - 5, y + ch / 2); g.closePath(); g.fill(); g.stroke(); }
+    for (const [tx, ty, o] of f.towns) { const [x, y] = P(tx / 4, ty / 4); g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y + ch / 2, 4, 0, 6.29); g.fill(); g.lineWidth = 2; g.strokeStyle = `rgb(${PLAYER_RGB[W.players[o].color]})`; g.stroke(); }
+    g.font = '700 15px Alegreya, Georgia, serif'; g.fillStyle = '#f2e6c9'; g.textAlign = 'left'; g.fillText(`Menit ${Math.floor(f.t / 60)}`, 10, 22);
+    // legend: who holds how much land
+    let ly = 22; g.textAlign = 'right';
+    const share = W.players.map((p, k) => { let c = 0; for (let q = 0; q < f.d.length; q++) if (f.d[q] === k + 1) c++; return c; }), tot = Math.max(1, share.reduce((a, b) => a + b, 0));
+    for (const p of [...W.players].sort((a, b) => share[b.id] - share[a.id])) { g.fillStyle = f.alive[p.id] ? `rgb(${PLAYER_RGB[p.color]})` : '#777'; g.fillText(`${p.name}${f.alive[p.id] ? '' : ' ☠'} · ${Math.round(share[p.id] / tot * 100)}%`, w - 10, ly); ly += 18; }
+    $('storySlider').value = this.i; $('storyPlay').textContent = this.playing ? '⏸' : '▶';
+    $('storyTime').textContent = `${Math.floor(f.t / 60)}:${String(Math.floor(f.t % 60)).padStart(2, '0')}`;
+    // the chronicle up to this moment, newest first
+    const log = (W.chron || []).filter(c => c.t <= f.t + 0.01 && !['alarm', 'refuse', 'pactoffer'].includes(c.kind)).slice(-60).reverse();
+    $('storyLog').innerHTML = log.length ? log.map((c, k) => `<div class="ce ${c.kind}${k === 0 ? ' now' : ''}"><span class="ct">${Math.floor(c.t / 60)}:${String(Math.floor(c.t % 60)).padStart(2, '0')}</span><span style="border-color:rgb(${PLAYER_RGB[W.players[c.owner].color]})">${c.text}</span></div>`).join('') : '<i>Belum ada kisah perang pada saat ini.</i>';
+  }
+  save() {
+    const src = $('storyCanvas'), W = this.g.W, f = this.h.terrs[this.i], c = document.createElement('canvas'); c.width = src.width; c.height = src.height + 54;
+    const g = c.getContext('2d'); g.fillStyle = '#1a120b'; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, 0, 54);
+    g.fillStyle = '#e8c860'; g.font = '700 22px Cinzel, Georgia, serif'; g.textAlign = 'center'; g.fillText('Kisah Perang', c.width / 2, 26);
+    g.fillStyle = '#d8c8a0'; g.font = '14px Alegreya, Georgia, serif'; g.fillText(`${W.map ? W.map.name + ' · ' : ''}menit ${Math.floor(f.t / 60)}${W.winner >= 0 ? ' · pemenang: ' + W.players.filter(p => p.team === W.winner).map(p => p.name).join(', ') : ''}`, c.width / 2, 46);
+    const a = document.createElement('a'); a.download = `kisah-perang-menit-${Math.floor(f.t / 60)}.png`; a.href = c.toDataURL('image/png'); a.click();
   }
 }

@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014152526';
-import { DAY, RELICS } from './data.js?v=20261014152526';
-import { timeOfDay, unreachable, restNow, targetable } from './sim.js?v=20261014152526';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014152526';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014170741';
+import { DAY, RELICS, RES_NAME } from './data.js?v=20261014170741';
+import { timeOfDay, unreachable, restNow, targetable, generalName, pacted, pactSince, offerOf, brokeAt, tributeAt } from './sim.js?v=20261014170741';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014170741';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const TOWNS = ['Sukamaju', 'Karangsari', 'Tanjungpura', 'Wanasari', 'Giriwangi', 'Sumberjaya', 'Mekarsari', 'Banyuasri', 'Purwasari', 'Rejosari', 'Kalisari', 'Gunungsari', 'Tirtamaya', 'Candirejo', 'Batursari', 'Lembahhijau'];     // town names in the war chronicle
@@ -70,7 +70,7 @@ export class AI {
     // an empire fills its land: once it has a second town, the villager and army targets grow with the kingdom's
     // population limit (which every town raises) right up to it (an easy AI fills half of the extra room)
     const extra = Math.max(0, tcs.length - 1), baseVil = Math.max(12, this.D.vil[Math.min(P.age, this.D.vil.length) - 1] + S.vil);     // (Imperial has its own entry: a missing one made every target NaN)
-    const foePop = Math.max(1, ...W.players.filter(q => q.alive && q.team !== P.team).map(q => q.pop));
+    const foePop = Math.max(1, ...W.players.filter(q => q.alive && this.hostile(q.id)).map(q => q.pop));
     this.ahead = P.pop / foePop >= 2 && P.pop >= 40;          // far stronger: the watches thin out and the army goes to finish it
     const grow = extra ? Math.max(0, (P.popLim || 0) - baseVil - this.D.armyCap - 8) * this.D.fill : 0;
     const target = baseVil + Math.max(extra * 12, Math.round(grow * 0.55));
@@ -225,7 +225,7 @@ export class AI {
       if (this.known.size) this.everKnown = true;
       const core = [...this.known.values()].filter(k => !['farm', 'house'].includes(k.type)).length;
       const tgt = this.enemyTarget(), weak = this.everKnown && core <= 3;     // enemy nearly wiped out: finish it with what we have
-      const foePop = Math.max(1, ...W.players.filter(q => q.alive && q.team !== P.team).map(q => q.pop)), ahead = P.pop / foePop >= 2 && army.length >= 10;   // far stronger: finish it
+      const foePop = Math.max(1, ...W.players.filter(q => q.alive && this.hostile(q.id)).map(q => q.pop)), ahead = P.pop / foePop >= 2 && army.length >= 10;   // far stronger: finish it
       const need = Math.max(4, weak ? Math.min(5, this.D.wave + this.wave) : ahead ? 6 : this.D.wave + this.wave + S.wave);
       const peace = W.opts.treaty && W.t < W.opts.treaty;
       if (!peace && this.koth(idleArmy)) { /* army sent to the monument */ }
@@ -270,14 +270,17 @@ export class AI {
     const W = this.W, vis = this.P.vis, at = (x, y) => idx(W, Math.min(W.size - 1, Math.max(0, Math.floor(x))), Math.min(W.size - 1, Math.max(0, Math.floor(y))));
     for (const e of W.dyn.values()) {
       if (e.kind === 'building') {
-        if (e.owner === this.pid || W.players[e.owner].team === this.P.team || BUILDINGS[e.type].wall) continue;
+        if (!this.hostile(e.owner) || BUILDINGS[e.type].wall) continue;
         const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
         if (vis[at(cx, cy)]) this.known.set(e.id, { x: cx, y: cy, owner: e.owner, type: e.type });
       } else if (e.kind === 'unit' && e.owner === GAIA && vis[at(e.x, e.y)]) this.seen.set(e.id, { t: W.t, x: e.x, y: e.y, danger: !isAnimal(e) || ['predator', 'guard'].includes(UNITS[e.type].animal) });
-      else if (e.kind === 'unit' && e.owner !== GAIA && e.owner !== this.pid && !isAnimal(e) && W.players[e.owner].team !== this.P.team && vis[at(e.x, e.y)]) this.foes.set(e.id, { t: W.t, x: e.x, y: e.y, type: e.type, nav: !!e.nav, owner: e.owner });
+      else if (e.kind === 'unit' && e.owner !== GAIA && !isAnimal(e) && this.hostile(e.owner) && vis[at(e.x, e.y)]) this.foes.set(e.id, { t: W.t, x: e.x, y: e.y, type: e.type, nav: !!e.nav, owner: e.owner });
     }
-    for (const [id] of W.wonders || []) { const b = alive(W, id); if (b && b.owner !== this.pid && W.players[b.owner].team !== this.P.team) this.known.set(id, { x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }    // a wonder is known to all
+    for (const [id] of W.wonders || []) { const b = alive(W, id); if (b && this.hostile(b.owner)) this.known.set(id, { x: b.x + b.w / 2, y: b.y + b.h / 2, owner: b.owner, type: b.type }); }    // a wonder is known to all
     for (const [id, f] of this.foes) if (W.t - f.t > 150 || (W.t > f.t && vis[at(f.x, f.y)] && !W.ents.has(id))) this.foes.delete(id);
+    const shelf = this.shelf || (this.shelf = new Map());
+    for (const [id, k] of this.known) if (!this.hostile(k.owner)) { shelf.set(id, k); this.known.delete(id); }
+    for (const [id, k] of shelf) if (!W.players[k.owner].alive) shelf.delete(id); else if (this.hostile(k.owner)) { this.known.set(id, k); shelf.delete(id); }
     // forget what turned out to be gone (seen destroyed, or its owner is out of the game)
     for (const [id, k] of this.known) if ((vis[at(k.x, k.y)] && !alive(W, id)) || !W.players[k.owner].alive) this.known.delete(id);
     if (this.seen.size > 300) for (const [id, o] of this.seen) if (o.long ? W.t - o.t > 400 : W.t - o.t > 120 || !W.ents.has(id)) this.seen.delete(id);
@@ -652,7 +655,7 @@ export class AI {
     for (const e of W.dyn.values()) {
       if (e.kind !== 'unit' || e.owner === this.pid || e.hp <= 0) continue;
       const d = Math.hypot(e.x - u.x, e.y - u.y); if (d > 5 || !vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
-      const hostile = e.owner === GAIA ? !isAnimal(e) || ['predator', 'guard'].includes(UNITS[e.type].animal) : W.players[e.owner].team !== this.P.team && e.type !== 'villager';
+      const hostile = e.owner === GAIA ? !isAnimal(e) || ['predator', 'guard'].includes(UNITS[e.type].animal) : this.hostile(e.owner) && e.type !== 'villager';
       if (!hostile) continue;
       dx += (u.x - e.x) / Math.max(0.5, d); dy += (u.y - e.y) / Math.max(0.5, d); n++;
     }
@@ -853,7 +856,7 @@ export class AI {
     const W = this.W, tw = this.tw || (this.tw = new Map()), cx = t.x + 2, cy = t.y + 2;
     for (const [id, s] of tw) { if (!W.ents.has(id)) tw.delete(id); else for (const u of s) if (!W.ents.has(u)) s.delete(u); }
     const set = tw.get(t.id) || new Set(); tw.set(t.id, set);
-    const army = this.m.units.filter(u => MILITARY(u.type) && !u.nav && !UNITS[u.type].hero && !UNITS[u.type].trade && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && u.id !== this.explorer && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert);
+    const army = this.m.units.filter(u => MILITARY(u.type) && !u.nav && !UNITS[u.type].hero && !UNITS[u.type].general && !UNITS[u.type].trade && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && u.id !== this.explorer && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert);
     // a share of the army split between the new towns (6 a town used to keep half of a ten-town empire's army home)
     const towns = Math.max(1, (this.tcs || []).length - 1), pool0 = Math.round(army.length * (this.ahead || (this.war && this.war.phase === 'kepung') ? 0.1 : 0.18));
     const want = army.length < 10 ? 0 : Math.max(1, Math.min(this.ahead ? 2 : 4, Math.floor(pool0 / towns)));
@@ -979,9 +982,63 @@ export class AI {
     return best && [best[0], best[1]];
   }
   // allies help each other: spare resources to a starving ally every few minutes
+  // ---------------------------------------------------------------- diplomacy
+  // Teammates help each other with tribute. In a free-for-all of three or more, kingdoms make pacts (no fighting between
+  // the two): a coalition against a kingdom running away with the game, peace bought with tribute by a kingdom being
+  // beaten, and betrayal once the common enemy is gone or when only allies are left (one kingdom must win in the end).
+  hostile(q) { return q >= 0 && q !== this.pid && this.W.players[q].team !== this.P.team && !pacted(this.W, this.pid, q); }
   diplomacy(P) {
-    const W = this.W; if (W.t < (this.dipT || 120)) return; this.dipT = W.t + 150;
-    for (const Q of W.players) if (Q !== P && Q.alive && Q.team === P.team) for (const r of ['food', 'wood', 'gold', 'stone']) if (Q.res[r] < 100 && P.res[r] > 1000) { command(W, { t: 'tribute', pid: this.pid, to: Q.id, res: r, n: 300 }); return; }
+    const W = this.W;
+    if (W.t >= (this.dipT || 120)) { this.dipT = W.t + 150; for (const Q of W.players) if (Q !== P && Q.alive && Q.team === P.team) for (const r of ['food', 'wood', 'gold', 'stone']) if (Q.res[r] < 100 && P.res[r] > 1000) { command(W, { t: 'tribute', pid: this.pid, to: Q.id, res: r, n: 300 }); break; } }
+    if (W.t < 900 || W.t < (this.pactT || 0) || W.totalWar) return; this.pactT = W.t + 20;
+    const live = W.players.filter(Q => Q.alive);
+    if (live.length < 3 || live.some(Q => Q !== P && Q.team === P.team) || W.opts.treaty && W.t < W.opts.treaty) return;     // team games: the teams are fixed
+    const pw = (Q) => Q.pop + (Q.towns || 1) * 8, me = pw(P), others = live.filter(Q => Q !== P), ai = (Q) => Q.ai;
+    const lead = live.reduce((a, b) => pw(b) > pw(a) ? b : a), G = this.grudge || (this.grudge = {});
+    const partners = others.filter(Q => pacted(W, this.pid, Q.id));
+    // betrayed: remembered
+    for (const Q of others) { const t = brokeAt(W, Q.id, this.pid); if (t && t > (this.betrayedSeen || 0)) { this.betrayedSeen = t; G[Q.id] = (G[Q.id] || 0) + 25; } }
+    // betrayal: the whole world is at peace (someone must win: the strongest breaks with its weakest partner), or the
+    // common enemy is gone and we have become the strongest by far
+    const worldPeace = live.every(A => live.every(B => A === B || pacted(W, A.id, B.id)));
+    for (const Q of partners.sort((a, b) => pw(a) - pw(b))) {
+      const onlyAllies = worldPeace && lead === P && W.t - pactSince(W, this.pid, Q.id) > 240, since = pactSince(W, this.pid, Q.id);
+      const enemyGone = this.against !== undefined && !(W.players[this.against] || {}).alive;
+      if (onlyAllies || (lead === P && me > pw(Q) * 1.5 && W.t - since > 480 && (enemyGone || this.against === undefined))) {
+        command(W, { t: 'pact', pid: this.pid, with: Q.id, on: false }); this.against = undefined;
+        this.tell('betray', onlyAllies ? `Tak ada lagi musuh bersama — ${P.name} memutus pakta dan menyerang sekutunya, ${Q.name}!` : `${P.name} kini kerajaan terkuat dan mengkhianati sekutunya, ${Q.name}!`, this.base[0], this.base[1], Q.id);
+        return;
+      }
+    }
+    // offers made to us
+    for (const Q of others) {
+      const t = offerOf(W, Q.id, this.pid); if (!t || W.t - t > 50 || t <= ((this.answered || {})[Q.id] || 0)) continue;
+      (this.answered || (this.answered = {}))[Q.id] = t;
+      const coalition = lead !== Q && lead !== P && pw(lead) > me * 1.25;
+      const tribute = tributeAt(W, Q.id, this.pid), rivals = others.filter(R => R !== Q && this.hostile(R.id) && pw(R) >= me * 0.4);
+      const fresh = [brokeAt(W, this.pid, Q.id), brokeAt(W, Q.id, this.pid)].some(t => t && W.t - t < 1200);      // no peace with a fresh betrayal between us
+      const peace = tribute && W.t - tribute < 90 && pw(Q) < me * 0.75 && rivals.length && (G[Q.id] || 0) < 30 && !fresh;
+      if (coalition || peace) {
+        command(W, { t: 'pact', pid: this.pid, with: Q.id, on: true });
+        if (coalition) this.against = lead.id;
+        this.tell('pact', coalition ? `${P.name} dan ${Q.name} bersekutu melawan ${lead.name}!` : `${P.name} menerima upeti ${Q.name} dan berdamai — kini mengincar ${rivals[0].name}.`, this.base[0], this.base[1], Q.id);
+      } else if (W.t - ((this.refusedT || {})[Q.id] || -999) > 300) { (this.refusedT || (this.refusedT = {}))[Q.id] = W.t; this.tell('refuse', `${P.name} menolak ajakan ${Q.name}.`, this.base[0], this.base[1], Q.id); }
+    }
+    // a coalition against a kingdom running away with the game: invite the strongest of the rest
+    if (W.t > 1500 && lead !== P && !pacted(W, this.pid, lead.id) && pw(lead) > me * 1.6 && others.filter(Q => Q !== lead).every(Q => pw(lead) > pw(Q) * 1.35)) {
+      const cand = others.filter(Q => Q !== lead && ai(Q) && !pacted(W, this.pid, Q.id) && W.t - (offerOf(W, this.pid, Q.id) || -999) > 240).sort((a, b) => pw(b) - pw(a))[0];
+      if (cand) { command(W, { t: 'pact', pid: this.pid, with: cand.id, on: true }); this.against = lead.id; this.tell('pactoffer', `${P.name} mengajak ${cand.name} bersekutu melawan ${lead.name} yang terlalu kuat.`, this.base[0], this.base[1], cand.id); return; }
+    }
+    // beaten and alone: buy peace from the kingdom pressing us, while it has other enemies to fight
+    const att = this.war && this.war.phase === 'bela' ? this.war.foe : Object.keys(G).map(Number).filter(q => W.players[q].alive && this.hostile(q)).sort((a, b) => G[b] - G[a])[0];
+    const askedT = offerOf(W, this.pid, att), refused = askedT && !pacted(W, this.pid, att) && W.t - askedT < 600, betrayed = [brokeAt(W, this.pid, att), brokeAt(W, att, this.pid)].some(t => t && W.t - t < 1200);     // asked in vain lately, or a betrayal between us (either way) not 20 min old
+    if (att !== undefined && !refused && !betrayed && this.stance === 'bertahan' && W.players[att].ai && pw(W.players[att]) > me * 1.4) {
+      const r = ['gold', 'food', 'wood', 'stone'].sort((a, b) => P.res[b] - P.res[a])[0], n = Math.min(600, Math.floor(P.res[r] * 0.5));
+      if (n >= 250) {
+        command(W, { t: 'tribute', pid: this.pid, to: att, res: r, n }); command(W, { t: 'pact', pid: this.pid, with: att, on: true });
+        this.tell('tribute', `${P.name} mengirim upeti ${n} ${RES_NAME[r]} kepada ${W.players[att].name} untuk memohon damai.`, this.base[0], this.base[1], att);
+      }
+    }
   }
   // king of the hill: take and hold the monument
   koth(idle) {
@@ -1007,7 +1064,7 @@ export class AI {
       if (m.faith >= 1) {      // conversion: the priciest enemy soldier in sight close to the monk
         let best = null, bv = 99;
         for (const e of W.dyn.values()) {
-          if (e.kind !== 'unit' || e.owner < 0 || pl(W, e.owner).team === P.team || !MILITARY(e.type) || e.type === 'monk' || UNITS[e.type].naval || UNITS[e.type].cls === 'siege') continue;
+          if (e.kind !== 'unit' || !this.hostile(e.owner) || !MILITARY(e.type) || e.type === 'monk' || UNITS[e.type].naval || UNITS[e.type].cls === 'siege') continue;
           if (Math.hypot(e.x - m.x, e.y - m.y) > 12 || !P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
           const v = Object.values(UNITS[e.type].cost).reduce((a, b) => a + b, 0); if (v > bv) { bv = v; best = e; }
         }
@@ -1019,7 +1076,7 @@ export class AI {
   townBell(army) {
     const W = this.W, P = this.P; if (W.t < (this.bellT || 0)) return; this.bellT = W.t + 2;
     const [bx, by] = this.base; let foes = 0;
-    for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner >= 0 && pl(W, e.owner).team !== P.team && MILITARY(e.type) && !UNITS[e.type].naval && Math.hypot(e.x - bx, e.y - by) < 14 && P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) foes++;
+    for (const e of W.dyn.values()) if (e.kind === 'unit' && this.hostile(e.owner) && MILITARY(e.type) && !UNITS[e.type].naval && Math.hypot(e.x - bx, e.y - by) < 14 && P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) foes++;
     const def = army.filter(u => Math.hypot(u.x - bx, u.y - by) < 18).length;
     if (!P.bell && foes >= 5 && foes > def * 1.5 && W.t - (this.bellOff ?? -999) > 120) { command(W, { t: 'bell', pid: this.pid, on: true }); this.bellOn = W.t; }
     else if (P.bell && ((foes === 0 && W.t - this.bellOn > 10) || W.t - this.bellOn > 60)) { command(W, { t: 'bell', pid: this.pid, on: false }); this.bellOff = W.t; }   // short: the economy must go on
@@ -1027,7 +1084,7 @@ export class AI {
   planFeudal() { return this.P.techs.has('loom') === false && this.m.units.length > 14; }
   threatNear(x, y, r) {
     const W = this.W;
-    for (const e of W.dyn.values()) if (e.kind === 'unit' && e.owner >= 0 && e.owner !== this.pid && pl(W, e.owner).team !== this.P.team && MILITARY(e.type) && Math.hypot(e.x - x, e.y - y) < r && this.P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) return e;
+    for (const e of W.dyn.values()) if (e.kind === 'unit' && this.hostile(e.owner) && MILITARY(e.type) && Math.hypot(e.x - x, e.y - y) < r && this.P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) return e;
     return null;
   }
   // ---------------------------------------------------------------- the war commander (Komandan Perang)
@@ -1089,9 +1146,9 @@ export class AI {
   pickFoe() {
     const W = this.W; let best = null, bs = 1e9;
     for (const Q of W.players) {
-      if (!Q.alive || Q.team === this.P.team) continue;
+      if (!Q.alive || !this.hostile(Q.id)) continue;
       const c = this.pickCity(Q.id); if (!c) continue;
-      const [ox, oy] = this.origin(c), sc = this.foeArmy(Q.id) * 1.2 + Math.hypot(c.x - ox, c.y - oy) * 0.3 + Q.pop * 0.1 - Math.min(40, ((this.grudge || {})[Q.id] || 0) * 2);      // (revenge first)
+      const [ox, oy] = this.origin(c), sc = this.foeArmy(Q.id) * 1.2 + Math.hypot(c.x - ox, c.y - oy) * 0.3 + Q.pop * 0.1 - Math.min(40, ((this.grudge || {})[Q.id] || 0) * 2) - (this.against === Q.id ? 60 : 0);      // (revenge first; a coalition's common enemy before all)
       if (sc < bs) { bs = sc; best = { foe: Q.id, city: c }; }
     }
     return best;
@@ -1103,7 +1160,7 @@ export class AI {
   }
   warNeed(foe) {
     const minN = Math.min(this.D.wave + 3, Math.max(6, Math.round(this.armyCap * 0.5)));
-    return this.ahead ? minN : Math.max(minN, Math.min(Math.round(this.foeArmy(foe) * 1.1), Math.round(this.armyCap * 0.6)));
+    return this.ahead || this.W.totalWar ? minN : Math.max(minN, Math.min(Math.round(this.foeArmy(foe) * 1.1), Math.round(this.armyCap * 0.6)));
   }
   // A wonder decides the game in ten minutes. An enemy wonder becomes the target of the whole campaign at once (a short
   // muster, then straight at it); our own wonder is guarded by the field army until it wins.
@@ -1113,7 +1170,7 @@ export class AI {
     for (const [id, t0] of W.wonders) {
       const b = alive(W, id); if (!b) continue;
       if (b.owner === this.pid) mine = b;
-      else if (W.players[b.owner].team !== P.team && t0 < ft && !this.overSea([b.x + b.w / 2, b.y + b.h / 2])) { ft = t0; foe = b; }
+      else if (this.hostile(b.owner) && t0 < ft && !this.overSea([b.x + b.w / 2, b.y + b.h / 2])) { ft = t0; foe = b; }
     }
     if (foe) {
       if (war && war.city.wonder === foe.id) return false;           // already on it: the campaign runs as usual
@@ -1149,6 +1206,10 @@ export class AI {
   }
   endWar(rest = 30) { this.war = null; this.peaceT = this.W.t + rest; }
   warStatus() {
+    const pacts = this.W.players.filter(Q => Q.alive && pacted(this.W, this.pid, Q.id)).map(Q => Q.name);
+    return this.warLine() + (pacts.length ? ` · 🕊 pakta dengan ${pacts.join(', ')}` : '');
+  }
+  warLine() {
     const w = this.war, W = this.W;
     if (!w) return this.stance === 'bertahan' ? `Bertahan — pasukan berjaga di perbatasan menghadapi ${this.stanceFoe >= 0 ? W.players[this.stanceFoe].name : 'musuh'}` : W.t < (this.peaceT || 0) ? 'Memulihkan pasukan setelah perang' : 'Membangun kekuatan';
     const Q = W.players[w.foe].name, n = w.units.size, c = w.city.name;
@@ -1161,6 +1222,7 @@ export class AI {
     if (W.t < (this.cmdT || 0)) return !!this.war;
     this.cmdT = W.t + 2;
     let war = this.war;
+    if (war && !this.hostile(war.foe)) { war.units.clear(); this.war = war = null; }       // a pact ended this war
     if (war) {
       for (const id of war.units) if (!W.ents.has(id)) war.units.delete(id);
       const Q = W.players[war.foe];
@@ -1169,7 +1231,7 @@ export class AI {
         this.endWar(); return false;
       }
     }
-    this.guardTowns(field); this.posture();
+    this.guardTowns(field); this.posture(); this.generalTick(war); this.holdPosts(field);
     if (this.wonders(field, war)) return true;
     this.counterTick(field);
     war = this.war;
@@ -1186,7 +1248,7 @@ export class AI {
     const Q = W.players[war.foe], ids = (us) => us.map(u => u.id);
     const go = (us, x, y, amove = true) => { if (us.length) command(W, { t: 'move', pid: this.pid, ids: ids(us), x, y, amove }); };
     // soldiers of the field army who are free join the campaign (monks keep their own work)
-    const fresh = field.filter(u => !war.units.has(u.id) && u.id !== this.explorer && !stat(W, u.owner, u.type).convert && (!u.order || u.order.amove || u.order.t === 'patrol'));
+    const fresh = field.filter(u => !war.units.has(u.id) && u.id !== this.explorer && !UNITS[u.type].general && !stat(W, u.owner, u.type).convert && (!u.order || u.order.amove || u.order.t === 'patrol'));
     let mem = [...war.units].map(id => W.ents.get(id)).filter(u => u && !u.inside);
     const cx = mem.length ? mem.reduce((a, u) => a + u.x, 0) / mem.length : war.stage[0], cy = mem.length ? mem.reduce((a, u) => a + u.y, 0) / mem.length : war.stage[1];
     // the town still standing: the known buildings of the target round its centre
@@ -1222,7 +1284,7 @@ export class AI {
         const form = this.formationFor(mem); command(W, { t: 'form', pid: this.pid, ids: ids(mem), f: form });
         command(W, { t: 'move', pid: this.pid, ids: ids(mem), x: war.city.x, y: war.city.y, amove: true, form });
         const treb = mem.filter(u => UNITS[u.type].packs); if (treb.length && targets[0]) command(W, { t: 'smart', pid: this.pid, ids: ids(treb), target: targets[0][0] });
-        this.tell('march', `${mem.length} prajurit ${P.name} berangkat menyerbu ${war.city.name}!`, sx, sy);
+        this.tell('march', `${mem.length} prajurit ${P.name}${this.genId ? ` dipimpin Panglima ${this.genName}` : ''} berangkat menyerbu ${war.city.name}!`, sx, sy);
       } else if (wait > 300 && mem.length < 5) { war.units.clear(); this.endWar(60); }
       return true;
     }
@@ -1295,7 +1357,7 @@ export class AI {
     for (const e of W.dyn.values()) {
       if (e.kind !== 'unit' || e.owner < 0 || e.nav || e.inside || !MILITARY(e.type)) continue;
       if (e.owner === this.pid) { const c = near(e); if (c) c.own++; continue; }
-      if (W.players[e.owner].team === P.team || !P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
+      if (!this.hostile(e.owner) || !P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
       const c = near(e); if (!c) continue;
       const d = UNITS[e.type]; c.p += d.cls === 'siege' ? 2.5 : d.cls === 'cavalry' ? 1.5 : 1; c.by[e.owner] = (c.by[e.owner] || 0) + 1;
     }
@@ -1340,13 +1402,15 @@ export class AI {
     const W = this.W, P = this.P; if (W.t < (this.postT || 0)) return; this.postT = W.t + 10;
     const mine = this.m.units.filter(u => MILITARY(u.type) && !u.nav && !UNITS[u.type].hero && !UNITS[u.type].trade).length;
     let top = 0, foe = -1;
-    for (const Q of W.players) if (Q.alive && Q.team !== P.team && (this.cities(Q.id).length || [...this.foes.values()].some(f => f.owner === Q.id))) { const a = this.foeArmy(Q.id); if (a > top) { top = a; foe = Q.id; } }
+    for (const Q of W.players) if (Q.alive && this.hostile(Q.id) && (this.cities(Q.id).length || [...this.foes.values()].some(f => f.owner === Q.id))) { const a = this.foeArmy(Q.id); if (a > top) { top = a; foe = Q.id; } }
     this.stanceFoe = foe;
     const r = mine / Math.max(1, top);
-    if (this.stance !== 'bertahan' && top >= 12 && r < 0.6 && P.age >= 2) {
+    if (W.totalWar) { if (this.stance === 'bertahan') this.stance = 'serang'; return; }        // Perang Total: nobody holds back
+    if (W.t - (this.stanceT || -999) < 180) return;                // no flip-flopping
+    if (this.stance !== 'bertahan' && top >= 20 && r < 0.6 && P.age >= 2 && W.t > 1200) { this.stanceT = W.t;
       this.stance = 'bertahan';
       this.tell('posture', `Panglima ${P.name} memilih bertahan: pasukan ${W.players[foe].name} (±${top}) jauh lebih besar dari ${mine} prajurit kita. Menara didirikan dan pasukan berjaga di perbatasan.`, this.base[0], this.base[1], foe);
-    } else if (this.stance === 'bertahan' && (r >= 0.95 || top < 8)) {
+    } else if (this.stance === 'bertahan' && (r >= 0.95 || top < 8)) { this.stanceT = W.t;
       this.stance = 'serang';
       this.tell('posture', `Pasukan ${P.name} kembali kuat (${mine} prajurit) — Panglima bersiap menyerang lagi.`, this.base[0], this.base[1], foe);
     }
@@ -1358,6 +1422,43 @@ export class AI {
     const [fx, fy] = this.stagePoint(c);
     const idle = field.filter(u => u.id !== this.explorer && !this.inWar(u.id) && !u.order && Math.hypot(u.x - fx, u.y - fy) > 8);
     if (idle.length) command(W, { t: 'move', pid: this.pid, ids: idle.map(u => u.id), x: fx, y: fy, amove: true });
+  }
+  // the old forts: a squad of spare soldiers takes the nearest one we don't hold (gold and a wide view); told when won
+  holdPosts(field) {
+    const W = this.W, P = this.P; if (W.t < (this.postT2 || 0) || P.age < 2) return; this.postT2 = W.t + 20;
+    const posts = [...W.dyn.values()].filter(p => p.kind === 'post');
+    const mine = new Set(posts.filter(p => p.owner === this.pid).map(p => p.id)), had = this.posts || new Set();
+    for (const p of posts) if (mine.has(p.id) && !had.has(p.id)) this.tell('post', `${P.name} merebut ${p.name}.`, p.x, p.y, -1);
+    this.posts = mine;
+    const [bx, by] = this.base;
+    const p = posts.filter(p => p.owner !== this.pid && (p.owner < 0 || this.hostile(p.owner)) && P.exp[idx(W, Math.floor(p.x), Math.floor(p.y))] && !this.overSea([p.x, p.y]) && Math.hypot(p.x - bx, p.y - by) < 75)
+      .sort((a, b) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(b.x - bx, b.y - by))[0];
+    if (!p || this.threatNear(p.x, p.y, 8)) return;
+    const squad = field.filter(u => !this.inWar(u.id) && u.id !== this.explorer && !UNITS[u.type].general && !stat(W, u.owner, u.type).convert && (!u.order || u.order.amove))
+      .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y)).slice(0, 5);
+    if (squad.length >= 3) command(W, { t: 'move', pid: this.pid, ids: squad.map(u => u.id), x: p.x, y: p.y + 1.5, amove: true });
+  }
+  // the general (Panglima): one is appointed once the kingdom is at war in the Castle Age; he rides in the middle of the
+  // campaign army (his presence makes the soldiers round him hit harder and hold), and is brought home badly wounded
+  generalTick(war) {
+    const W = this.W, P = this.P, g = this.m.units.find(u => UNITS[u.type].general);
+    if (g && g.id !== this.genId) { this.genId = g.id; this.genName = generalName(g); this.tell('general', `${P.name} mengangkat ${this.genName} sebagai Panglima perang.`, g.x, g.y, -1); }
+    if (!g && this.genId) { this.tell('generaldie', `Panglima ${this.genName} dari ${P.name} gugur di medan perang! Pasukan di dekatnya tercerai-berai.`, this.base[0], this.base[1], war ? war.foe : -1); this.genId = 0; this.genT = W.t + 360; }
+    if (!g) {
+      const town = (this.tcs || []).filter(t => t.queue.length < 3).sort((a, b) => a.queue.length - b.queue.length)[0];
+      if (P.age >= 3 && town && (war || this.m.units.length > 60) && W.t > (this.genT || 0) && canTrain(W, this.pid, 'general') && canAfford(P, unitCost(P, 'general'))) command(W, { t: 'train', pid: this.pid, bid: town.id, type: 'general' });
+      return;
+    }
+    if (war) war.units.delete(g.id);                     // not one of the soldiers: he is not sent at buildings
+    const [bx, by] = this.base;
+    if (g.hp < g.maxHp * 0.5) { if (!g.order || g.order.amove || Math.hypot(g.order.x - bx, g.order.y - by) > 6) command(W, { t: 'move', pid: this.pid, ids: [g.id], x: bx, y: by + 4 }); return; }
+    if (g.order && (g.order.t === 'attack' || (g.order.t === 'move' && !g.order.amove))) return;
+    const mem = war ? [...war.units].map(id => W.ents.get(id)).filter(u => u && !u.inside) : [];
+    if (mem.length >= 4) {         // a few tiles behind the middle of the army (back towards home): close enough to inspire, not in the melee
+      const cx = mem.reduce((a, u) => a + u.x, 0) / mem.length, cy = mem.reduce((a, u) => a + u.y, 0) / mem.length, d = Math.hypot(bx - cx, by - cy) || 1, px = cx + (bx - cx) / d * 4, py = cy + (by - cy) / d * 4;
+      if (Math.hypot(g.x - px, g.y - py) > 4) command(W, { t: 'move', pid: this.pid, ids: [g.id], x: px, y: py, amove: true });
+    }
+    else if (!g.order && Math.hypot(g.x - bx, g.y - by) > 12) command(W, { t: 'move', pid: this.pid, ids: [g.id], x: bx, y: by + 5, amove: true });
   }
   // a beaten-off attack: strike back at once at the attacker's nearest town, with what is at hand
   counterTick(field) {
@@ -1380,9 +1481,9 @@ export class AI {
     const W = this.W, [bx, by] = this.base;
     const G = this.guard = this.guard || new Set();
     for (const id of G) if (!W.ents.has(id)) G.delete(id);
-    const fit = (u) => u.id !== this.explorer && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && !UNITS[u.type].hero && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert;
+    const fit = (u) => u.id !== this.explorer && !UNITS[u.type].general && !UNITS[u.type].packs && UNITS[u.type].cls !== 'siege' && !UNITS[u.type].hero && !stat(W, u.owner, u.type).heal && !stat(W, u.owner, u.type).convert;
     const cand = army.filter(fit);
-    const share = (({ eko: 0.28, serbu: 0.15, benteng: 0.4, ilmu: 0.3, laut: 0.25 }[this.style] ?? 0.25) + (this.attacked >= 2 && W.t - this.lastHit < 300 ? 0.12 : 0)) * (this.ahead ? 0.5 : 1);
+    const share = (({ eko: 0.28, serbu: 0.15, benteng: 0.4, ilmu: 0.3, laut: 0.25 }[this.style] ?? 0.25) + (this.attacked >= 2 && W.t - this.lastHit < 300 ? 0.12 : 0)) * (this.ahead || W.totalWar ? 0.5 : 1);
     const want = cand.length < 5 ? 0 : Math.min(16, Math.max(2, Math.round(cand.length * share)));
     if (G.size < want) {             // recruit from the soldiers at home: archers and spearmen first, then the rest
       const sc = (u) => (stat(W, u.owner, u.type).range ? -3 : 0) + (['spearman', 'pikeman'].includes(u.type) ? -2 : 0) + Math.hypot(u.x - bx, u.y - by) / 10;
@@ -1407,7 +1508,7 @@ export class AI {
   threatPower() {
     const W = this.W, [bx, by] = this.base; let p = 0;
     for (const e of W.dyn.values()) {
-      if (e.kind !== 'unit' || e.owner < 0 || pl(W, e.owner).team === this.P.team || isAnimal(e) || e.nav) continue;
+      if (e.kind !== 'unit' || !this.hostile(e.owner) || isAnimal(e) || e.nav) continue;
       if (Math.hypot(e.x - bx, e.y - by) > 24 || !this.P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) continue;
       const d = UNITS[e.type]; p += e.type === 'villager' ? 0.3 : d.cls === 'siege' ? 2.5 : d.cls === 'cavalry' ? 1.5 : 1;
     }
@@ -1430,7 +1531,7 @@ export class AI {
   threat() {
     const W = this.W;
     for (const e of W.dyn.values()) {
-      if (e.kind !== 'unit' || e.owner === this.pid || pl(W, e.owner).team === this.P.team) continue;
+      if (e.kind !== 'unit' || e.owner === this.pid || (e.owner >= 0 && !this.hostile(e.owner))) continue;
       if (isAnimal(e) && UNITS[e.type].animal !== 'predator') continue;
       if (Math.hypot(e.x - this.base[0], e.y - this.base[1]) < 16 && this.P.vis[idx(W, Math.floor(e.x), Math.floor(e.y))]) {
         if (e.owner >= 0 && W.t - this.lastHit > 30) { this.attacked++; this.lastHit = W.t; }
@@ -1476,7 +1577,7 @@ export class AI {
   hopeless(tc, vils, army) {
     const W = this.W, P = this.P; if (W.t < 300) return false;
     // crushed: a handful of people left against an enemy many times stronger, for two minutes running
-    const top = Math.max(...W.players.filter(q => q.alive && q.team !== P.team).map(q => q.pop), 0);
+    const top = Math.max(...W.players.filter(q => q.alive && this.hostile(q.id)).map(q => q.pop), 0);
     if (W.t > 1200 && P.pop < 15 && top > Math.max(40, P.pop * 5) && army.length < 6) { this.crushT ||= W.t; if (W.t - this.crushT > 120) return true; } else this.crushT = 0;
     if (tc) return false;
     const canRebuild = vils.length >= 1 && P.res.wood + P.res.gold >= 400 && P.res.stone >= 100;

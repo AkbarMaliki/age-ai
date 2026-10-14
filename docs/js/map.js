@@ -2,8 +2,8 @@
 // rotation and a random seat for each player. Fairness: each player's home resources follow one shared, randomly rolled
 // layout (relative to the direction of the map centre), the map-wide features are copied around the centre once per
 // seat (rotational symmetry), and a final pass tops up any player that still ends up short of wood, gold, stone or food.
-import { createWorld, addResource, addBuilding, addUnit, addTreasure, addRelic, addMonument, rng, idx, del } from './sim.js?v=20261014152526';
-import { GAIA, TREASURES, RESOURCES, UNITS, TER, SEASONS, CIVS } from './data.js?v=20261014152526';
+import { createWorld, addResource, addBuilding, addUnit, addTreasure, addRelic, addMonument, addPost, rng, idx, del } from './sim.js?v=20261014170741';
+import { GAIA, TREASURES, RESOURCES, UNITS, TER, SEASONS, CIVS } from './data.js?v=20261014170741';
 
 export const T_GRASS = TER.GRASS, T_DIRT = TER.DIRT, T_FOREST = TER.FOREST, T_WATER = TER.WATER, T_GRASS2 = TER.GRASS2, T_HILL = TER.HILL, T_ROCK = TER.ROCK;
 
@@ -281,6 +281,13 @@ export function generate({ size = 80, players, seed = 7, type = 'random', opts =
     }
   }
 
+  // ---- old forts between neighbouring kingdoms (the same spot relative to each pair; no random draws, so maps and
+  // saves made before the forts existed are unchanged)
+  if (M.water !== 'islands' && np >= 2) for (let q = 0; q < np; q++) {
+    const [x, y] = polar(q, step / 2, size * 0.3); let at = null;
+    for (let rr = 0; rr < 14 && !at; rr++) for (let k = 0; k < Math.max(1, rr * 6) && !at; k++) { const a = k / Math.max(1, rr * 6) * Math.PI * 2, i = Math.round(x + Math.cos(a) * rr), j = Math.round(y + Math.sin(a) * rr); let ok = inMap(i, j, 4); for (let dj = -1; dj <= 1 && ok; dj++) for (let di = -1; di <= 1 && ok; di++) ok = free(i + di, j + dj); if (ok) at = [i, j]; }
+    if (at) addPost(W, at[0], at[1], q);
+  }
   if (M.water !== 'islands') connect(W, starts, terrain);
   else for (const P of W.players) P.res.wood += 200;               // islands: timber for the first dock
   for (let pass = 0; pass < 3; pass++) balance(W, starts, { free, forest, cluster, herd, reserved, r });   // dense maps may need several tries

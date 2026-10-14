@@ -2,7 +2,7 @@
 // day / season indicator and the advisor ("!") with counter-strategy advice.
 import { CIVS, RELICS, WONDER_TIME, KOTH_TIME } from './data.js';
 import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax } from './sim.js';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST } from './sim.js';
 import { NAMES, LIFE, TOWN_POP } from './data.js';
 
 const $ = (id) => document.getElementById(id);
@@ -26,7 +26,7 @@ const BLD_DESC = { house: '+5 populasi', mill: 'Tempat setor makanan, membuka la
   hospital: 'Balai Pengobatan: menyembuhkan yang sakit dan menahan wabah.', barn: 'Kandang dengan padang: domba/sapi di sini bertambah gemuk dan menghasilkan susu. Bisa membeli ternak.' };
 // fixed slots per building (some have more commands than keys follow from the data)
 const SLOTS = {
-  town_center: { villager: 0, torches: 1, hand_cart: 2, loom: 3, wheelbarrow: 4, feudal: 5, feudal_war: 6, feudal_wall: 7, castle: 5, castle_war: 6, castle_trade: 7, imperial: 5, imperial_war: 6, imperial_lore: 7, civic_defense: 8, $bell: 10, $out: 11 },
+  town_center: { villager: 0, torches: 1, hand_cart: 2, loom: 3, wheelbarrow: 4, feudal: 5, feudal_war: 6, feudal_wall: 7, castle: 5, castle_war: 6, castle_trade: 7, imperial: 5, imperial_war: 6, imperial_lore: 7, civic_defense: 8, $bell: 10, $out: 11, general: 12 },
   blacksmith: { forging: 0, scale_mail: 1, scale_barding: 2, fletching: 3, padded_archer: 4, iron_casting: 5, chain_mail: 6, chain_barding: 7, bodkin: 8, doc_legion: 10, doc_cavalry: 11, doc_archers: 12 },
   academy: { spy_network: 0, masonry: 1, ballistics: 2, gunpowder: 3, cannon: 4, healer: 5, medicine: 6, doc_fortress: 10, doc_blitz: 11, doc_formation: 12, $spy: 13 },
   // upgrade chains share one slot: only the next step of a line is shown
@@ -86,8 +86,10 @@ export class HUD {
   spriteOf(owner, type) { const d = UNITS[type]; if (!d) return type; const s = owner >= 0 && !d.animal ? stat(this.g.W, owner, type).sprite : null; return s && this.icons.icons[s] ? s : d.sprite; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
 
-  notify(msg, cls = '') {
-    const n = document.createElement('div'); n.className = 'note ' + cls; n.textContent = msg; $('notify').appendChild(n);
+  // a note about a place can be clicked: the camera goes there (at = [x, y] in tiles)
+  notify(msg, cls = '', at = null) {
+    const n = document.createElement('div'); n.className = 'note ' + cls; n.textContent = msg + (at ? ' 📍' : ''); $('notify').appendChild(n);
+    if (at && isFinite(at[0])) { n.classList.add('go'); n.title = 'Klik untuk melihat lokasinya'; n.onclick = () => { this.g.userCam(); this.g.centerOn(at[0], at[1]); }; }
     setTimeout(() => n.classList.add('fade'), 4500); setTimeout(() => n.remove(), 5200);
     while ($('notify').children.length > 6) $('notify').firstChild.remove();
   }
@@ -276,7 +278,7 @@ export class HUD {
     }
     const e = sel[0];
     const k = 'one' + e.id + e.type + (e.kind === 'building' ? e.queue.map(q => q.unit || q.tech).join() + e.built : '');
-    const name = e.kind === 'unit' && e.nm !== undefined ? `${personName(e)} <small class="role">${stat(W, e.owner, e.type).name || UNITS[e.type].name}</small>` : e.kind === 'monument' ? 'Monumen Raja Bukit' : e.kind === 'unit' && stat(W, e.owner, e.type).name ? stat(W, e.owner, e.type).name : e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
+    const name = e.kind === 'unit' && e.nm !== undefined ? `${personName(e)} <small class="role">${stat(W, e.owner, e.type).name || UNITS[e.type].name}</small>` : e.kind === 'monument' ? 'Monumen Raja Bukit' : e.kind === 'post' ? e.name : e.kind === 'unit' && stat(W, e.owner, e.type).name ? stat(W, e.owner, e.type).name : e.kind === 'relic' ? 'Relik' : e.kind === 'unit' ? UNITS[e.type].name : e.kind === 'building' ? BUILDINGS[e.type].name : e.kind === 'treasure' ? 'Harta Karun: ' + TREASURES[e.type].name
       : e.type === 'carcass' ? 'Bangkai ' + UNITS[e.animal].name : e.trap ? 'Perangkap Ikan' : { tree: 'Pohon', gold: 'Tambang Emas', stone: 'Tambang Batu', iron: 'Tambang Besi', berry: 'Semak Berry', fish: 'Kawanan Ikan' }[e.type];
     const owner = e.owner >= 0 ? W.players[e.owner] : null;
     if (el.dataset.k !== k) {
@@ -321,6 +323,7 @@ export class HUD {
     if (e.kind === 'building' && BUILDINGS[e.type].relics && e.built) { let n = 0; for (const r of W.dyn.values()) if (r.kind === 'relic' && r.inBld === e.id) n++; st += ` · 📿 ${n} relik (+${Math.round(n * RELICS.gold * 60)} emas/menit)`; }
     if (e.kind === 'building' && e.type === 'town_center' && owner && owner.civ && CIVS[owner.civ]) st += ` · ${CIVS[owner.civ].glyph} ${CIVS[owner.civ].name}`;
     if (e.kind === 'res') st = `Sisa: <b>${Math.ceil(e.amount)}</b>` + (e.type === 'fish' ? (e.trap ? ' · perangkap ikan' : ' · dijala dari tepi atau Kapal Nelayan') : '');
+    if (e.kind === 'post') { const o = W.players[e.owner]; st = (o ? `Dikuasai <b style="color:rgb(${PLAYER_RGB[o.color]})">${o.name}</b> · ` : 'Belum dikuasai · ') + `Benteng strategis: +${Math.round(POST.gold * 60)} emas/menit dan penglihatan luas bagi yang menguasainya. Rebut dengan prajurit tanpa musuh di dekatnya (${POST.hold} detik).`; }
     if (e.kind === 'monument') { const o = W.players[e.owner]; st = (o ? `Dikuasai <b style="color:rgb(${PLAYER_RGB[o.color]})">${o.name}</b> · ` : 'Belum dikuasai · ') + `Kuasai sendirian (tanpa musuh dalam 5 petak) selama ${KOTH_TIME / 60} menit untuk menang.`; }
     if (e.kind === 'building') {
       const d = BUILDINGS[e.type], bs = bstat(W, e.owner, e.type);
@@ -368,6 +371,7 @@ export class HUD {
       if (e.owner !== G.me && !P.vis[k] && !G.seeAll) continue; const col = e.owner >= 0 ? PLAYER_RGB[W.players[e.owner].color] : UNITS[e.type].animal && !['wolf', 'bear'].includes(e.type) ? [235, 235, 220] : [150, 40, 30];
       for (const kk of [k, k + 1, k + S]) if (kk < S * S) { d[kk * 4] = col[0]; d[kk * 4 + 1] = col[1]; d[kk * 4 + 2] = col[2]; }
     }
+    for (const p of W.dyn.values()) if (p.kind === 'post' && (G.seeAll || P.exp[idx(W, Math.floor(p.x), Math.floor(p.y))])) { const col = p.owner >= 0 ? PLAYER_RGB[W.players[p.owner].color] : [255, 255, 255]; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const k = idx(W, Math.floor(p.x) + di, Math.floor(p.y) + dj); d[k * 4] = col[0]; d[k * 4 + 1] = col[1]; d[k * 4 + 2] = col[2]; } }
     if (W.monument) { const m = W.monument, col = m.owner >= 0 ? PLAYER_RGB[W.players[m.owner].color] : [255, 255, 255]; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const k = idx(W, Math.floor(m.x) + di, Math.floor(m.y) + dj); d[k * 4] = col[0]; d[k * 4 + 1] = col[1]; d[k * 4 + 2] = col[2]; } }
     c.putImageData(img, 0, 0);
   }

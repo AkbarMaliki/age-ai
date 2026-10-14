@@ -35,6 +35,7 @@ ok(told.some(t => t.includes('[Biru] counter:')) || (ais[0].war && ais[0].war.fo
 // a far weaker kingdom holds
 const ai1 = ais[1];
 for (let k = 0; k < 40; k++) { const f = nearestFree(W, bx + 3 + (k % 8), by - 6 - Math.floor(k / 8), 0, 8); addUnit(W, 0, 'knight', f[0] + 0.5, f[1] + 0.5); }
+W.t = Math.max(W.t, 1320);            // (the posture only changes from minute 20)
 for (const e of [...W.dyn.values()]) if (e.kind === 'unit' && e.owner === 0 && e.type === 'knight') ai1.foes.set(e.id, { t: W.t, x: e.x, y: e.y, type: e.type, nav: false, owner: 0 });
 ai1.postT = 0; ai1.m = { units: [...W.dyn.values()].filter(e => e.kind === 'unit' && e.owner === 1), bld: [...W.dyn.values()].filter(e => e.kind === 'building' && e.owner === 1) }; ai1.posture();
 ok(ai1.stance === 'bertahan', `Merah, far weaker, goes on the defensive (${ai1.warStatus()})`);

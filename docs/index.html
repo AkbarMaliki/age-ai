@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261014152526">
+<link rel="stylesheet" href="css/style.css?v=20261014170741">
 <script type="importmap">{ "imports": { "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs" } }</script>
 </head>
 <body>
@@ -42,6 +42,8 @@
     <button id="btnMenu" class="tb">Menu</button>
   </div>
   <div id="notify"></div>
+  <div id="cineTop"></div><div id="cineBot"></div>
+  <div id="scoreBox" class="hidden"></div>
   <div id="netStatus" class="hidden"></div>
   <div id="chatBox" class="hidden"><input id="chatIn" maxlength="140" placeholder="Ketik pesan, Enter untuk kirim, Esc batal" autocomplete="off"></div>
   <button id="fogBtn" class="hidden" title="Kabut perang (V): nyala = seluruh peta terlihat; mati = hanya yang dijelajahi dan diketahui kerajaan yang sedang dilihat">👁</button>
@@ -255,11 +257,17 @@
   <button id="pQuit">Keluar ke Menu</button>
 </div></div>
 
+<div id="storyModal" class="screen dim hidden"><div class="panel wide story">
+  <div class="sp-head"><div><h2>Kisah Perang</h2><small>Wilayah tiap kerajaan dari menit ke menit, dengan kronik perangnya.</small></div><button id="storyClose" class="tb" title="Tutup">✖</button></div>
+  <div class="storyGrid"><canvas id="storyCanvas" width="640" height="340"></canvas><div id="storyLog" class="chron"></div></div>
+  <div class="storyBar"><button id="storyPlay" class="tb">▶</button><input type="range" id="storySlider" min="0" max="1" value="0"><span id="storyTime">0:00</span><button id="storySave" class="tb" title="Simpan gambar peta saat ini">💾 Simpan gambar</button></div>
+</div></div>
 <div id="endScreen" class="screen dim hidden"><div class="panel wide">
   <h2 id="endTitle">Kemenangan!</h2>
   <table id="endStats"></table>
   <div id="endAch"></div>
   <button id="endWatch" class="hidden">👁 Tonton sisa pertandingan</button>
+  <button id="endStory">🗺 Kisah Perang — wilayah dari menit ke menit</button>
   <button id="endFull">📊 Statistik lengkap &amp; linimasa</button>
   <button id="endReplay">🎬 Simpan Replay</button>
   <button id="endMenu" class="big">Kembali ke Menu</button>
@@ -271,8 +279,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/firebase-config.js?v=20261014152526"></script>
-<script>window.AK_VER = "20261014152526";</script>
-<script type="module" src="js/main.js?v=20261014152526"></script>
+<script src="js/firebase-config.js?v=20261014170741"></script>
+<script>window.AK_VER = "20261014170741";</script>
+<script type="module" src="js/main.js?v=20261014170741"></script>
 </body>
 </html>

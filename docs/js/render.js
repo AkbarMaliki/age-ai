@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261014152526';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261014152526';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY } from './data.js?v=20261014170741';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261014170741';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -481,6 +481,7 @@ export class View {
     if (e.kind === 'treasure') return [A.nature.get('treasure_' + e.type), false];
     if (e.kind === 'relic') return [A.nature.get('relic'), false];
     if (e.kind === 'monument') return [A.buildings.get('monument', col) || A.buildings.get('wonder', col), false];
+    if (e.kind === 'post') return [A.buildings.get('watch_tower_keep', col) || A.buildings.get('watch_tower', col), false];
     if (e.kind === 'building') return [A.buildings.get(this.buildingKey(e), col), false];
     if (e.kind === 'res') {
       if (e.type === 'fish' && e.trap && A.buildings.has('fish_trap')) return [A.buildings.get('fish_trap', col), false];
@@ -500,7 +501,7 @@ export class View {
   }
   moodTex(k) {
     this.moods = this.moods || {};
-    if (!this.moods[k]) { const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.fillStyle = 'rgba(20,14,8,0.55)'; g.beginPath(); g.arc(16, 16, 14, 0, 6.283); g.fill(); g.font = '20px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText({ sick: '🤢', thirst: '💧', hunger: '🍞', tired: '💤', sad: '☁' }[k], 16, 17); this.moods[k] = Texture.from(c); }
+    if (!this.moods[k]) { const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d'); g.fillStyle = 'rgba(20,14,8,0.55)'; g.beginPath(); g.arc(16, 16, 14, 0, 6.283); g.fill(); g.font = '20px "Segoe UI Emoji","Apple Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText({ sick: '🤢', thirst: '💧', hunger: '🍞', tired: '💤', sad: '☁', rout: '🏳', general: '⭐' }[k], 16, 17); this.moods[k] = Texture.from(c); }
     return this.moods[k];
   }
   dropView(id, v) { if (v.badge) v.badge.destroy(); v.spr.destroy(); if (v.extra) v.extra.destroy({ children: true }); if (v.sail) v.sail.destroy(); this.views.delete(id); }
@@ -584,8 +585,8 @@ export class View {
       const us = e.kind === 'unit' && UNITS[e.type] ? UNITS[e.type] : null, sc = us && us.scale || 1;
       s.scale.set((mir ? -1 : 1) * sc, sc);
       s.x = sx; s.y = sy;
-      if (e.kind === 'unit' && e.nm !== undefined) {
-        const mood = e.sick ? 'sick' : e.th < 15 ? 'thirst' : e.hu < 12 ? 'hunger' : e.en < 8 ? 'tired' : e.fu < 10 ? 'sad' : null;
+      if (e.kind === 'unit' && (e.nm !== undefined || e.routUntil || (us && us.general))) {
+        const mood = e.routUntil > W.t ? 'rout' : e.sick ? 'sick' : e.th < 15 ? 'thirst' : e.hu < 12 ? 'hunger' : e.en < 8 ? 'tired' : e.fu < 10 ? 'sad' : us && us.general ? 'general' : null;
         if (mood && (visible || mineE)) { if (!v.badge) { v.badge = new Sprite(); v.badge.anchor.set(0.5); this.sky.addChild(v.badge); } v.badge.texture = this.moodTex(mood); v.badge.visible = true; v.badge.scale.set(0.55); v.badge.x = sx; v.badge.y = sy - (UNIT_BOX[e.type] || [15, 62])[1] * sc - 10 + Math.sin(this.t * 3 + e.id) * 2; v.badge.zIndex = sy + 999; }
         else if (v.badge) v.badge.visible = false;
       }
