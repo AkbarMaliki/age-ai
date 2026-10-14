@@ -1,7 +1,7 @@
 // Fishing boats keep working when the shoals by their dock run out: they sail to fish seen further away, idle boats
 // look again, and the AI raises a dock by distant fish.     node tests/fishing.test.js
 import { generate } from '../js/map.js';
-import { step, command, addUnit, addBuilding, placementOk, nearestFree, alive } from '../js/sim.js';
+import { step, command, addUnit, addBuilding, placementOk, nearestFree, alive, canBuild } from '../js/sim.js';
 import { AI } from '../js/ai.js';
 
 let fail = 0; const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) fail++; };
@@ -32,6 +32,15 @@ check(boats.filter(b => b.order && (b.order.t === 'gather' || b.order.t === 'dro
   run(60, [ai]);
   const d1 = [...W.dyn.values()].filter(e => e.type === 'dock' && e.owner === 0).length;
   check(d1 > d0, `the AI placed a new dock by distant fish (${d0} -> ${d1})`);
+}
+// ---- winter: the water is ice all game, so nobody builds docks (the AI used to raise useless ones)
+{
+  const Wf = generate({ size: 144, seed: 21, type: 'kepulauan', opts: { season: 'salju', night: 'off', life: false }, players: [{ name: 'A', color: 'blue', ai: true }, { name: 'B', color: 'red', ai: true }] });
+  const ais = Wf.players.map((p, i) => new AI(Wf, i, 'hard'));
+  check(!canBuild(Wf, 0, 'dock'), 'frozen water: a dock cannot be built');
+  for (let n = 0; n < 12 * 600; n++) { for (const a of ais) a.tick(); step(Wf); Wf.ev.length = 0; }
+  const docks = [...Wf.dyn.values()].filter(e => e.kind === 'building' && e.type === 'dock').length;
+  check(docks === 0, `frozen winter: no AI docks after 12 minutes (${docks})`);
 }
 console.log(fail ? `${fail} fishing check(s) failed` : 'all fishing checks passed');
 if (fail) process.exit(1);

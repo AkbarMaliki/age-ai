@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX } from './data.js?v=20261014103502';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX } from './data.js?v=20261014104317';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -424,6 +424,7 @@ export function hasBuilt(W, pid, type) { for (const e of W.dyn.values()) if (e.k
 export function canBuild(W, pid, type) {
   const d = BUILDINGS[type], P = W.players[pid];
   if (P.age < d.age) return false;
+  if (d.water && W.frozen) return false;           // the lakes and rivers are ice all winter: no docks, no ships
   if (type === 'town_center') { let n = 0; for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === pid && e.type === 'town_center') n++; if (n >= townsMax(P)) return false; }   // new towns as the ages pass
   return !(d.needs || []).some(t => !hasBuilt(W, pid, t));
 }

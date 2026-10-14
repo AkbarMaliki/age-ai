@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014103502';
-import { DAY, RELICS } from './data.js?v=20261014103502';
-import { timeOfDay, unreachable, restNow } from './sim.js?v=20261014103502';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014103502';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014104317';
+import { DAY, RELICS } from './data.js?v=20261014104317';
+import { timeOfDay, unreachable, restNow } from './sim.js?v=20261014104317';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014104317';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const segDist = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0; return Math.hypot(px - ax - t * dx, py - ay - t * dy); };
@@ -477,7 +477,7 @@ export class AI {
 
   // ---------------------------------------------------------------- water: dock, fishing boats, war fleet, transports
   water(vils, fleet) {
-    const W = this.W, P = this.P, S = this.S; if (W.t < (this.watT || 0)) return; this.watT = W.t + 6;
+    const W = this.W, P = this.P, S = this.S; if (W.t < (this.watT || 0) || W.frozen) return; this.watT = W.t + 6;     // frozen winter: no docks, no boats
     const island = W.map && W.map.water === 'islands';
     const fish = this.res('fish', this.base[0], this.base[1], island ? 80 : 46);
     if (!this.count('dock') && (fish || island) && vils.length >= (S.navy || island ? 8 : 11) && P.res.wood >= 150) {

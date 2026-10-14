@@ -477,7 +477,7 @@ export class AI {
 
   // ---------------------------------------------------------------- water: dock, fishing boats, war fleet, transports
   water(vils, fleet) {
-    const W = this.W, P = this.P, S = this.S; if (W.t < (this.watT || 0)) return; this.watT = W.t + 6;
+    const W = this.W, P = this.P, S = this.S; if (W.t < (this.watT || 0) || W.frozen) return; this.watT = W.t + 6;     // frozen winter: no docks, no boats
     const island = W.map && W.map.water === 'islands';
     const fish = this.res('fish', this.base[0], this.base[1], island ? 80 : 46);
     if (!this.count('dock') && (fish || island) && vils.length >= (S.navy || island ? 8 : 11) && P.res.wood >= 150) {

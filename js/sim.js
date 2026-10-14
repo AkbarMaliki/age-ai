@@ -424,6 +424,7 @@ export function hasBuilt(W, pid, type) { for (const e of W.dyn.values()) if (e.k
 export function canBuild(W, pid, type) {
   const d = BUILDINGS[type], P = W.players[pid];
   if (P.age < d.age) return false;
+  if (d.water && W.frozen) return false;           // the lakes and rivers are ice all winter: no docks, no ships
   if (type === 'town_center') { let n = 0; for (const e of W.dyn.values()) if (e.kind === 'building' && e.owner === pid && e.type === 'town_center') n++; if (n >= townsMax(P)) return false; }   // new towns as the ages pass
   return !(d.needs || []).some(t => !hasBuilt(W, pid, t));
 }

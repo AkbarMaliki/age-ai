@@ -175,6 +175,7 @@ export class HUD {
           const d = BUILDINGS[type]; const ok = canBuild(W, G.me, type), cost = costOf(P, type);
           let why = P.age < d.age ? `Butuh ${AGES[d.age]}` : (d.needs || []).filter(n => !G.hasBuilt(n)).map(n => 'Butuh ' + BUILDINGS[n].name).join(', ');
           if (ok && !canAfford(P, cost)) why = 'Sumber daya kurang';
+          if (d.water && W.frozen && P.age >= d.age) why = 'Air membeku sepanjang musim dingin';
           if (type === 'town_center' && !ok && P.age >= d.age) why = `Batas Pusat Kota tercapai (maks ${townsMax(P)} di zaman ini)`;
           this.setBtn(slot, { icon: type === 'stone_wall' ? 'wall_post' : type === 'palisade' ? 'pal_post' : type === 'gate' ? 'gate_x' : type, glyph: { dock: '⚓', blacksmith: '⚒', academy: '🏛', monastery: '✝', wonder: '🏛', siege_workshop: '⚙', palisade: '🪵', well: '🪣', tavern: '🍺', hospital: '⚕', barn: '🐄', outpost: '🚩', town_center: '🏰' }[type], name: d.name, cost, why, disabled: !ok || !canAfford(P, cost), active: G.placing?.type === type, act: () => G.startPlace(type), desc: BLD_DESC[type] });
         }
