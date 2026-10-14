@@ -195,7 +195,7 @@ export class AI {
     if (pile && W.t > (this.rbT || 0)) { this.rbT = W.t + 4;
       const kinds = { food: ['berry', 'farm', 'carcass', 'fish'], wood: ['tree'], gold: ['gold'], stone: ['stone'], iron: ['iron'] }[pile];
       const movers = vils.filter(v => v.order && v.order.t === 'gather' && kinds.includes(v.order.kind)).slice(0, 2);
-      const need = ['wood', 'food', 'gold', 'iron'].filter(k => k !== pile && (k !== 'iron' || P.age >= 2)).sort((a, b) => P.res[a] - P.res[b])[0];
+      const need = ['wood', 'food', 'gold', 'iron', 'stone'].filter(k => k !== pile && (k !== 'iron' || P.age >= 2) && (k !== 'stone' || (P.age >= 2 && P.res.stone < 400))).sort((a, b) => P.res[a] - P.res[b])[0];     // stone too: new towns, towers, a castle
       for (const v of movers) {
         const f = need === 'food' ? (this.freeFarm() || this.res('berry', this.base[0], this.base[1], 16)) : this.nearDropRes(need === 'wood' ? 'tree' : need, need, v);
         if (f) command(W, { t: 'smart', pid: this.pid, ids: [v.id], target: f.id, x: f.x, y: f.y });
@@ -1115,6 +1115,8 @@ export class AI {
     const short = goods.filter(r => r !== 'stone').sort((a, b) => P.res[a] - P.res[b])[0];
     if (P.res[short] < 150 && P.res.gold > buyPrice(W, P, short) + 250 && buyPrice(W, P, short) < 260) command(W, { t: 'trade', pid: this.pid, bid: mk.id, res: short, buy: true });
     if (this.foodKeep > P.res.food && P.res.gold >= buyPrice(W, P, 'food') + 20) command(W, { t: 'trade', pid: this.pid, bid: mk.id, res: 'food', buy: true });   // the market feeds the town before dawn
+    // stone for the next town or castle: a rich treasury buys it rather than waiting for the quarries
+    if (P.res.stone < 150 && P.age >= 2 && P.res.gold > buyPrice(W, P, 'stone') + 400 && buyPrice(W, P, 'stone') < 300) command(W, { t: 'trade', pid: this.pid, bid: mk.id, res: 'stone', buy: true });
     if (P.res.gold < 80) { const rich = goods.sort((a, b) => P.res[b] - P.res[a])[0]; if (P.res[rich] > 500) command(W, { t: 'trade', pid: this.pid, bid: mk.id, res: rich, buy: false }); }
   }
   nearDropRes(kind, res, v) {

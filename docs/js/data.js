@@ -5,7 +5,7 @@ export const AGES = ['', 'Zaman Kegelapan', 'Zaman Feodal', 'Zaman Kastil', 'Zam
 export const START_RES = { food: 200, wood: 200, gold: 100, stone: 200, iron: 0 };
 export const POP_LIMIT = 125;
 export const TOWN_POP = 30;          // every Town Center after the first raises the kingdom's population limit by this much
-export const TOWNS_MAX = [0, 1, 2, 3, 5];     // Town Centers allowed per age (an empire can spread over the map in the Imperial Age)
+export const TOWNS_MAX = [0, 1, 2, 4, 10];    // Town Centers allowed per age (an Imperial empire can keep spreading over the map)
 // terrain codes (map tiles). HILL: slower to climb, high ground gives +25% damage and +1 range; ROCK: impassable mountain.
 export const TER = { GRASS: 0, DIRT: 1, FOREST: 2, WATER: 3, GRASS2: 4, HILL: 5, ROCK: 6 };
 

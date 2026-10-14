@@ -21,6 +21,7 @@ for (let n = 1; n <= to * 600; n++) {
     const fb = [...W.dyn.values()].filter(e => e.kind === 'building' && e.owner === foe);
     const fbk = {}; for (const b of fb) fbk[b.type] = (fbk[b.type] || 0) + 1;
     const known = [...A.known.values()].filter(k => k.owner === foe).length;
-    console.log(`m${(W.t / 60).toFixed(0)} lead ${lead} pop ${W.players[lead].pop}/${W.players[lead].popLim} vs ${W.players[foe].pop} | army ${army.length} cap ${A.armyCap} guard ${A.guard ? A.guard.size : 0} watch ${watch} | orders ${JSON.stringify(ord)} | lastAttack ${(A.lastAttack / 60).toFixed(1)}m | foe blds ${fb.length} known ${known} ${JSON.stringify(fbk)} | inv ${!!A.inv} | foe units ${[...W.dyn.values()].filter(u => u.kind === 'unit' && u.owner === foe).length}`);
+    const towns = [0, 1].map(q => [...W.dyn.values()].filter(e => e.kind === 'building' && e.owner === q && e.type === 'town_center').length);
+    console.log(`m${(W.t / 60).toFixed(0)} towns ${towns} stone ${W.players.map(q => q.res.stone | 0)} age ${W.players.map(q => q.age)} lead ${lead} pop ${W.players[lead].pop}/${W.players[lead].popLim} vs ${W.players[foe].pop} | army ${army.length} cap ${A.armyCap} guard ${A.guard ? A.guard.size : 0} watch ${watch} | orders ${JSON.stringify(ord)} | lastAttack ${(A.lastAttack / 60).toFixed(1)}m | foe blds ${fb.length} known ${known} ${JSON.stringify(fbk)} | inv ${!!A.inv} | foe units ${[...W.dyn.values()].filter(u => u.kind === 'unit' && u.owner === foe).length}`);
   }
 }
