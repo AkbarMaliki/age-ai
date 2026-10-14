@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014142033';
-import { DAY, RELICS } from './data.js?v=20261014142033';
-import { timeOfDay, unreachable, restNow, targetable } from './sim.js?v=20261014142033';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014142033';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014144323';
+import { DAY, RELICS } from './data.js?v=20261014144323';
+import { timeOfDay, unreachable, restNow, targetable } from './sim.js?v=20261014144323';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014144323';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const TOWNS = ['Sukamaju', 'Karangsari', 'Tanjungpura', 'Wanasari', 'Giriwangi', 'Sumberjaya', 'Mekarsari', 'Banyuasri', 'Purwasari', 'Rejosari', 'Kalisari', 'Gunungsari', 'Tirtamaya', 'Candirejo', 'Batursari', 'Lembahhijau'];     // town names in the war chronicle

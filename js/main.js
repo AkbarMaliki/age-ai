@@ -173,15 +173,16 @@ class Game {
       const st = this.lock.status(); if (st !== this.netSt) { this.netSt = st; $('netStatus').textContent = st; $('netStatus').classList.toggle('hidden', !st); }
     } else if (!this.paused && !this.over) {
       this.acc += dt * GAME_SPEED * this.speed;
-      let n = 0;
-      while (this.acc >= TICK && n++ < 8) {
+      // up to 16 ticks a frame within ~32 ms (20x needs ~5 a frame at 60 fps; a slow late game just runs as fast as it can)
+      let n = 0; const t0 = performance.now();
+      while (this.acc >= TICK && n++ < 16 && (n <= 2 || performance.now() - t0 < 32)) {
         if (this.replay && this.replay.mode === 'watch' && this.W.tick >= this.feedEnd && this.feedI >= this.rec.cmds.length) {
           if (!this.replayDone) { this.replayDone = true; this.hud.notify('🎬 Replay selesai.', 'age'); } this.acc = 0; break;
         }
         this.tickOnce(); this.acc -= TICK;
       }
       if (!this.watch && !this.online && !this.replay && this.W.t - (this.lastAuto || 0) > 120 && this.W.winner < 0) { this.lastAuto = this.W.t; this.saveGame('auto', 'auto'); }
-      if (n >= 8) this.acc = 0;
+      if (this.acc >= TICK * 4) this.acc = 0;        // fell behind: don't try to catch up (that would freeze the screen)
     }
     if (this.watch) this.spectatorCam(dt);
     this.scroll(dt);
@@ -297,7 +298,7 @@ class Game {
     setSpeed(2);
     $('spCam').onclick = () => this.toggleAutoCam(); $('spCam').classList.remove('on');
     $('spPov').onclick = () => this.cyclePov(); this.cyclePov(0);
-    this.hud.notify('Mode penonton: kamera bebas — tarik dengan klik kiri, WASD/panah, tepi layar atau minimap. Tab = ganti sudut pandang, C = kamera otomatis, 1/2/4/8 = kecepatan.', 'age');
+    this.hud.notify('Mode penonton: kamera bebas — tarik dengan klik kiri, WASD/panah, tepi layar atau minimap. Tab = ganti sudut pandang, C = kamera otomatis, 1/2/4/8/0 = kecepatan (0 = 20x).', 'age');
   }
   // the eye: spectators (and beaten players) see the whole map, or only what the kingdom they follow has explored and knows
   fogButton() { const b = $('fogBtn'); b.classList.remove('hidden'); b.onclick = () => this.toggleFog(); this.toggleFog(false, true); }
@@ -767,7 +768,7 @@ class Game {
         if (e.key === 'Tab') { e.preventDefault(); this.cyclePov(); return; }
         if (e.key === 'c' || e.key === 'C') { this.toggleAutoCam(); return; }
         if (e.key === 'v' || e.key === 'V') { this.toggleFog(); return; }
-        if (/^[1248]$/.test(e.key) && !e.ctrlKey) { const b = document.querySelector('#specBar .sp[data-sp="' + e.key + '"]'); if (b) b.click(); return; }
+        if (/^[12480]$/.test(e.key) && !e.ctrlKey) { const b = document.querySelector('#specBar .sp[data-sp="' + (e.key === '0' ? '20' : e.key) + '"]'); if (b) b.click(); return; }
       }
       if (/^[0-9]$/.test(e.key)) {
         if (e.ctrlKey) { e.preventDefault(); this.groups[e.key] = [...this.sel]; this.hud.notify(`Grup ${e.key} disimpan.`); }

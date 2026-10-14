@@ -375,6 +375,7 @@ table.diplo .trib { white-space: nowrap; } table.diplo .trib button { width: aut
 .lifebar { display: flex; gap: 8px; font-size: 13px; font-weight: bold; padding: 0 6px; text-shadow: 0 1px 2px #000; white-space: nowrap; }
 .lifebar .good { color: #9fe07a; } .lifebar .mid { color: #f0d060; } .lifebar .bad { color: #ff7a5a; }
 @media (max-width: 1100px) { .lifebar span:nth-child(n+4) { display: none; } }
+@media (max-width: 1000px) { body.watch #lifeInfo, #spCam span, body.watch #btnStats span { display: none; } body.watch .res { min-width: 50px; } }      /* watching on a phone: room for the speed buttons, Statistik and Menu */
 #info .who { font-size: 12px; opacity: 0.9; margin-top: 2px; }
 #info .needs { display: flex; gap: 6px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
 #info .nd { display: inline-flex; align-items: center; gap: 2px; font-style: normal; }
