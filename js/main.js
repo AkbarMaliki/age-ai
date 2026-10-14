@@ -292,10 +292,9 @@ class Game {
     document.body.classList.add('watch'); $('specBar').classList.remove('hidden');
     this.view.reveal = true; this.autoCam = false; this.camT = 0; this.hot = null;   // free camera by default
     this.fogButton();
-    const speeds = [...document.querySelectorAll('#specBar .sp')];
-    const setSpeed = (v) => { this.speed = v; speeds.forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); };
-    speeds.forEach(b => b.onclick = () => { setSpeed(+b.dataset.sp); this.snd.play('click'); });
-    setSpeed(2);
+    $('spSpeed').onclick = () => this.stepSpeed(1);
+    $('spSpeed').oncontextmenu = (e) => { e.preventDefault(); this.stepSpeed(-1); };
+    this.setSpeed(2);
     $('spCam').onclick = () => this.toggleAutoCam(); $('spCam').classList.remove('on');
     $('spPov').onclick = () => this.cyclePov(); this.cyclePov(0);
     this.hud.notify('Mode penonton: kamera bebas — tarik dengan klik kiri, WASD/panah, tepi layar atau minimap. Tab = ganti sudut pandang, C = kamera otomatis, 1/2/4/8/0 = kecepatan (0 = 20x).', 'age');
@@ -309,6 +308,9 @@ class Game {
     this.snd.play('click');
     this.hud.notify(on ? `👁 Kabut perang aktif. ${this.fogNote()} Tab = ganti kerajaan.` : '👁 Kabut perang mati: seluruh peta terlihat.', 'age');
   }
+  // one speed button: click = faster (wraps to 1x), right click = slower
+  setSpeed(v) { this.speed = v; const b = $('spSpeed'); if (b) { b.querySelector('b').textContent = v + 'x'; b.classList.toggle('fast', v >= 8); } }
+  stepSpeed(d) { const L = [1, 2, 4, 8, 20], i = Math.max(0, L.indexOf(this.speed)); this.setSpeed(L[(i + d + L.length) % L.length]); this.snd.play('click'); }
   toggleAutoCam() { this.autoCam = !this.autoCam; $('spCam').classList.toggle('on', this.autoCam); this.camT = 0; this.camGoal = null; this.snd.play('click'); }
   // any hand-made camera move hands control back to the viewer
   userCam() { this.camGoal = null; if (this.watch && this.autoCam) { this.autoCam = false; $('spCam').classList.remove('on'); } }
@@ -316,7 +318,7 @@ class Game {
     const live = this.W.players.filter(p => p.alive); if (!live.length) return;
     const i = (live.findIndex(p => p.id === this.me) + step + live.length) % live.length;
     this.me = live[i].id; this.view.me = this.me;
-    const p = this.W.players[this.me]; $('spPov').textContent = p.name; $('spPov').style.color = 'rgb(' + PLAYER_RGB[p.color] + ')';
+    const p = this.W.players[this.me], pov = $('spPov'); pov.querySelector('span').textContent = p.name; pov.querySelector('.dot').style.background = pov.querySelector('.dot').style.color = 'rgb(' + PLAYER_RGB[p.color] + ')';
     if (step) { const tc = this.W.ents.get(p.tc); if (tc) this.centerOn(tc.x + 2, tc.y + 2); }
     if (step && this.fogPov) this.hud.notify('👁 ' + this.fogNote(), 'age');
   }
@@ -768,7 +770,7 @@ class Game {
         if (e.key === 'Tab') { e.preventDefault(); this.cyclePov(); return; }
         if (e.key === 'c' || e.key === 'C') { this.toggleAutoCam(); return; }
         if (e.key === 'v' || e.key === 'V') { this.toggleFog(); return; }
-        if (/^[12480]$/.test(e.key) && !e.ctrlKey) { const b = document.querySelector('#specBar .sp[data-sp="' + (e.key === '0' ? '20' : e.key) + '"]'); if (b) b.click(); return; }
+        if (/^[12480]$/.test(e.key) && !e.ctrlKey) { this.setSpeed(e.key === '0' ? 20 : +e.key); this.snd.play('click'); return; }
       }
       if (/^[0-9]$/.test(e.key)) {
         if (e.ctrlKey) { e.preventDefault(); this.groups[e.key] = [...this.sel]; this.hud.notify(`Grup ${e.key} disimpan.`); }
