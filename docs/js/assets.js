@@ -1,6 +1,6 @@
 // Atlas loading + per-player colour tinting (done once on a canvas, like AoE2's player-colour palette swap).
 import { Texture, Rectangle, CanvasSource } from 'pixi.js';
-import { PLAYER_RGB } from './data.js?v=20261014091752';
+import { PLAYER_RGB } from './data.js?v=20261014092756';
 
 // build version (set by tools/build.py in index.html): a new deploy never mixes with files cached from the last one
 export const vq = (u) => globalThis.AK_VER ? u + (u.includes('?') ? '&' : '?') + 'v=' + globalThis.AK_VER : u;
