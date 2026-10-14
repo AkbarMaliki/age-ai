@@ -123,6 +123,11 @@ table.st .warn { color: #ff8070; } table.st i { font-style: italic; opacity: 0.7
 .rv { display: inline-flex; align-items: center; gap: 2px; margin-right: 10px; white-space: nowrap; }
 .si { display: inline-block; width: 64px; height: 64px; zoom: 0.34; margin-right: 8px; border-radius: 8px; vertical-align: middle; font-style: normal !important; opacity: 1 !important; }   /* zoom shrinks the layout box too */
 table.st.solo { width: auto; min-width: min(560px, 100%); }
+.chron { display: flex; flex-direction: column; gap: 3px; }
+.chron .ce { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; line-height: 1.35; }
+.chron .ct { color: #c8bca0; font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; opacity: 0.8; }
+.chron .ce > span:last-child { border-left: 3px solid; padding-left: 7px; }
+.chron .ce.fall, .chron .ce.conquer { font-weight: 700; } .chron .ce.conquer { color: var(--gold2, #e8c860); }
 .chip { display: inline-block; margin: 1px 4px 2px 0; padding: 1px 7px; border: 1px solid #a8834c80; border-radius: 10px; background: #00000030; font-size: 12.5px; white-space: nowrap; }
 .jobs { display: flex; height: 18px; min-width: 160px; gap: 2px; border-radius: 3px; overflow: hidden; background: #0004; }
 .jobs i { display: block; height: 100%; font-style: normal !important; opacity: 1 !important; font-size: 11px; line-height: 18px; text-align: center; color: #1a120a; font-weight: 700; overflow: hidden; min-width: 4px; }
@@ -176,6 +181,8 @@ body.watch #pResign { display: none; }
 .stats .good { color: #8ff08f; }
 /* ---------- advisor ---------- */
 #advBtn { position: fixed; left: 10px; top: 40px; z-index: 12; width: 34px; height: 34px; border-radius: 50%; border: 2px solid #1a110a; background: radial-gradient(circle at 35% 30%, #ffe08a, #c08a20); color: #3a2208; font: 900 20px Cinzel, serif; box-shadow: 0 2px 8px #000a; cursor: pointer; }
+#fogBtn { position: fixed; left: 10px; top: 82px; z-index: 12; width: 34px; height: 34px; border-radius: 50%; border: 2px solid #1a110a; background: radial-gradient(circle at 35% 30%, #ffe08a, #c08a20); font: 17px/1 sans-serif; box-shadow: 0 2px 8px #000a; cursor: pointer; padding: 0; }
+#fogBtn.off { background: radial-gradient(circle at 35% 30%, #6a6458, #2a241c); filter: grayscale(1); }
 #advBtn.fresh { animation: pulse 0.6s infinite alternate; box-shadow: 0 0 14px #ffd040, 0 2px 8px #000a; }
 #notify { left: 52px !important; }
 #advPanel { position: fixed; z-index: 45; top: 44px; left: 50%; transform: translateX(-50%); width: min(820px, calc(100vw - 24px)); max-height: calc(100vh - 230px); display: flex; flex-direction: column;

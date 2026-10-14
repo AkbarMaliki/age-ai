@@ -157,7 +157,7 @@ class Game {
       if (e.key === 'Escape') { box.classList.add('hidden'); inp.blur(); }
     };
   }
-  get seeAll() { return this.watch || !!this.lost; }      // spectators and beaten players see the whole map
+  get seeAll() { return (this.watch || !!this.lost) && !this.fogPov; }      // spectators and beaten players see the whole map (unless they turn the fog on)
 
   // ---------------------------------------------------------------- loop
   frame() {
@@ -270,6 +270,13 @@ class Game {
       case 'penned': if (mine && W.t - (this.lastPenned || -99) > 30) { this.lastPenned = W.t; this.hud.notify('🐑 Ternak masuk padang kandang — akan bertambah gemuk dan menghasilkan susu.'); } break;
       case 'prosperhold': { const o = W.players[e.owner]; this.snd.play('alert'); this.hud.notify(o.team === P.team ? `⭐ Kerajaan ${o.name} makmur! Pertahankan 10 menit untuk menang.` : `⭐ ${o.name} mencapai kemakmuran — menang dalam 10 menit kecuali dihentikan!`, o.team === P.team ? 'age' : 'bad'); break; }
       case 'prosperlost': if (mine) this.hud.notify('⭐ Kemakmuran turun di bawah batas — hitungan mundur berhenti.', 'bad'); break;
+      case 'war': {        // the war commanders' chronicle: wars on us and our allies in full, elsewhere only fallen towns
+        const o = W.players[e.owner], vs = e.foe >= 0 ? W.players[e.foe] : null, onUs = vs && vs.team === P.team, ours = o.team === P.team;
+        if (onUs) { if (['declare', 'march', 'siege', 'fall', 'conquer'].includes(e.kind)) this.snd.play('alert'); this.hud.notify('⚔ ' + e.text, e.kind === 'retreat' || e.kind === 'truce' ? 'age' : 'bad'); if (e.kind === 'siege' || e.kind === 'march') this.attackAt = [e.x, e.y]; }
+        else if (ours) this.hud.notify('⚔ ' + e.text, 'age');
+        else if (e.kind === 'fall' || e.kind === 'conquer') this.hud.notify('⚔ ' + e.text, 'enemy');
+        break;
+      }
       case 'kothcapture': { const o = W.players[e.owner]; if (!o) break; this.snd.play('alert'); this.hud.notify(o.team === P.team ? `⛰ Monumen dikuasai ${o.name}! Pertahankan ${Math.round(e.secs / 60)} menit.` : `⛰ ${o.name} merebut Monumen! Rebut kembali dalam ${Math.round(e.secs / 60)} menit!`, o.team === P.team ? 'age' : 'bad'); break; }
     }
   }
@@ -283,6 +290,7 @@ class Game {
   setupSpectator() {
     document.body.classList.add('watch'); $('specBar').classList.remove('hidden');
     this.view.reveal = true; this.autoCam = false; this.camT = 0; this.hot = null;   // free camera by default
+    this.fogButton();
     const speeds = [...document.querySelectorAll('#specBar .sp')];
     const setSpeed = (v) => { this.speed = v; speeds.forEach(b => b.classList.toggle('on', +b.dataset.sp === v)); };
     speeds.forEach(b => b.onclick = () => { setSpeed(+b.dataset.sp); this.snd.play('click'); });
@@ -290,6 +298,15 @@ class Game {
     $('spCam').onclick = () => this.toggleAutoCam(); $('spCam').classList.remove('on');
     $('spPov').onclick = () => this.cyclePov(); this.cyclePov(0);
     this.hud.notify('Mode penonton: kamera bebas — tarik dengan klik kiri, WASD/panah, tepi layar atau minimap. Tab = ganti sudut pandang, C = kamera otomatis, 1/2/4/8 = kecepatan.', 'age');
+  }
+  // the eye: spectators (and beaten players) see the whole map, or only what the kingdom they follow has explored and knows
+  fogButton() { const b = $('fogBtn'); b.classList.remove('hidden'); b.onclick = () => this.toggleFog(); this.toggleFog(false, true); }
+  toggleFog(on = !this.fogPov, quiet = false) {
+    this.fogPov = on; this.view.reveal = !on; this.view.revealed = false; this.view.fogT = 0;
+    const b = $('fogBtn'); b.classList.toggle('off', on); b.title = on ? 'Kabut perang AKTIF (V): hanya wilayah yang dijelajahi dan diketahui kerajaan yang sedang dilihat — klik untuk membuka seluruh peta' : 'Kabut perang MATI (V): seluruh peta terlihat — klik untuk melihat hanya apa yang diketahui kerajaan yang sedang dilihat';
+    if (quiet) return;
+    this.snd.play('click');
+    this.hud.notify(on ? `👁 Kabut perang aktif: hanya yang diketahui ${this.W.players[this.me].name}. Tab = ganti kerajaan.` : '👁 Kabut perang mati: seluruh peta terlihat.', 'age');
   }
   toggleAutoCam() { this.autoCam = !this.autoCam; $('spCam').classList.toggle('on', this.autoCam); this.camT = 0; this.camGoal = null; this.snd.play('click'); }
   // any hand-made camera move hands control back to the viewer
@@ -311,6 +328,11 @@ class Game {
       case 'die': this.sfx(UNITS[e.type].animal ? e.type : e.type === 'villager' ? 'dieVil' : 'die', e.x, e.y); break;
       case 'collapse': this.sfx('collapse', e.x, e.y); break;
       case 'hit': if (!this.hot || W.t - this.hot.t > 3) this.hot = { x: e.x, y: e.y, t: W.t }; break;
+      case 'war':
+        this.hud.notify('⚔ ' + e.text, ['fall', 'conquer', 'declare'].includes(e.kind) ? 'age' : 'enemy');
+        if (['declare', 'fall', 'conquer'].includes(e.kind)) this.snd.play('alert');
+        if (['march', 'siege', 'fall'].includes(e.kind)) this.hot = { x: e.x, y: e.y, t: W.t + 8 };      // the auto camera goes to see the battle
+        break;
       case 'age': {
         const p = W.players[e.owner]; this.snd.play('age'); this.hud.notify(p.name + ' maju ke ' + AGES[e.age] + '!', 'age');
         const tc = W.ents.get(p.tc); if (tc) { this.view.fx({ k: 'age', x: tc.x + 2, y: tc.y + 2 }); this.hot = { x: tc.x + 2, y: tc.y + 2, t: W.t }; }
@@ -367,7 +389,7 @@ class Game {
     // beaten while others still fight: keep watching the rest of the match with the whole map revealed
     $('endWatch').classList.toggle('hidden', win || this.W.winner >= 0);
     $('endWatch').onclick = () => {
-      this.lost = true; this.over = false; this.view.reveal = true; this.view.revealed = false; $('endScreen').classList.add('hidden');
+      this.lost = true; this.over = false; this.view.reveal = true; this.view.revealed = false; $('endScreen').classList.add('hidden'); this.fogButton();
       this.snd.music('game'); this.hud.notify('Kerajaanmu telah jatuh. Menonton sisa pertandingan — seluruh peta terbuka.', 'bad');
     };
   }
@@ -443,7 +465,7 @@ class Game {
   // zoom keeping the world point under (px, py) fixed; far zoom-out for an overview of big maps
   zoomAt(px, py, f) {
     const v = this.view, c = v.cam, s = this.app.screen, z0 = c.zoom;
-    const z = Math.max(this.watch ? 0.22 : 0.3, Math.min(1.6, z0 * f)); if (z === z0) return;
+    const z = Math.max(this.watch || this.lost ? 0.1 : 0.18, Math.min(1.6, z0 * f)); if (z === z0) return;      // (was 0.22 / 0.3: big empires need a wider view)
     const X = (px - (s.width / 2 - c.x * z0)) / z0, Y = (py - (s.height / 2 - c.y * z0)) / z0;
     c.x = (s.width / 2 - (px - X * z)) / z; c.y = (s.height / 2 - (py - Y * z)) / z; c.zoom = z;
   }
@@ -738,6 +760,7 @@ class Game {
       if (this.watch) {
         if (e.key === 'Tab') { e.preventDefault(); this.cyclePov(); return; }
         if (e.key === 'c' || e.key === 'C') { this.toggleAutoCam(); return; }
+        if (e.key === 'v' || e.key === 'V') { this.toggleFog(); return; }
         if (/^[1248]$/.test(e.key) && !e.ctrlKey) { const b = document.querySelector('#specBar .sp[data-sp="' + e.key + '"]'); if (b) b.click(); return; }
       }
       if (/^[0-9]$/.test(e.key)) {

@@ -72,7 +72,8 @@ export class History {
 }
 
 // ---------------------------------------------------------------- panel
-const TABS = [['sum', 'Ringkasan'], ['eco', 'Ekonomi'], ['mil', 'Militer'], ['time', 'Linimasa']];
+const TABS = [['sum', 'Ringkasan'], ['eco', 'Ekonomi'], ['mil', 'Militer'], ['war', 'Kronik Perang'], ['time', 'Linimasa']];
+const WAR_ICON = { declare: '📜', march: '🚩', siege: '🏹', fall: '🔥', next: '➡', hunt: '🔎', found: '👁', retreat: '↩', recall: '🛡', truce: '🕊', conquer: '👑' };
 const METRICS = [['score', 'Skor'], ['pop', 'Populasi'], ['army', 'Tentara'], ['vil', 'Penduduk desa'], ['gathered', 'Sumber daya terkumpul']];
 const DASH = [[], [7, 4], [2, 3], [9, 3, 2, 3]];     // per seat: second cue besides colour
 
@@ -101,6 +102,7 @@ export class StatsPanel {
     $('statsSub').textContent = `${W.map ? W.map.name + ' · ' : ''}${W.size}×${W.size} · menit ${mmss(W.t)}${this.all() ? ' · semua kerajaan' : ' · kerajaanmu'}`;
     const body = $('statsBody');
     if (this.tab === 'time') { this.renderTimeline(body); return; }
+    if (this.tab === 'war') { this.renderWar(body); return; }
     const ps = this.shown(), snap = snapshot(W), ex = ps.map(P => exploredPct(W, P));
     const head = `<tr><th></th>${ps.map(P => `<th style="color:${rgb(P)}">${P.name}${P.alive ? '' : ' ☠'}</th>`).join('')}</tr>`;
     const row = (label, f, cls = '') => `<tr class="${cls}"><td>${label}</td>${ps.map((P, i) => `<td>${f(P, snap[P.id], i)}</td>`).join('')}</tr>`;
@@ -151,6 +153,21 @@ export class StatsPanel {
       if (!this.all()) h += this.intel();
     }
     if (body.dataset.k !== this.tab) { body.dataset.k = this.tab; body.scrollTop = 0; }
+    body.innerHTML = h;
+  }
+  // the war commanders: what each kingdom's army is doing now, and the story of the wars so far (newest first).
+  // Playing: only the wars of your own side, plus towns falling anywhere (that news travels).
+  renderWar(body) {
+    const G = this.g, W = G.W, me = W.players[G.me], all = this.all();
+    const side = (id) => id >= 0 && W.players[id].team === me.team;
+    const ais = (G.ais || []).filter(a => W.players[a.pid].alive && (all || side(a.pid)));
+    let h = '<h3>Komandan Perang <small>(apa yang sedang dilakukan pasukan tiap kerajaan)</small></h3>';
+    h += ais.length ? '<table class="st">' + ais.map(a => { const P = W.players[a.pid]; return `<tr><td style="color:${rgb(P)}"><b>${P.name}</b></td><td>${a.warStatus ? a.warStatus() : '—'}</td></tr>`; }).join('') + '</table>' : '<p><i>Tidak ada komandan komputer di pihakmu.</i></p>';
+    const log = (W.chron || []).filter(c => all || side(c.owner) || side(c.foe) || c.kind === 'fall' || c.kind === 'conquer');
+    h += '<h3>Kronik <small>(kisah perang dari awal sampai sekarang)</small></h3>';
+    h += log.length ? '<div class="chron">' + log.slice().reverse().slice(0, 200).map(c => `<div class="ce ${c.kind}"><span class="ct">${mmss(c.t)}</span><i>${WAR_ICON[c.kind] || '⚔'}</i><span style="border-color:${rgb(W.players[c.owner])}">${c.text}</span></div>`).join('') + '</div>'
+      : '<p><i>Belum ada perang besar. Para panglima masih membangun kekuatan — perang biasanya pecah di Zaman Kastil.</i></p>';
+    if (body.dataset.k !== 'war') { body.dataset.k = 'war'; body.scrollTop = 0; }
     body.innerHTML = h;
   }
   contactsOf(P) {
