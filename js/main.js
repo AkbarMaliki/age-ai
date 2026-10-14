@@ -12,7 +12,7 @@ import { loadAll, vq } from './assets.js';
 import { View, iso, UNIT_BOX } from './render.js';
 import { HUD } from './ui.js';
 import { Sound } from './audio.js';
-import { History, StatsPanel, score } from './stats.js';
+import { History, StatsPanel, score, exploredPct } from './stats.js';
 import { CardPanel, DeckBuilder } from './cards.js';
 import { Advisor } from './advisor.js';
 import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js';
@@ -272,8 +272,8 @@ class Game {
       case 'prosperlost': if (mine) this.hud.notify('⭐ Kemakmuran turun di bawah batas — hitungan mundur berhenti.', 'bad'); break;
       case 'war': {        // the war commanders' chronicle: wars on us and our allies in full, elsewhere only fallen towns
         const o = W.players[e.owner], vs = e.foe >= 0 ? W.players[e.foe] : null, onUs = vs && vs.team === P.team, ours = o.team === P.team;
-        if (onUs) { if (['declare', 'march', 'siege', 'fall', 'conquer'].includes(e.kind)) this.snd.play('alert'); this.hud.notify('⚔ ' + e.text, e.kind === 'retreat' || e.kind === 'truce' ? 'age' : 'bad'); if (e.kind === 'siege' || e.kind === 'march') this.attackAt = [e.x, e.y]; }
-        else if (ours) this.hud.notify('⚔ ' + e.text, 'age');
+        if (onUs) { if (['declare', 'march', 'siege', 'fall', 'conquer', 'wonder'].includes(e.kind)) this.snd.play('alert'); this.hud.notify('⚔ ' + e.text, e.kind === 'retreat' || e.kind === 'truce' ? 'age' : 'bad'); if (e.kind === 'siege' || e.kind === 'march') this.attackAt = [e.x, e.y]; }
+        else if (ours && e.kind !== 'alarm') this.hud.notify('⚔ ' + e.text, 'age');
         else if (e.kind === 'fall' || e.kind === 'conquer') this.hud.notify('⚔ ' + e.text, 'enemy');
         break;
       }
@@ -306,7 +306,7 @@ class Game {
     const b = $('fogBtn'); b.classList.toggle('off', on); b.title = on ? 'Kabut perang AKTIF (V): hanya wilayah yang dijelajahi dan diketahui kerajaan yang sedang dilihat — klik untuk membuka seluruh peta' : 'Kabut perang MATI (V): seluruh peta terlihat — klik untuk melihat hanya apa yang diketahui kerajaan yang sedang dilihat';
     if (quiet) return;
     this.snd.play('click');
-    this.hud.notify(on ? `👁 Kabut perang aktif: hanya yang diketahui ${this.W.players[this.me].name}. Tab = ganti kerajaan.` : '👁 Kabut perang mati: seluruh peta terlihat.', 'age');
+    this.hud.notify(on ? `👁 Kabut perang aktif. ${this.fogNote()} Tab = ganti kerajaan.` : '👁 Kabut perang mati: seluruh peta terlihat.', 'age');
   }
   toggleAutoCam() { this.autoCam = !this.autoCam; $('spCam').classList.toggle('on', this.autoCam); this.camT = 0; this.camGoal = null; this.snd.play('click'); }
   // any hand-made camera move hands control back to the viewer
@@ -317,6 +317,12 @@ class Game {
     this.me = live[i].id; this.view.me = this.me;
     const p = this.W.players[this.me]; $('spPov').textContent = p.name; $('spPov').style.color = 'rgb(' + PLAYER_RGB[p.color] + ')';
     if (step) { const tc = this.W.ents.get(p.tc); if (tc) this.centerOn(tc.x + 2, tc.y + 2); }
+    if (step && this.fogPov) this.hud.notify('👁 ' + this.fogNote(), 'age');
+  }
+  // how much of the map the followed kingdom knows (the Juru Peta card draws all of it)
+  fogNote() {
+    const P = this.W.players[this.me], pct = Math.round(exploredPct(this.W, P));
+    return `Hanya yang diketahui ${P.name} — ${pct}% peta ${P.cards.includes('survey') ? '(kartu Juru Peta: seluruh medan tergambar, unit musuh tetap tak terlihat)' : 'dijelajahi'}.`;
   }
   onSpectatorEvent(e) {
     const W = this.W;
@@ -329,8 +335,8 @@ class Game {
       case 'collapse': this.sfx('collapse', e.x, e.y); break;
       case 'hit': if (!this.hot || W.t - this.hot.t > 3) this.hot = { x: e.x, y: e.y, t: W.t }; break;
       case 'war':
-        this.hud.notify('⚔ ' + e.text, ['fall', 'conquer', 'declare'].includes(e.kind) ? 'age' : 'enemy');
-        if (['declare', 'fall', 'conquer'].includes(e.kind)) this.snd.play('alert');
+        this.hud.notify('⚔ ' + e.text, ['fall', 'conquer', 'declare', 'wonder', 'hold'].includes(e.kind) ? 'age' : 'enemy');
+        if (['declare', 'fall', 'conquer', 'wonder'].includes(e.kind)) this.snd.play('alert');
         if (['march', 'siege', 'fall'].includes(e.kind)) this.hot = { x: e.x, y: e.y, t: W.t + 8 };      // the auto camera goes to see the battle
         break;
       case 'age': {

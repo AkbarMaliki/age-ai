@@ -17,6 +17,9 @@ const SP = process.argv[2] || path.join(__dirname, 'out'); require('fs').mkdirSy
   await p.screenshot({ path: `${SP}/war_fog_open.png` });
   await p.click('#fogBtn'); await p.waitForTimeout(800);
   console.log('after click', JSON.stringify(await st()));
+  console.log('note', await p.evaluate(() => [...document.querySelectorAll('#notify > *')].map(n => n.textContent).filter(t => t.includes('👁')).pop()));
+  await p.keyboard.press('Tab'); await p.waitForTimeout(300);
+  console.log('note after Tab', await p.evaluate(() => [...document.querySelectorAll('#notify > *')].map(n => n.textContent).filter(t => t.includes('👁')).pop()));
   await p.screenshot({ path: `${SP}/war_fog_on.png` });
   await p.keyboard.press('v'); await p.waitForTimeout(500);
   console.log('after V', JSON.stringify(await st()));
