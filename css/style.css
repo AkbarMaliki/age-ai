@@ -323,7 +323,7 @@ body.touch #tooltip { pointer-events: none; }
 .savelist .empty { text-align: center; color: #b8a888; padding: 20px; }
 .filebtn { flex: 1; text-align: center; background: linear-gradient(180deg, #7a5a33, #4a341d); border: 1px solid #1a110a; box-shadow: inset 0 0 0 1px #a8834c; border-radius: 4px; padding: 8px 16px; margin: 4px 0; cursor: pointer; }
 .filebtn input { display: none; }
-#settingsModal .row.vol span { min-width: 110px; } #settingsModal input[type=range] { flex: 1; }
+#settingsModal .row.vol span { min-width: 110px; } #settingsModal input[type=range] { flex: 1; } #settingsModal select { flex: 1; padding: 4px 6px; background: #2a1e14; color: #f2e6c9; border: 1px solid #a8834c; border-radius: 4px; font: inherit; }
 @media (max-width: 900px) {
   .cols2 { grid-template-columns: 1fr; gap: 6px; } .setupp { padding: 12px 14px; }
   #menu .title h1 { font-size: 40px; } .mbtn { padding: 8px 14px; } .mbtn b { font-size: 17px; } .mbtn small { font-size: 11px; }

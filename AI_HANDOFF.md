@@ -233,6 +233,18 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
   - `stance`: `bertahan` when our army < 60% of the strongest known enemy army (12+), until it is back to 95%. While holding: no new campaigns (wonders and counter-attacks still go), +2 towers, and the field army stands at the stage point facing that enemy.
   - Story kinds: `alarm`, `defend`, `repel`, `counter`, `posture`. Test: `tests/defense.test.js`.
 
+### v16: war effects (render.js)
+- Pools, all fixed size: `parts` (general, 700, sorted `sky`), `smoke` (340, or 130 on phones, in its own unsorted `smokeL` layer above `sky`, cheap: no sort, one batch), `flame` (360/160, in `sky`), and `Decals` (blood on the `flat` layer, 160/70). The oldest particle is reused when a pool is full.
+  - `Particles.emit` options: `tex`, colour fade `color` → `c1`, wind `ax` + `drag`, `spin`, squash `sy`, `fadeIn`, anchor `ay`.
+- `burnFx()` runs for buildings below 50% HP or burning (`e.burn`): orange flame tongues with an additive core, embers, a glow, and a dark smoke column that rises ~400 px and drifts with `this.wind`.
+  - `this.lod` (zoomed out: fewer, bigger puffs) and `this.burnK` (budget: about 9 fires' worth at full rate, 4 on Hemat, shared out by last frame's `burnN`) keep the cost flat.
+  - `rubbleFx()`: ruins smoulder for 30 s.
+- Collapse: a rolling dust cloud, a dark plume, flying debris, and sparks when destroyed in battle. Fire arrows: a burning head, embers, a smoke wisp, a glow, light at night; `fireBurst()` on impact.
+- Blood: `bleed()` on `hit` / `die` of living units (not siege or ships): a spray plus a ground splat, and a spreading pool under the fallen. Budgeted per frame (`fxN`).
+- Sim events carry more fields (render only, not part of the state): `hit { u: unit type, b: building, fire: burn damage }`, `arrowhit` / `arrowmiss { fire }`.
+- Settings (main menu → Pengaturan): **Efek perang** Penuh/Hemat (phones default to Hemat) and **Darah** Nyala/Mati → `FX` in render.js, stored as `ak_fxq` / `ak_fxBlood`.
+- Benchmark: `tests/browser/battlefx.cjs` (15 buildings burning + 100 soldiers fighting; fps at zoom 1 and 0.3, 1x and 8x; `MOBILE=1` for the phone viewport). Desktop: 60 fps at 1x; 8x went from 27 to 47 fps because the fire no longer floods the sorted `sky` layer.
+
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
 - Changes from it: archer atk 5, +3 vs infantry, cost 30w/40g; pikeman 55 hp, 0 pierce armour, 40f/30w; cataphract 115 hp, 3/3 armour, 35 iron; militia atk 5, 1 melee armour, 55f/20g; fire archer atk 6. Wells and outposts (and children) no longer keep a kingdom alive; the AI resigns when crushed (< 15 pop vs > 5x, for 2 min); exhaustion no longer kills; town-watch patrols recover energy. Bug: the AI's life timer shared its name (`lcT`) with the lumber-camp timer, so taverns / wells / hospitals were rarely considered (now `lifeT`). Expansion reserves the Town Center's cost once a site is known (`expandNeed`). `expansionSite` uses a resource grid (was a 75 ms spike).

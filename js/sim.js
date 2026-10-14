@@ -1325,14 +1325,14 @@ function projTick(W, p) {
       unitsNear(W, p.x, p.y, p.splash, (e) => { if (e !== t && e.hp > 0 && enemies(W, e.owner, p.owner) && !isAnimal(e) && Math.hypot(e.x - p.x, e.y - p.y) <= p.splash) damage(W, e, p.dmg * 0.5, { owner: p.owner, kind: 'proj' }); });
       W.ev.push({ k: 'boom', x: p.x, y: p.y });
     }
-    W.ev.push({ k: t ? (p.ptype === 'bullet' ? 'bullethit' : 'arrowhit') : 'arrowmiss', x: p.x, y: p.y, water: !t && W.terrain[tileAt(W, p.x, p.y)] === TER.WATER });
+    W.ev.push({ k: t ? (p.ptype === 'bullet' ? 'bullethit' : 'arrowhit') : 'arrowmiss', x: p.x, y: p.y, water: !t && W.terrain[tileAt(W, p.x, p.y)] === TER.WATER, fire: p.ptype === 'fire' || !!p.fire });
     del(W, p.id);
   }
 }
 export function damage(W, t, dmg, src) {
   if (t.kind === 'res') return;
   t.hp -= dmg; t.hitT = W.t;
-  if (src && src.owner !== undefined && src.owner !== t.owner) { const [hx, hy] = center(t); W.ev.push({ k: 'hit', x: hx, y: hy, owner: t.owner }); }
+  if (src && src.owner !== undefined && src.owner !== t.owner) { const [hx, hy] = center(t); W.ev.push({ k: 'hit', x: hx, y: hy, owner: t.owner, u: t.kind === 'unit' ? t.type : 0, b: t.kind === 'building' ? 1 : 0, fire: src.kind === 'fire' ? 1 : 0 }); }
   if (src && t.kind === 'unit' && t.type !== 'villager' && src.id && alive(W, src.id) && stat(W, t.owner, t.type).atk > 0 && (!t.order || (isAnimal(t) && t.order.t !== 'attack')) && t.stance !== 'pasif'
     && (t.stance !== 'diam' || distTo(src, t.x, t.y) <= reachOf(W, t, src) + 0.2)) setOrder(W, t, { t: 'attack', id: src.id, auto: true, gx: t.x, gy: t.y });
   if (src && src.id && t.kind === 'unit' && t.type === 'villager' && t.hp > 0) villagerDefend(W, t, src);

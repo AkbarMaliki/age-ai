@@ -134,24 +134,84 @@ function fishTex(k) {
   for (const [x, y, a] of [[38, 22, 0.3], [50, 26, -0.4], [44, 30, 2.6], [56, 21, 3.1]]) { g.save(); g.translate(x + k * 2, y); g.rotate(a); g.beginPath(); g.ellipse(0, 0, 5, 1.8, 0, 0, 6.29); g.fill(); g.beginPath(); g.moveTo(-5, 0); g.lineTo(-8, -2); g.lineTo(-8, 2); g.fill(); g.restore(); }
   return Texture.from(c);
 }
+// war effects: puffy smoke, flame tongues, blood splats (drawn white / baked once, coloured by tint)
+function smokeTex(v) {
+  const S = 64, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  let r = v * 9301 + 49297; const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  for (let i = 0; i < 9; i++) {
+    const a = rnd() * 6.283, d = rnd() * 13, x = S / 2 + Math.cos(a) * d, y = S / 2 + 2 + Math.sin(a) * d * 0.8, rr = 9 + rnd() * 13;
+    const gr = g.createRadialGradient(x - rr * 0.25, y - rr * 0.3, 0, x, y, rr); gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.6, 'rgba(235,235,235,0.3)'); gr.addColorStop(1, 'rgba(220,220,220,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, rr, 0, 6.283); g.fill();
+  }
+  return Texture.from(c);
+}
+function flameTex(v) {
+  const c = document.createElement('canvas'); c.width = 32; c.height = 64; const g = c.getContext('2d'), w = v ? 3 : -3;
+  g.beginPath(); g.moveTo(16 + w, 2); g.bezierCurveTo(24 + w, 20, 31, 36, 16, 62); g.bezierCurveTo(1, 36, 8 + w, 20, 16 + w, 2);
+  const gr = g.createRadialGradient(16, 48, 1, 16, 42, 34); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,250,225,0.95)'); gr.addColorStop(0.65, 'rgba(255,215,150,0.55)'); gr.addColorStop(1, 'rgba(255,170,90,0)');
+  g.fillStyle = gr; g.fill(); return Texture.from(c);
+}
+function bloodTex(v) {
+  const c = document.createElement('canvas'); c.width = 48; c.height = 24; const g = c.getContext('2d');
+  let r = v * 7919 + 13; const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+  g.fillStyle = 'rgb(112,10,8)';
+  for (let i = 0; i < 6; i++) { g.beginPath(); g.ellipse(24 + (rnd() - 0.5) * 14, 12 + (rnd() - 0.5) * 6, 5 + rnd() * 7, 2.5 + rnd() * 3.5, 0, 0, 6.283); g.fill(); }
+  for (let i = 0; i < 10; i++) { const a = rnd() * 6.283, d = 12 + rnd() * 10; g.beginPath(); g.ellipse(24 + Math.cos(a) * d, 12 + Math.sin(a) * d * 0.45, 0.8 + rnd() * 1.6, 0.5 + rnd() * 0.9, 0, 0, 6.283); g.fill(); }
+  g.fillStyle = 'rgba(55,0,0,0.55)'; g.beginPath(); g.ellipse(24, 12, 6, 3, 0, 0, 6.283); g.fill();
+  return Texture.from(c);
+}
+const lerpC = (a, b, k) => ((((a >> 16) & 255) + ((((b >> 16) & 255) - ((a >> 16) & 255)) * k)) << 16) | ((((a >> 8) & 255) + ((((b >> 8) & 255) - ((a >> 8) & 255)) * k)) << 8) | ((a & 255) + (((b & 255) - (a & 255)) * k));
+// effect settings (Pengaturan): blood on/off, full or light war effects; phones default to light
+const LOW = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+export const FX = { blood: true, rich: !LOW };
 const mulTint = (t, L) => (Math.min(255, ((t >> 16) & 255) * L[0]) << 16) | (Math.min(255, ((t >> 8) & 255) * L[1]) << 8) | Math.min(255, (t & 255) * L[2]);
 
+// Fixed pools of sprites (nothing is allocated while playing; when a pool is full the oldest particle is reused).
+// Optional per particle: own texture, colour fading c0 -> c1, wind (ax) and drag, spin, squash (sy), fade-in, anchor.
 class Particles {
-  constructor(layer, n = 700) {
-    this.pool = []; this.soft = circleTex(16);
-    for (let i = 0; i < n; i++) { const s = new Sprite(this.soft); s.anchor.set(0.5); s.visible = false; layer.addChild(s); this.pool.push({ s, life: 0 }); }
+  constructor(layer, n = 700, texs = null) {
+    this.pool = []; this.soft = circleTex(16); this.texs = texs;
+    for (let i = 0; i < n; i++) { const s = new Sprite(texs ? texs[i % texs.length] : this.soft); s.anchor.set(0.5); s.visible = false; layer.addChild(s); this.pool.push({ s, life: 0 }); }
     this.i = 0;
   }
   emit(o) {
-    const p = this.pool[this.i = (this.i + 1) % this.pool.length];
-    p.s.visible = true; p.s.x = o.x; p.s.y = o.y; p.vx = o.vx || 0; p.vy = o.vy || 0; p.g = o.g || 0; p.life = p.max = o.life || 1;
-    p.s0 = o.size || 0.3; p.s1 = o.grow ?? p.s0 * 2; p.a0 = o.alpha ?? 0.8; p.s.tint = o.color ?? 0xffffff; p.s.blendMode = o.add ? 'add' : 'normal'; p.s.zIndex = o.z || 0;
+    const p = this.pool[this.i = (this.i + 1) % this.pool.length], s = p.s;
+    s.visible = true; s.x = o.x; s.y = o.y; p.vx = o.vx || 0; p.vy = o.vy || 0; p.g = o.g || 0; p.life = p.max = o.life || 1;
+    p.s0 = o.size || 0.3; p.s1 = o.grow ?? p.s0 * 2; p.a0 = o.alpha ?? 0.8; p.c0 = o.color ?? 0xffffff; p.c1 = o.c1 ?? -1; s.tint = p.c0;
+    s.blendMode = o.add ? 'add' : 'normal'; s.zIndex = o.z || 0;
+    s.texture = o.tex || (this.texs ? this.texs[(Math.random() * this.texs.length) | 0] : this.soft);
+    s.anchor.set(0.5, o.ay ?? 0.5); s.rotation = o.rot || 0; p.spin = o.spin || 0; p.sy = o.sy || 1; p.dr = o.drag || 0; p.ax = o.ax || 0; p.fin = o.fadeIn || 0;
   }
   update(dt) {
     for (const p of this.pool) {
-      if (p.life <= 0) continue; p.life -= dt; if (p.life <= 0) { p.s.visible = false; continue; }
-      const k = 1 - p.life / p.max; p.vy += p.g * dt; p.s.x += p.vx * dt; p.s.y += p.vy * dt;
-      p.s.scale.set(p.s0 + (p.s1 - p.s0) * k); p.s.alpha = p.a0 * (1 - k * k);
+      if (p.life <= 0) continue; p.life -= dt; const s = p.s; if (p.life <= 0) { s.visible = false; continue; }
+      const k = 1 - p.life / p.max; p.vy += p.g * dt; p.vx += p.ax * dt;
+      if (p.dr) { const f = Math.max(0, 1 - p.dr * dt); p.vx *= f; p.vy *= f; }
+      s.x += p.vx * dt; s.y += p.vy * dt; if (p.spin) s.rotation += p.spin * dt;
+      const sc = p.s0 + (p.s1 - p.s0) * k; s.scale.set(sc, sc * p.sy);
+      s.alpha = p.a0 * (1 - k * k) * (p.fin && k < p.fin ? k / p.fin : 1);
+      if (p.c1 >= 0) s.tint = lerpC(p.c0, p.c1, k);
+    }
+  }
+  live() { let n = 0; for (const p of this.pool) if (p.life > 0) n++; return n; }
+}
+// blood on the ground: splats that spread a little, darken with the light and fade after a while (oldest reused)
+class Decals {
+  constructor(layer, n) {
+    this.c = new Container(); layer.addChildAt(this.c, Math.min(1, layer.children.length)); this.texs = [bloodTex(1), bloodTex(2), bloodTex(3)];
+    this.pool = []; for (let i = 0; i < n; i++) { const s = new Sprite(this.texs[i % 3]); s.anchor.set(0.5); s.visible = false; this.c.addChild(s); this.pool.push({ s, t: 0, life: 0 }); }
+    this.i = 0;
+  }
+  put(x, y, size, life = 28, grow = 0) {
+    const d = this.pool[this.i = (this.i + 1) % this.pool.length], s = d.s;
+    s.texture = this.texs[(Math.random() * 3) | 0]; s.x = x; s.y = y; s.visible = true; d.size = size; d.flip = Math.random() < 0.5 ? -1 : 1; d.grow = grow; d.t = 0; d.life = life;
+  }
+  update(dt, L) {
+    const tint = mulTint(0xffffff, L);
+    for (const d of this.pool) {
+      if (!d.s.visible) continue; d.t += dt; if (d.t >= d.life) { d.s.visible = false; continue; }
+      const g = d.grow ? Math.min(1, 0.3 + 0.7 * d.t / d.grow) : 1; d.s.scale.set(d.size * g * d.flip, d.size * g);
+      d.s.alpha = 0.85 * Math.min(1, (d.life - d.t) / 6); d.s.tint = tint;
     }
   }
 }
@@ -173,12 +233,17 @@ export class View {
     // pools around torches, windows and fires (so they really light the ground, walls and people around them)
     this.lightRT = RenderTexture.create({ width: 64, height: 64 }); this.lightS = new Sprite(this.lightRT); this.lightS.blendMode = 'multiply'; this.lightS.visible = false;
     this.lightC = new Container(); this.lightBg = new Sprite(Texture.WHITE); this.lightC.addChild(this.lightBg); this.lightT = lightTex(64); this.lightPool = []; this.lights = [];
-    this.root.addChild(this.ground, this.flat, this.objs, this.sky, this.lightS, this.over);
+    this.smokeL = new Container();         // smoke and dust above everything that stands (unsorted: cheap)
+    this.root.addChild(this.ground, this.flat, this.objs, this.sky, this.smokeL, this.lightS, this.over);
     this.weatherG = new Graphics(); app.stage.addChild(this.weatherG);       // rain / snow in screen space
     this.views = new Map();
     this.cam = { x: 0, y: 0, zoom: 1 };
     this.buildTerrain();
     this.parts = new Particles(this.sky);
+    this.smoke = new Particles(this.smokeL, LOW ? 130 : 340, [smokeTex(1), smokeTex(2), smokeTex(3)]);    // smoke columns, dust
+    this.flame = new Particles(this.sky, LOW ? 160 : 360, [flameTex(0), flameTex(1)]);                   // flames, embers, sparks
+    this.decals = new Decals(this.flat, LOW ? 70 : 160);
+    this.emberT = circleTex(8); this.burnN = 0; this.fxN = 0; this.wind = 4;
     this.glows = new Glows(this.sky);
     this.arrow = arrowTex(); this.bullet = bulletTex(); this.ball = ballTex(); this.white = Texture.WHITE;
     this.birdT = [birdTex(true), birdTex(false)]; this.fishT = [fishTex(0), fishTex(1)];
@@ -471,6 +536,9 @@ export class View {
     const seen = new Set();
     this.glows.begin();
     const smoke = Math.random() < dt * 6, fires = night > 0.15;
+    // war effects budget: fewer, bigger puffs zoomed out; the busier the screen, the thinner each fire (a fixed cost)
+    this.lod = Math.min(2.5, Math.max(1, 0.55 / this.cam.zoom)); this.wind = 4 + 2.5 * Math.sin(this.t * 0.07);
+    this.burnK = Math.min(1, (FX.rich ? 9 : 4) / Math.max(1, this.burnN)) * (FX.rich ? 1 : 0.6); this.burnN = 0; this.fxN = 0;
     for (const e of W.ents.values()) {
       if (e.kind === 'timer') continue;
       let x, y;
@@ -501,7 +569,7 @@ export class View {
         s.texture = pt === 'bullet' ? this.bullet : pt === 'ball' || pt === 'rock' ? this.ball : this.arrow;
         if (pt === 'rock') { s.scale.set(1.7); s.tint = 0x8f8a80; } else if (pt === 'bolt') { s.scale.set(1.5, 1.25); s.tint = 0x4a3020; }
         if (pt === 'javelin') { s.scale.set(1.35, 1.1); s.tint = 0xb89a6a; }
-        if (e.spear) { s.scale.set(1.35, 1.2); s.tint = 0x8a6a48; } else if (pt === 'fire') { s.tint = 0xffb060; if (Math.random() < 0.6) this.parts.emit({ x: sx, y: sy - e.z * 30, vy: -10, life: 0.35, size: 0.18, grow: 0.05, color: Math.random() < 0.5 ? 0xff7a1a : 0xffd040, add: true, alpha: 0.9, z: sy + 1001 }); }
+        if (e.spear) { s.scale.set(1.35, 1.2); s.tint = 0x8a6a48; } else if (pt === 'fire') { s.tint = 0xffc890; this.fireArrow(sx, sy - e.z * 30, sy); }
         const z2 = e.z * 30; s.x = sx; s.y = sy - z2;
         const [nx, ny] = iso(e.tx, e.ty); const k2 = Math.min(1, e.t / e.T);
         s.rotation = pt === 'ball' || pt === 'rock' ? 0 : Math.atan2(ny - (sy) - (1 - 2 * k2) * 20, nx - sx); s.zIndex = sy + 1000;
@@ -564,14 +632,9 @@ export class View {
         if (!us.naval) this.glows.put(sx + 6, sy - 34, 0.7, 0xffb050, 0.32 * night * fl, sy + 2);
         this.light2(sx + 4, sy - 12, us.naval ? 150 : 125, 0xffc27a, 0.85 * fl);            // the torch lights the path around its bearer
       }
-      // fire on badly damaged (or burning) buildings
-      if (e.kind === 'building' && e.built && (e.hp < e.maxHp * 0.5 || (e.burn && e.burn > W.t)) && visible && Math.random() < dt * 30 * Math.max(0.3, 1 - e.hp / e.maxHp) * Math.min(4, e.w)) {
-        const [fx, fy] = iso(e.x + Math.random() * e.w, e.y + Math.random() * e.h);
-        const hgt = 20 + Math.random() * 45 * Math.min(2, e.w / 2);
-        if (night > 0.15) this.light2(fx, fy - 10, 160 + e.w * 30, 0xff8030, 0.9);
-        this.parts.emit({ x: fx, y: fy - hgt, vx: (Math.random() - 0.5) * 8, vy: -30, life: 0.6, size: 0.5, grow: 0.15, color: Math.random() < 0.5 ? 0xff7a1a : 0xffc23a, add: true, alpha: 0.9, z: fy + 50 });
-        if (Math.random() < 0.3) this.parts.emit({ x: fx, y: fy - hgt - 10, vx: 6, vy: -22, life: 2.2, size: 0.6, grow: 2.2, color: 0x333333, alpha: 0.45, z: fy + 60 });
-      }
+      // fire on badly damaged (or burning) buildings; ruins smoulder
+      if (e.kind === 'building' && e.built && visible && !BUILDINGS[e.type].wall && e.type !== 'farm' && (e.hp < e.maxHp * 0.5 || (e.burn && e.burn > W.t))) this.burnFx(e, s, sx, sy, dt, night);
+      if (e.kind === 'rubble' && visible && e.t < 30 && e.n >= 2) this.rubbleFx(e, sx, sy, dt);
       // fish now and then leap from the shoal
       if (e.kind === 'res' && e.type === 'fish' && visible && Math.random() < dt * 0.15) for (let i = 0; i < 4; i++) this.parts.emit({ x: sx + (Math.random() - 0.5) * 20, y: sy - 4, vx: (Math.random() - 0.5) * 20, vy: -30, g: 120, life: 0.5, size: 0.08, grow: 0.02, color: 0xdfefff, alpha: 0.9, z: sy + 1 });
     }
@@ -583,7 +646,7 @@ export class View {
     this.renderLights();
     this.ambient(dt, night);
     this.weather(dt);
-    this.parts.update(dt); this.updateFloats(dt);
+    this.parts.update(dt); this.smoke.update(dt); this.flame.update(dt); this.decals.update(dt, this.light); this.updateFloats(dt);
     this.drawSelection(sel, alpha);
     this.drawMarkers(dt);
   }
@@ -706,6 +769,63 @@ export class View {
     if (f) { this.ghostS.texture = f.tex; this.ghostS.anchor.set(f.ax, f.ay); const [sx, sy] = iso(i + w / 2, j + h / 2); this.ghostS.x = sx; this.ghostS.y = sy; this.ghostS.tint = ok ? 0xffffff : 0xff8080; this.ghostS.visible = tiles.length <= 4 || !d.wall; }
   }
 
+  // ------------------------------------------------------------ war effects
+  // a fire: flame tongues over the footprint, embers, a glow, and a column of dark smoke rising high and drifting with
+  // the wind, so a burning town is seen from far away. Rates scale with the damage, the size, the zoom and the budget.
+  burnFx(e, s, sx, sy, dt, night) {
+    const W = this.W, rnd = Math.random, dmg = 1 - e.hp / e.maxHp, burning = e.burn && e.burn > W.t;
+    this.burnN++;
+    const I = Math.min(1, Math.max(burning ? 0.6 : 0.15, (dmg - 0.5) * 2)), wf = Math.min(4, Math.max(e.w, e.h)) / 2, K = this.burnK, lod = this.lod;
+    const h = s.texture.height * Math.abs(s.scale.y), top = s.y - s.anchor.y * h, L = this.light;
+    const spawn = (rate, fn) => { let a = rate * dt; while (a > 0) { if (a < 1 && rnd() > a) break; a -= 1; fn(); } };
+    spawn((5 + 20 * I) * wf * K / lod, () => {
+      const [fx, fy] = iso(e.x + 0.2 + rnd() * (e.w - 0.4), e.y + 0.2 + rnd() * (e.h - 0.4)), up = h * (0.15 + rnd() * 0.4), sz = (0.6 + rnd() * 0.5) * Math.sqrt(wf * lod) * (0.7 + 0.5 * I);
+      // the body of the flame in solid orange (additive alone washes out to white on bright roofs), a hot core on top
+      this.flame.emit({ x: fx, y: fy - up, vx: (rnd() - 0.5) * 10 + this.wind, vy: -30 - rnd() * 24, life: 0.5 + rnd() * 0.45, size: sz, grow: sz * 0.25, sy: 1.15, color: 0xff9a1c, c1: 0x8a1404, alpha: 0.85, ay: 0.85, rot: (rnd() - 0.5) * 0.5, z: fy + 40 });
+      if (rnd() < 0.6) this.flame.emit({ x: fx, y: fy - up + 2, vx: this.wind, vy: -34 - rnd() * 20, life: 0.35 + rnd() * 0.25, size: sz * 0.55, grow: sz * 0.1, sy: 1.2, color: 0xffd860, c1: 0xff5a10, add: true, alpha: 0.9, ay: 0.85, rot: (rnd() - 0.5) * 0.4, z: fy + 41 });
+      if (rnd() < 0.35) this.flame.emit({ tex: this.emberT, x: fx, y: fy - up + 6, vx: this.wind, vy: -10, life: 0.6, size: sz * 3.2, grow: sz * 2.4, color: 0xff8a20, c1: 0x801000, add: true, alpha: 0.5, z: fy + 39 });
+    });
+    spawn((2 + 6 * I) * wf * K, () => this.flame.emit({ tex: this.emberT, x: sx + (rnd() - 0.5) * e.w * 30, y: top + h * (0.2 + rnd() * 0.5), vx: (rnd() - 0.5) * 34 + this.wind * 2, vy: -55 - rnd() * 45, drag: 0.5, life: 1.3 + rnd(), size: 0.13, grow: 0.04, color: 0xffe080, c1: 0xff3a00, add: true, alpha: 1, z: sy + 1600 }));
+    spawn((1 + 2.6 * I) * Math.sqrt(wf) * K / lod, () => this.smoke.emit({
+      x: sx + (rnd() - 0.5) * e.w * 24, y: top + h * 0.25, vx: (rnd() - 0.5) * 8, vy: -(75 + rnd() * 25), ax: this.wind, drag: 0.12, life: 10 + rnd() * 3,
+      size: (0.55 + rnd() * 0.25) * Math.sqrt(wf) * lod, grow: (3.4 + rnd() * 1.2) * Math.sqrt(wf) * lod, color: mulTint(I > 0.45 ? 0x141210 : 0x2c2925, L), c1: mulTint(0x6a655e, L),
+      alpha: 0.7 + 0.2 * I, fadeIn: 0.04, rot: rnd() * 6.28, spin: (rnd() - 0.5) * 0.25, z: sy + 1500 }));
+    const fl = 0.8 + 0.2 * Math.sin(this.t * 17 + e.id) * Math.sin(this.t * 7.3 + e.id);
+    this.glows.put(sx, sy - h * 0.22, 0.9 + e.w * 0.45, 0xff6a1a, (0.16 + 0.22 * I) * fl, sy + 45);
+    if (night > 0.15) this.light2(sx, sy - 10, 170 + e.w * 34, 0xff7a28, 0.95 * fl);
+  }
+  // ruins smoulder: a thinning grey column, a few last flames at first
+  rubbleFx(e, sx, sy, dt) {
+    const rnd = Math.random, k = 1 - e.t / 30, n = e.n || 2, L = this.light;
+    if (rnd() < dt * (0.5 + 1.4 * k) * Math.sqrt(n) * this.burnK / this.lod) this.smoke.emit({ x: sx + (rnd() - 0.5) * n * 22, y: sy - 8, vx: (rnd() - 0.5) * 6, vy: -(34 + rnd() * 12), ax: this.wind, drag: 0.2, life: 5 + rnd() * 2, size: 0.3 * this.lod, grow: (1.3 + n * 0.3) * this.lod, color: mulTint(0x3c3732, L), c1: mulTint(0x8a847c, L), alpha: 0.3 + 0.3 * k, fadeIn: 0.1, rot: rnd() * 6.28, spin: (rnd() - 0.5) * 0.3, z: sy + 1400 });
+    if (e.t < 8 && rnd() < dt * 5 * n * this.burnK / this.lod) { const [fx, fy] = iso(e.x + (rnd() - 0.5) * n, e.y + (rnd() - 0.5) * n); this.flame.emit({ x: fx, y: fy, vx: this.wind, vy: -20, life: 0.4 + rnd() * 0.3, size: 0.3, grow: 0.08, sy: 1.1, color: 0xffe0a0, c1: 0xb02008, add: true, alpha: 0.9 * (1 - e.t / 8), ay: 0.85, z: fy + 30 }); }
+  }
+  fireArrow(x, y, sy) {
+    const rnd = Math.random;
+    this.flame.emit({ x, y, vx: (rnd() - 0.5) * 8, vy: -14, life: 0.22, size: 0.3, grow: 0.08, sy: 1.1, color: 0xffa020, c1: 0xa01806, alpha: 0.9, ay: 0.75, z: sy + 1002 });
+    this.flame.emit({ x, y, vx: (rnd() - 0.5) * 6, vy: -12, life: 0.16, size: 0.18, grow: 0.05, sy: 1.1, color: 0xffe080, c1: 0xff6010, add: true, alpha: 1, ay: 0.75, z: sy + 1003 });
+    if (rnd() < 0.55) this.flame.emit({ tex: this.emberT, x, y, vx: (rnd() - 0.5) * 34, vy: -6 + rnd() * 18, g: 50, life: 0.5, size: 0.09, grow: 0.03, color: 0xffd060, c1: 0xff3000, add: true, alpha: 1, z: sy + 1001 });
+    if (rnd() < 0.35) this.smoke.emit({ x, y, vy: -6, ax: this.wind, life: 0.9, size: 0.07, grow: 0.32, color: mulTint(0x4a4440, this.light), c1: mulTint(0x8a847c, this.light), alpha: 0.35, rot: rnd() * 6.28, z: sy + 1000 });
+    this.glows.put(x, y, 0.5, 0xff8a28, 0.6, sy + 1003);
+    if (this.nightK > 0.15) this.light2(x, y + 20, 80, 0xff9a48, 0.8);
+  }
+  // a hit: a spray of blood and a splat on the ground (living things only; budgeted per frame)
+  bleed(sx, sy, big) {
+    if (!FX.blood || this.fxN > (FX.rich ? 70 : 25)) return; this.fxN++;
+    const rnd = Math.random, P = this.parts, n = big ? 9 : 3 + ((rnd() * 4) | 0);
+    for (let i = 0; i < n; i++) P.emit({ x: sx + (rnd() - 0.5) * 8, y: sy - 16 - rnd() * 14, vx: (rnd() - 0.5) * (big ? 120 : 90), vy: -30 - rnd() * 60, g: 320, life: 0.35 + rnd() * 0.2, size: 0.07 + rnd() * 0.07, grow: 0.04, color: 0xb81212, c1: 0x4a0404, alpha: 1, z: sy + 4 });
+    P.emit({ x: sx, y: sy - 20, vx: (rnd() - 0.5) * 20, vy: -10, life: 0.35, size: 0.16, grow: 0.5, color: 0x9a1010, alpha: 0.4, z: sy + 5 });
+    if (big) this.decals.put(sx + (rnd() - 0.5) * 6, sy + 3, 0.55 + rnd() * 0.25, 35, 2.5);
+    else if (rnd() < 0.4) this.decals.put(sx + (rnd() - 0.5) * 22, sy + 2 + (rnd() - 0.5) * 8, 0.22 + rnd() * 0.2, 24);
+  }
+  // a fire arrow strikes: a burst of sparks, a flash and a puff of smoke
+  fireBurst(sx, sy) {
+    if (this.fxN > (FX.rich ? 70 : 25)) return; this.fxN++;
+    const rnd = Math.random;
+    this.flame.emit({ x: sx, y: sy - 8, life: 0.25, size: 0.45, grow: 0.15, color: 0xfff0b0, c1: 0xff5010, add: true, alpha: 1, ay: 0.8, z: sy + 50 });
+    for (let i = 0; i < (FX.rich ? 9 : 4); i++) this.flame.emit({ tex: this.emberT, x: sx, y: sy - 10, vx: (rnd() - 0.5) * 140, vy: -40 - rnd() * 80, g: 220, life: 0.4 + rnd() * 0.4, size: 0.1, grow: 0.03, color: 0xffe080, c1: 0xff3000, add: true, alpha: 1, z: sy + 51 });
+    this.smoke.emit({ x: sx, y: sy - 14, vy: -18, ax: this.wind, drag: 0.5, life: 1.4, size: 0.15, grow: 0.7, color: mulTint(0x4a4440, this.light), c1: mulTint(0x8a847c, this.light), alpha: 0.45, rot: rnd() * 6.28, z: sy + 49 });
+  }
   // ------------------------------------------------------------ events -> effects
   fx(e) {
     const [sx, sy] = iso(e.x ?? 0, e.y ?? 0); const P = this.parts;
@@ -725,19 +845,34 @@ export class View {
       }
       case 'gunshot': { const a = Math.atan2(iso(e.tx, e.ty)[1] - sy, iso(e.tx, e.ty)[0] - sx); P.emit({ x: sx + Math.cos(a) * 18, y: sy - 30 + Math.sin(a) * 9, life: 0.12, size: 0.35, grow: 0.5, color: 0xfff0b0, add: true, alpha: 1, z: sy + 900 }); for (let i = 0; i < 4; i++) P.emit({ x: sx + Math.cos(a) * 20, y: sy - 30, vx: Math.cos(a) * 20 + (Math.random() - 0.5) * 10, vy: -8, life: 1.6, size: 0.3, grow: 1.4, color: 0xd8d4cc, alpha: 0.5, z: sy + 900 }); break; }
       case 'cannon': for (let i = 0; i < 10; i++) P.emit({ x: sx + (Math.random() - 0.5) * 20, y: sy - 24, vx: (Math.random() - 0.5) * 40, vy: -12 - Math.random() * 10, life: 2.2, size: 0.6, grow: 2.2, color: i < 2 ? 0xfff0a0 : 0xcfcac2, add: i < 2, alpha: 0.6, z: sy + 900 }); break;
-      case 'boom': for (let i = 0; i < 16; i++) P.emit({ x: sx + (Math.random() - 0.5) * 30, y: sy - 10, vx: (Math.random() - 0.5) * 90, vy: -40 - Math.random() * 60, g: 160, life: 0.8 + Math.random() * 0.6, size: i < 6 ? 0.6 : 0.15, grow: i < 6 ? 1.6 : 0.05, color: i < 6 ? 0xffa030 : 0x5a4a3a, add: i < 6, alpha: 0.9, z: sy + 50 }); break;
+      case 'boom': for (let i = 0; i < 8; i++) this.smoke.emit({ x: sx + (Math.random() - 0.5) * 30, y: sy - 10, vx: (Math.random() - 0.5) * 60, vy: -30 - Math.random() * 30, ax: this.wind, drag: 0.9, life: 2.2 + Math.random(), size: 0.4, grow: 1.6, color: mulTint(0x3a342e, this.light), c1: mulTint(0x8a8278, this.light), alpha: 0.6, rot: Math.random() * 6.28, z: sy + 60 });
+        for (let i = 0; i < 16; i++) P.emit({ x: sx + (Math.random() - 0.5) * 30, y: sy - 10, vx: (Math.random() - 0.5) * 90, vy: -40 - Math.random() * 60, g: 160, life: 0.8 + Math.random() * 0.6, size: i < 6 ? 0.6 : 0.15, grow: i < 6 ? 1.6 : 0.05, color: i < 6 ? 0xffa030 : 0x5a4a3a, add: i < 6, alpha: 0.9, z: sy + 50 }); break;
       case 'bullethit': P.emit({ x: sx, y: sy - 14, life: 0.4, size: 0.2, grow: 0.7, color: 0xc8b898, alpha: 0.6, z: sy + 2 }); break;
-      case 'built': case 'collapse': {
-        const n = e.k === 'collapse' ? 40 : 18, r = (e.n || 2) * 30;
-        for (let i = 0; i < n; i++) P.emit({ x: sx + (Math.random() - 0.5) * r * 2, y: sy + (Math.random() - 0.5) * r - 10, vx: (Math.random() - 0.5) * 40, vy: -15 - Math.random() * 20, life: 1.6 + Math.random(), size: 0.8, grow: 2.6, color: e.k === 'collapse' ? 0x6b6258 : 0xc8b898, alpha: 0.55, z: sy + 80 });
+      case 'built': {
+        const r = (e.n || 2) * 30;
+        for (let i = 0; i < 18; i++) P.emit({ x: sx + (Math.random() - 0.5) * r * 2, y: sy + (Math.random() - 0.5) * r - 10, vx: (Math.random() - 0.5) * 40, vy: -15 - Math.random() * 20, life: 1.6 + Math.random(), size: 0.8, grow: 2.6, color: 0xc8b898, alpha: 0.55, z: sy + 80 });
         break;
       }
-      case 'die': P.emit({ x: sx, y: sy - 10, vy: -12, life: 0.9, size: 0.4, grow: 1.4, color: 0xa09080, alpha: 0.5, z: sy + 2 }); break;
+      case 'collapse': {        // the building comes down: a rolling dust cloud, flying beams and stones, a dark plume, sparks
+        const n = Math.min(4, e.n || 2), r = n * 30, rnd = Math.random, L = this.light;
+        for (let i = 0; i < 12 + n * 4; i++) { const a = rnd() * 6.283; this.smoke.emit({ x: sx + Math.cos(a) * r * 0.35 * rnd(), y: sy + Math.sin(a) * r * 0.18, vx: Math.cos(a) * (50 + rnd() * 60), vy: Math.sin(a) * (22 + rnd() * 26) - 10, drag: 1.3, life: 2.4 + rnd() * 1.6, size: 0.55, grow: 1.6 + n * 0.35, color: mulTint(0x857562, L), c1: mulTint(0xb4a890, L), alpha: 0.6, fadeIn: 0.04, rot: rnd() * 6.28, spin: (rnd() - 0.5) * 0.6, z: sy + 90 }); }
+        if (e.type !== 'farm') for (let i = 0; i < 5 + n * 2; i++) this.smoke.emit({ x: sx + (rnd() - 0.5) * r, y: sy - 20 - rnd() * 30, vx: (rnd() - 0.5) * 30, vy: -(70 + rnd() * 60), ax: this.wind, drag: 0.45, life: 4 + rnd() * 2, size: 0.6, grow: 2.4 + n * 0.4, color: mulTint(0x2a2622, L), c1: mulTint(0x6e675f, L), alpha: 0.6, fadeIn: 0.05, rot: rnd() * 6.28, z: sy + 1500 });
+        for (let i = 0; i < 14 + n * 5; i++) P.emit({ x: sx + (rnd() - 0.5) * r, y: sy - 20 - rnd() * 40, vx: (rnd() - 0.5) * 170, vy: -80 - rnd() * 120, g: 380, life: 0.7 + rnd() * 0.5, size: 0.09 + rnd() * 0.12, grow: 0.07, sy: 0.6 + rnd() * 0.8, rot: rnd() * 3, spin: (rnd() - 0.5) * 12, color: i % 3 ? 0x4a3828 : 0x8a8478, alpha: 1, z: sy + 95 });
+        if (e.hit && e.type !== 'farm') for (let i = 0; i < 16; i++) this.flame.emit({ tex: this.emberT, x: sx + (rnd() - 0.5) * r, y: sy - 10 - rnd() * 30, vx: (rnd() - 0.5) * 120, vy: -70 - rnd() * 90, g: 60, drag: 0.4, life: 1.2 + rnd(), size: 0.14, grow: 0.04, color: 0xffe080, c1: 0xff3000, add: true, alpha: 1, z: sy + 1600 });
+        break;
+      }
+      case 'die': { const u = UNITS[e.type]; if (u && !u.naval && u.cls !== 'siege') this.bleed(sx, sy, true); else P.emit({ x: sx, y: sy - 10, vy: -12, life: 0.9, size: 0.4, grow: 1.4, color: 0xa09080, alpha: 0.5, z: sy + 2 }); break; }
       case 'treefall': for (let i = 0; i < 10; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy - 40 - Math.random() * 40, vx: (Math.random() - 0.5) * 40, vy: 10, g: 40, life: 1.2, size: 0.18, grow: 0.12, color: this.W.opts && this.W.opts.season === 'gugur' ? 0xd08a2a : 0x4f8a2a, alpha: 0.9, z: sy + 20 }); break;
-      case 'hit': if (Math.random() < 0.6) for (let i = 0; i < 2; i++) P.emit({ x: sx + (Math.random() - 0.5) * 10, y: sy - 22 - Math.random() * 14, vx: (Math.random() - 0.5) * 50, vy: -20, g: 120, life: 0.35, size: 0.09, grow: 0.05, color: 0x8a1010, alpha: 0.9, z: sy + 4 }); break;
+      case 'hit': {
+        if (e.fire) break;                                       // burning: the fire shows it
+        const u = e.u && UNITS[e.u];
+        if (u && !u.naval && u.cls !== 'siege') { this.bleed(sx, sy, false); break; }
+        if (Math.random() < 0.5) for (let i = 0; i < 2; i++) P.emit({ x: sx + (Math.random() - 0.5) * 30, y: sy - 20 - Math.random() * 30, vx: (Math.random() - 0.5) * 60, vy: -30, g: 200, life: 0.4, size: 0.08, grow: 0.04, color: e.b ? 0x8a7a66 : 0x6a5a4a, alpha: 0.9, z: sy + 40 });   // splinters and chips
+        break;
+      }
       case 'treasure': this.floatText(e.x, e.y, `+${e.amount} ${RES_NAME[TREASURES[e.type].res]}`); for (let i = 0; i < 24; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy - 10 - Math.random() * 30, vx: (Math.random() - 0.5) * 60, vy: -60 - Math.random() * 40, g: 90, life: 1.1, size: 0.12, grow: 0.02, color: 0xffd040, add: true, alpha: 1, z: sy + 50 }); break;
-      case 'arrowhit': P.emit({ x: sx, y: sy - 12, life: 0.3, size: 0.2, grow: 0.5, color: 0xffffff, alpha: 0.5, z: sy + 2 }); break;
-      case 'arrowmiss': if (e.water) P.emit({ x: sx, y: sy, life: 0.5, size: 0.15, grow: 0.6, color: 0xe0f0ff, alpha: 0.6, z: sy + 1 }); break;
+      case 'arrowhit': if (e.fire) this.fireBurst(sx, sy); else P.emit({ x: sx, y: sy - 12, life: 0.3, size: 0.2, grow: 0.5, color: 0xffffff, alpha: 0.5, z: sy + 2 }); break;
+      case 'arrowmiss': if (e.water) P.emit({ x: sx, y: sy, life: 0.5, size: 0.15, grow: 0.6, color: 0xe0f0ff, alpha: 0.6, z: sy + 1 }); else if (e.fire) this.fireBurst(sx, sy); break;
       case 'board': case 'unload': for (let i = 0; i < 8; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy, vx: (Math.random() - 0.5) * 30, vy: -20, g: 80, life: 0.6, size: 0.1, grow: 0.05, color: 0xe0f0ff, alpha: 0.8, z: sy + 2 }); break;
       case 'pack': for (let i = 0; i < 8; i++) P.emit({ x: sx + (Math.random() - 0.5) * 40, y: sy - 6, vx: (Math.random() - 0.5) * 30, vy: -12, life: 1.0, size: 0.4, grow: 1.0, color: 0xb8a888, alpha: 0.5, z: sy + 3 }); break;
       case 'tradegold': this.floatText(e.x, e.y, `+${e.n} emas`); break;

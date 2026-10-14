@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Alegreya:wght@500;700&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
-<link rel="stylesheet" href="css/style.css?v=20261014144323">
+<link rel="stylesheet" href="css/style.css?v=20261014151010">
 <script type="importmap">{ "imports": { "pixi.js": "https://cdn.jsdelivr.net/npm/pixi.js@8.6.6/dist/pixi.min.mjs" } }</script>
 </head>
 <body>
@@ -161,6 +161,8 @@
   <h2>Pengaturan</h2>
   <div class="row vol"><span>Musik</span><input type="range" id="volMusic" min="0" max="1" step="0.05"></div>
   <div class="row vol"><span>Efek suara</span><input type="range" id="volSfx" min="0" max="1" step="0.05"></div>
+  <div class="row vol"><span>Efek perang</span><select id="fxQuality" title="Api, asap, percikan dan debu pertempuran. Hemat: lebih ringan untuk HP / komputer lambat"><option value="penuh">Penuh</option><option value="hemat">Hemat</option></select></div>
+  <div class="row vol"><span>Darah</span><select id="fxBlood" title="Percikan dan genangan darah saat prajurit terluka atau gugur"><option value="on">Nyala</option><option value="off">Mati</option></select></div>
   <button id="settingsClose" class="big">Tutup</button>
 </div></div>
 
@@ -269,8 +271,8 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="js/firebase-config.js?v=20261014144323"></script>
-<script>window.AK_VER = "20261014144323";</script>
-<script type="module" src="js/main.js?v=20261014144323"></script>
+<script src="js/firebase-config.js?v=20261014151010"></script>
+<script>window.AK_VER = "20261014151010";</script>
+<script type="module" src="js/main.js?v=20261014151010"></script>
 </body>
 </html>

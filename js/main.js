@@ -9,7 +9,7 @@ import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt
 import { generate } from './map.js';
 import { AI } from './ai.js';
 import { loadAll, vq } from './assets.js';
-import { View, iso, UNIT_BOX } from './render.js';
+import { View, iso, UNIT_BOX, FX } from './render.js';
 import { HUD } from './ui.js';
 import { Sound } from './audio.js';
 import { History, StatsPanel, score, exploredPct } from './stats.js';
@@ -884,6 +884,10 @@ async function boot() {
   $('volMusic').value = store.get('volMusic', 0.5); $('volSfx').value = store.get('volSfx', 0.8);
   const vol = () => { Sound.setVolume(+$('volMusic').value, +$('volSfx').value); store.set('volMusic', +$('volMusic').value); store.set('volSfx', +$('volSfx').value); };
   $('volMusic').oninput = $('volSfx').oninput = vol; vol();
+  // war effects: full or light (phones start light), blood on or off
+  $('fxQuality').value = store.get('fxq', FX.rich ? 'penuh' : 'hemat'); $('fxBlood').value = store.get('fxBlood', 'on');
+  const fxs = () => { FX.rich = $('fxQuality').value === 'penuh'; FX.blood = $('fxBlood').value === 'on'; store.set('fxq', $('fxQuality').value); store.set('fxBlood', $('fxBlood').value); };
+  $('fxQuality').onchange = $('fxBlood').onchange = fxs; fxs();
   $('loading').classList.add('hidden');
   addEventListener('pointerdown', () => { Sound.unlockStatic(); Sound.menuMusic(); }, { once: true });
   window.__ak = { get game() { return game; }, start, startSaved, app, lobby, Saves };
