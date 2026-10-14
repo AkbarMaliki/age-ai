@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX, MERCS, MERC, LEVY } from './data.js?v=20261014223400';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX, MERCS, MERC, LEVY } from './data.js?v=20261015002414';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -449,10 +449,66 @@ export function findPath(W, owner, sx, sy, goal, tx, ty, maxNodes = 0, nav = fal
     }
   }
   W.paths++; W.nodes += n;
+  // a long trip the search could not finish (round a big lake, a mountain chain): follow the coarse route map instead,
+  // with a short exact path to a waypoint some way along it ('via': on the way, not there yet)
+  if (found < 0 && !nav && !raw && far > 30 && open.size) {
+    const via = coarseStep(W, owner, si, sj, tx, ty);
+    if (via) {
+      const [wi, wj] = via, sub = findPath(W, owner, sx, sy, (i, j) => Math.abs(i - wi) <= 1 && Math.abs(j - wj) <= 1, wi + 0.5, wj + 0.5, 6000, false, false);
+      if (sub.complete && sub.pts.length) { sub.complete = false; sub.via = true; return sub; }
+    }
+  }
   const end = found >= 0 ? found : best;
   const pts = []; for (let k = end; k !== -1 && k !== s; k = G.from[k]) pts.push([k % S + 0.5, ((k / S) | 0) + 0.5]);
   pts.reverse();
   return { pts: smooth(W, owner, sx, sy, pts, nav), raw: raw ? pts : null, complete: found >= 0, exhausted: found < 0 && open.size === 0 };
+}
+// ---------------------------------------------------------------- the coarse route map (4x4-tile cells)
+// A cell is open when most of its tiles are walkable (water, rock, forests and buildings taken into account); remade
+// every minute of game time and when the ice comes or goes. Routes between cells are kept a while, so an army walking
+// together shares one search.
+const CC = 4;
+function coarseGrid(W) {
+  const C = W.coarse;
+  if (C && W.t - C.t < 60 && C.frozen === W.frozen) return C;
+  const S = W.size, n = Math.ceil(S / CC), open = new Uint8Array(n * n);
+  for (let cj = 0; cj < n; cj++) for (let ci = 0; ci < n; ci++) {
+    let c = 0, all = 0;
+    for (let j = cj * CC; j < Math.min(S, cj * CC + CC); j++) for (let i = ci * CC; i < Math.min(S, ci * CC + CC); i++) { all++; if (passable(W, i, j, -1)) c++; }
+    open[cj * n + ci] = c * 2 >= all ? 1 : 0;
+  }
+  return (W.coarse = { t: W.t, frozen: W.frozen, n, open, routes: new Map() });
+}
+// the tile some 24 tiles along the coarse route from (si, sj) towards (tx, ty), or null
+function coarseStep(W, owner, si, sj, tx, ty) {
+  const G = coarseGrid(W), n = G.n, cell = (i, j) => Math.min(n - 1, Math.max(0, Math.floor(j / CC))) * n + Math.min(n - 1, Math.max(0, Math.floor(i / CC)));
+  const nearOpen = (k) => { if (G.open[k]) return k; const ci = k % n, cj = (k / n) | 0; for (let r = 1; r < 6; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const a = ci + di, b = cj + dj; if (a >= 0 && b >= 0 && a < n && b < n && G.open[b * n + a]) return b * n + a; } return -1; };
+  const s = nearOpen(cell(si, sj)), g = nearOpen(cell(Math.floor(tx), Math.floor(ty))); if (s < 0 || g < 0 || s === g) return null;
+  const key = s * 65536 + g; let R = G.routes.get(key);
+  if (!R || W.t - R.t > 20) {
+    if (G.routes.size > 200) G.routes.clear();
+    R = { t: W.t, cells: coarseRoute(G, s, g) }; G.routes.set(key, R);
+  }
+  const cs = R.cells; if (!cs || cs.length < 2) return null;
+  const k = cs[Math.min(cs.length - 1, 6)], ci = k % n, cj = (k / n) | 0;            // ~6 cells (24 tiles) ahead
+  const f = nearestFree(W, ci * CC + CC / 2, cj * CC + CC / 2, owner, CC); return f || null;
+}
+function coarseRoute(G, s, g) {
+  const n = G.n, N = n * n, gc = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), open = new Heap(), gi = g % n, gj = (g / n) | 0;
+  const h = (k) => { const dx = Math.abs(k % n - gi), dy = Math.abs(((k / n) | 0) - gj); return Math.max(dx, dy) + (SQ2 - 1) * Math.min(dx, dy); };
+  gc[s] = 0; open.push(s, h(s)); let m = 0;
+  while (open.size && m++ < 40000) {
+    const k = open.pop(); if (k === g) break;
+    const i = k % n, j = (k / n) | 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dj) continue; const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= n || b >= n) continue;
+      const q = b * n + a; if (!G.open[q] || (di && dj && (!G.open[j * n + a] || !G.open[b * n + i]))) continue;
+      const ng = gc[k] + (di && dj ? SQ2 : 1); if (ng >= gc[q]) continue;
+      gc[q] = ng; from[q] = k; open.push(q, ng + h(q));
+    }
+  }
+  if (from[g] < 0) return null;
+  const out = []; for (let k = g; k !== -1 && k !== s; k = from[k]) out.push(k); out.push(s); return out.reverse();
 }
 function lineFree(W, owner, x0, y0, x1, y1, nav = false) {
   const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d / 0.3);
@@ -969,13 +1025,13 @@ function moveAlong(W, u, tx, ty, goal, exact = false) {
     u.path = findPath(W, u.owner, u.x, u.y, goal, tx, ty, apart ? 1200 : 0, nav); u.pi = 0;
     if (globalThis.PATHDBG) { const k = u.type + ":" + (u.order && u.order.t) + (u.path.complete ? "" : u.path.exhausted ? ":EXH" : ":FAIL"); globalThis.PATHDBG[k] = (globalThis.PATHDBG[k] || 0) + 1; }      // diagnostics (tests)
     u.repath = (exact ? 6 : 10) + W.rnd() * 2;
-    if (!u.path.complete) { u.fails = (u.fails || 0) + 1; u.repath = 2.5; } else u.fails = 0;
+    if (u.path.via) { u.fails = 0; u.repath = 30; } else if (!u.path.complete) { u.fails = (u.fails || 0) + 1; u.repath = 2.5; } else u.fails = 0;
     if (exact && u.path.complete) u.path.pts.push([tx, ty]);
     else if (u.path.complete && !u.path.pts.length) { const ci = Math.floor(u.x) + 0.5, cj = Math.floor(u.y) + 0.5; u.path.pts.push([ci, cj]); }
   }
   u.repath -= TICK;
   const pts = u.path.pts;
-  if (u.pi >= pts.length) return true;
+  if (u.pi >= pts.length) { if (u.path.via) { u.path = null; return false; } return true; }
   let [wx, wy] = pts[u.pi];
   let dx = wx - u.x, dy = wy - u.y, d = Math.hypot(dx, dy);
   const sp = speedOf(W, u) * TICK;
@@ -985,7 +1041,7 @@ function moveAlong(W, u, tx, ty, goal, exact = false) {
   if (d <= sp + 1e-6) {
     if (passable(W, Math.floor(wx), Math.floor(wy), u.owner, nav) || u.pi < pts.length - 1) { u.x = wx; u.y = wy; }
     u.pi++;
-    if (u.pi >= pts.length) return true;
+    if (u.pi >= pts.length) { if (u.path.via) { u.path = null; return false; } return true; }
   } else {
     const nx = u.x + dx / d * sp, ny = u.y + dy / d * sp;
     if (passable(W, Math.floor(nx), Math.floor(ny), u.owner, nav)) { u.x = nx; u.y = ny; u.stuck = 0; }
@@ -2030,7 +2086,7 @@ function lifeTick(W) {
       u.hu = Math.max(0, u.hu - LIFE.hunger);
       // water: near a well, the Town Center or a shore they drink as they go
       if (near(wells, u, BUILDINGS.well.well) || wg[idx(W, Math.min(W.size - 1, Math.floor(u.x)), Math.min(W.size - 1, Math.floor(u.y)))] || u.inside) u.th = Math.min(100, u.th + 8);
-      else u.th = Math.max(0, u.th - LIFE.thirst * (W.season.snow ? 0.7 : W.opts.season === 'kemarau' ? 1.35 : 1));
+      else u.th = Math.max(0, u.th - LIFE.thirst * (W.season.snow ? 0.7 : W.opts.season === 'kemarau' ? 1.35 : 1) * (vil || u.type === 'child' ? 1 : 0.5));      // soldiers carry water skins
       u.fu = Math.max(0, u.fu - (vil || u.type === 'child' ? funRate : LIFE.funSoldier) + (near(monas, u, 7) ? 0.12 : 0) + (near(markets, u, 6) ? 0.06 : 0) + (u.type === 'child' ? 0.06 : 0));
       // health
       const cured = near(hospitals, u, BUILDINGS.hospital.hospital) || (o && o.why === 'cure' && u.inside);
@@ -2046,9 +2102,11 @@ function lifeTick(W) {
       const busy = o && (o.t === 'visit' || o.t === 'rest' || o.t === 'garrison' || o.t === 'attack' || o.t === 'board' || o.t === 'trade');
       if (!busy && !restNow(W, P) && u.type !== 'child' && !u.inside) {
         const keep = o && !o.auto && !o.wander ? o : null;
-        if (u.th < 22) { const w = waterFor(W, u, wells); if (w) setOrder(W, u, { t: 'visit', id: w.id, x: w.x, y: w.y, why: 'drink', then: keep }); }
-        else if (u.sick && hospitals.length && u.he < 85) { let hb = hospitals[0]; for (const b of hospitals) if (distTo(b, u.x, u.y) < distTo(hb, u.x, u.y)) hb = b; setOrder(W, u, { t: 'visit', id: hb.id, why: 'cure', then: keep }); }
-        else if (u.fu < (nightFull ? 15 : 30) && W.t - (u.lastTavern || -999) > 150) { const tv = tavernFor(W, u); if (tv) setOrder(W, u, { t: 'visit', id: tv.id, why: 'tavern', then: keep }); }
+        // a soldier under orders (a march, a patrol) only steps aside for water or a doctor close by, never for the tavern
+        const duty = !vil && u.type !== 'child' && MILITARY(u.type) && !!o, close = (x, y) => !duty || Math.hypot(x - u.x, y - u.y) <= 25;
+        if (u.th < 22) { const w = waterFor(W, u, wells); if (w && close(w.x, w.y)) setOrder(W, u, { t: 'visit', id: w.id, x: w.x, y: w.y, why: 'drink', then: keep }); }
+        else if (u.sick && hospitals.length && u.he < 85) { let hb = hospitals[0]; for (const b of hospitals) if (distTo(b, u.x, u.y) < distTo(hb, u.x, u.y)) hb = b; if (close(hb.x, hb.y)) setOrder(W, u, { t: 'visit', id: hb.id, why: 'cure', then: keep }); }
+        else if (!duty && u.fu < (nightFull ? 15 : 30) && W.t - (u.lastTavern || -999) > 150) { const tv = tavernFor(W, u); if (tv) setOrder(W, u, { t: 'visit', id: tv.id, why: 'tavern', then: keep }); }
       }
       // desertion: deeply unhappy villagers may leave the kingdom
       if (vil && u.fu < LIFE.desertFun) { u.low = (u.low || 0) + 1; if (u.low > 120 && (P.life ? P.life.fun : 50) < 30 && W.rnd() < 0.008) { W.ev.push({ k: 'desert', owner: P.id, x: u.x, y: u.y, name: personName(u) }); P.pop--; P.stats.lost++; del(W, u.id); continue; } } else u.low = 0;

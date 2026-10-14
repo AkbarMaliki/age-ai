@@ -323,6 +323,16 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
   - Levies are never sent on campaigns or made town guards. Chronicle kinds `levy` / `unlevy`.
 - Test: `tests/levy.test.js` (in `npm test`).
 
+### v21: armies no longer stall on big maps (lakes, walls, far musters)
+- **Coarse route map** (sim.js `coarseGrid` / `coarseRoute` / `coarseStep`): 4×4-tile cells, open when most tiles are walkable (water, rock, forests, buildings counted); rebuilt every 60 game-s or when the ice changes.
+  - When a long land search (> 30 tiles) runs out of its node budget, `findPath` returns a short exact path to a waypoint ~6 cells along the coarse route, flagged `via`.
+  - In `moveAlong` a `via` path is not a failure (no `fails`, so attack orders don't give up and mark the target unreachable), and its end means "search again from here", not "arrived".
+  - Routes are cached per start / goal cell for 20 s (an army shares one search).
+  - Before: on a 560 Danau map about half of a 60-unit army stood idle at the shore. Now none does. Test: `tests/lake.test.js`.
+- **Siege at the gates**: the commander's `maju` → `kepung` switch also fires when the army is within 40 tiles of the town with a quarter of it fighting (a wall ring keeps armies ~20 tiles out), or after 8 min of marching within 60 tiles. From then on the siege targets and wall breaching apply.
+- **Muster point**: `stagePoint()` keeps to the home town's walkable region (towards a town across a lake the straight line could end in the water or on a far shore, and an army mustered there for 30 min). The muster also ends after 4 min when the whole army exists, even if it has not gathered.
+- **Soldiers on duty** (any order): only step aside for water or a doctor within 25 tiles, never for the tavern; they get thirsty at half rate (water skins). This was pulling soldiers off campaigns back to their home towns.
+
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
 - Changes from it: archer atk 5, +3 vs infantry, cost 30w/40g; pikeman 55 hp, 0 pierce armour, 40f/30w; cataphract 115 hp, 3/3 armour, 35 iron; militia atk 5, 1 melee armour, 55f/20g; fire archer atk 6. Wells and outposts (and children) no longer keep a kingdom alive; the AI resigns when crushed (< 15 pop vs > 5x, for 2 min); exhaustion no longer kills; town-watch patrols recover energy. Bug: the AI's life timer shared its name (`lcT`) with the lumber-camp timer, so taverns / wells / hospitals were rarely considered (now `lifeT`). Expansion reserves the Town Center's cost once a site is known (`expandNeed`). `expansionSite` uses a resource grid (was a 75 ms spike).

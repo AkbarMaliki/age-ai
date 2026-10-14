@@ -3,10 +3,10 @@
 // actually seen (explored tiles / its own vision), so it must scout the map before it can find and attack anyone.
 // Its personality comes from its card deck (economy, rush, fortress, scholar, navy); its army, doctrines and specialists
 // are picked to counter what its scouts and spies have actually seen of the enemy.
-import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261014223400';
-import { DAY, RELICS, RES_NAME, MERCS } from './data.js?v=20261014223400';
-import { timeOfDay, unreachable, restNow, targetable, generalName, hireWhy, pacted, pactSince, offerOf, brokeAt, tributeAt } from './sim.js?v=20261014223400';
-import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261014223400';
+import { UNITS, BUILDINGS, TECHS, GAIA, CARDS, MARKET, MILITARY, DECKS } from './data.js?v=20261015002414';
+import { DAY, RELICS, RES_NAME, MERCS } from './data.js?v=20261015002414';
+import { timeOfDay, unreachable, restNow, targetable, generalName, hireWhy, pacted, pactSince, offerOf, brokeAt, tributeAt } from './sim.js?v=20261015002414';
+import { command, canAfford, placementOk, canBuild, canTrain, techOk, nearestResource, nearestDrop, nearestFree, alive, distTo, idx, hasBuilt, pl, isAnimal, rng, cardOk, buyPrice, sellPrice, stat, trainType, techCost, costOf, spyReport, regionAt, passable, center, unitCost, isEnemy, townRing } from './sim.js?v=20261015002414';
 
 const CELL = 8;   // exploration grid (tiles per cell side)
 const TOWNS = ['Sukamaju', 'Karangsari', 'Tanjungpura', 'Wanasari', 'Giriwangi', 'Sumberjaya', 'Mekarsari', 'Banyuasri', 'Purwasari', 'Rejosari', 'Kalisari', 'Gunungsari', 'Tirtamaya', 'Candirejo', 'Batursari', 'Lembahhijau'];     // town names in the war chronicle
@@ -1154,10 +1154,15 @@ export class AI {
     }
     return best;
   }
+  // where the army musters: towards the target, but always somewhere it can walk to from home (towards a town across
+  // a lake the straight line ends in the water or on a far shore; then it steps back towards home)
   stagePoint(c) {
-    const [ox, oy] = this.origin(c), d = Math.hypot(c.x - ox, c.y - oy) || 1, k = Math.min(14, d * 0.3);
-    const f = nearestFree(this.W, ox + (c.x - ox) / d * k, oy + (c.y - oy) / d * k, this.pid, 6);
-    return f ? [f[0] + 0.5, f[1] + 0.5] : [ox, oy];
+    const W = this.W, [ox, oy] = this.origin(c), d = Math.hypot(c.x - ox, c.y - oy) || 1, h = nearestFree(W, ox, oy + 3, this.pid, 6), home = h && regionAt(W, h[0] + 0.5, h[1] + 0.5);
+    for (let k = Math.min(14, d * 0.3); k >= 0; k -= 2) {
+      const f = nearestFree(W, ox + (c.x - ox) / d * k, oy + (c.y - oy) / d * k, this.pid, 6);
+      if (f && (!home || regionAt(W, f[0] + 0.5, f[1] + 0.5) === home)) return [f[0] + 0.5, f[1] + 0.5];
+    }
+    return h ? [h[0] + 0.5, h[1] + 0.5] : [ox, oy];
   }
   warNeed(foe) {
     const minN = Math.min(this.D.wave + 3, Math.max(6, Math.round(this.armyCap * 0.5)));
@@ -1280,7 +1285,7 @@ export class AI {
       const [sx, sy] = war.stage, near = mem.filter(u => Math.hypot(u.x - sx, u.y - sy) < 12);
       go(mem.filter(u => (!u.order || fresh.includes(u)) && Math.hypot(u.x - sx, u.y - sy) >= 7), sx, sy);
       const need = war.city.wonder ? Math.min(8, this.warNeed(war.foe)) : this.warNeed(war.foe), wait = W.t - war.t;
-      if (near.length >= need || (war.city.wonder && wait > 40 && near.length >= 4) || (war.counter && wait > 30 && near.length >= 6) || (mem.length >= this.armyCap * 0.75 && near.length >= mem.length * 0.7) || (wait > 150 && near.length >= Math.min(need, 10)) || (wait > 300 && near.length >= 5)) {
+      if (near.length >= need || (wait > 240 && mem.length >= need) || (war.city.wonder && wait > 40 && near.length >= 4) || (war.counter && wait > 30 && near.length >= 6) || (mem.length >= this.armyCap * 0.75 && near.length >= mem.length * 0.7) || (wait > 150 && near.length >= Math.min(need, 10)) || (wait > 300 && near.length >= 5)) {
         war.phase = 'maju'; war.t = W.t; war.peak = mem.length;
         const form = this.formationFor(mem); command(W, { t: 'form', pid: this.pid, ids: ids(mem), f: form });
         command(W, { t: 'move', pid: this.pid, ids: ids(mem), x: war.city.x, y: war.city.y, amove: true, form });
@@ -1321,7 +1326,9 @@ export class AI {
     const tx = war.city.x, ty = war.city.y;
     if (war.phase === 'maju') {
       go(mem.filter(u => !u.order && Math.hypot(u.x - tx, u.y - ty) > 12), tx, ty);       // stragglers catch up
-      if (Math.hypot(cx - tx, cy - ty) < 16 || mem.filter(u => Math.hypot(u.x - tx, u.y - ty) < 18).length >= mem.length * 0.4) {
+      // there: the army stands at the town, or fights at its gates (a wall ring keeps it ~20 tiles out), or has marched long
+      const dc = Math.hypot(cx - tx, cy - ty), fighting = mem.filter(u => u.order && u.order.t === 'attack').length;
+      if (dc < 16 || mem.filter(u => Math.hypot(u.x - tx, u.y - ty) < 18).length >= mem.length * 0.4 || (dc < 40 && fighting >= mem.length * 0.25) || (W.t - war.t > 480 && dc < 60)) {
         war.phase = 'kepung'; war.t = W.t;
         this.tell('siege', `Pasukan ${P.name} tiba di gerbang ${war.city.name}. Pengepungan dimulai!`, tx, ty);
       }

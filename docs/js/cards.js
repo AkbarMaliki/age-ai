@@ -1,7 +1,7 @@
 // Home City shipments (AoE3 "kartu"): XP bar + available shipments in the top bar, and a deck panel to send a card.
 // Watching bot vs bot it shows the deck of the player whose point of view is selected (read-only).
-import { CARDS, AGES, XP, RES, DECKS, DECK_SIZE, UNITS } from './data.js?v=20261014223400';
-import { command, cardOk } from './sim.js?v=20261014223400';
+import { CARDS, AGES, XP, RES, DECKS, DECK_SIZE, UNITS } from './data.js?v=20261015002414';
+import { command, cardOk } from './sim.js?v=20261015002414';
 
 const $ = (id) => document.getElementById(id);
 
