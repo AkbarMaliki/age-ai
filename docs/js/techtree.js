@@ -1,6 +1,6 @@
 // Tech tree viewer: every building with what it trains and researches, laid out by age. Opened from the home menu
 // (the whole tree) or in game (marks what this kingdom has already researched and what is still locked).
-import { UNITS, BUILDINGS, TECHS, AGES, RES, RES_NAME, CIVS } from './data.js?v=20261015094610';
+import { UNITS, BUILDINGS, TECHS, AGES, RES, RES_NAME, CIVS } from './data.js?v=20261015104257';
 
 const $ = (id) => document.getElementById(id);
 const ORDER = ['town_center', 'house', 'mill', 'lumber_camp', 'mining_camp', 'mine_shaft', 'dock', 'market', 'barracks', 'archery_range', 'stable', 'blacksmith', 'academy', 'monastery',

@@ -1,8 +1,8 @@
 // Isometric 2D renderer (PixiJS v8): terrain mesh with a blend / relief / road / season / fog shader, depth-sorted
 // sprites, particles, day-night lighting with torches and lit windows, weather, birds, chimney smoke, windmills.
 import { Container, Sprite, Texture, Graphics, Mesh, Geometry, Shader, Text, RenderTexture } from 'pixi.js';
-import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY, MERCS } from './data.js?v=20261015094610';
-import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261015094610';
+import { UNITS, BUILDINGS, PLAYER_COLORS, PLAYER_RGB, TREASURES, RES_NAME, TER, DAY, MERCS } from './data.js?v=20261015104257';
+import { idx, TICK, timeOfDay, raining, hiddenFrom, stat } from './sim.js?v=20261015104257';
 
 export const TW = 96, TH = 48;
 export const iso = (x, y) => [(x - y) * TW / 2, (x + y) * TH / 2];
@@ -160,6 +160,24 @@ function bloodTex(v) {
   g.fillStyle = 'rgba(55,0,0,0.55)'; g.beginPath(); g.ellipse(24, 12, 6, 3, 0, 0, 6.283); g.fill();
   return Texture.from(c);
 }
+// unit markers seen from afar: a dot, or a dot with a fading tail for a unit on the move (white, coloured by tint)
+function markTex(tail) {
+  const c = document.createElement('canvas'); c.width = tail ? 40 : 16; c.height = 16; const g = c.getContext('2d'), hx = tail ? 32 : 8;
+  if (tail) { const gr = g.createLinearGradient(0, 0, hx, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,0.75)'); g.fillStyle = gr; g.beginPath(); g.moveTo(0, 8); g.lineTo(hx, 4.5); g.lineTo(hx, 11.5); g.closePath(); g.fill(); }
+  g.fillStyle = 'rgba(0,0,0,0.75)'; g.beginPath(); g.arc(hx, 8, 7, 0, 6.283); g.fill();
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(hx, 8, 5.2, 0, 6.283); g.fill();
+  return Texture.from(c);
+}
+class Marks {
+  constructor(layer, n) { this.c = new Container(); layer.addChildAt(this.c, 0); this.pool = []; this.dot = markTex(false); this.tail = markTex(true); for (let i = 0; i < n; i++) { const s = new Sprite(this.dot); s.visible = false; this.c.addChild(s); this.pool.push(s); } this.n = 0; }
+  begin() { this.n = 0; }
+  put(x, y, px, color, alpha, z, rot) {     // px = the dot's diameter on screen; rot = heading (moving) or null
+    if (this.n >= this.pool.length) return; const s = this.pool[this.n++], tail = rot !== null;
+    s.texture = tail ? this.tail : this.dot; s.anchor.set(tail ? 0.8 : 0.5, 0.5); s.rotation = tail ? rot : 0;
+    s.visible = true; s.x = x; s.y = y; s.scale.set(px / 14 / z); s.tint = color; s.alpha = alpha;
+  }
+  end() { for (let i = this.n; i < this.pool.length; i++) { if (!this.pool[i].visible) break; this.pool[i].visible = false; } }
+}
 const lerpC = (a, b, k) => ((((a >> 16) & 255) + ((((b >> 16) & 255) - ((a >> 16) & 255)) * k)) << 16) | ((((a >> 8) & 255) + ((((b >> 8) & 255) - ((a >> 8) & 255)) * k)) << 8) | ((a & 255) + (((b & 255) - (a & 255)) * k));
 // effect settings (Pengaturan): blood on/off, full or light war effects; phones default to light
 const LOW = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
@@ -244,6 +262,7 @@ export class View {
     this.flame = new Particles(this.sky, LOW ? 160 : 360, [flameTex(0), flameTex(1)]);                   // flames, embers, sparks
     this.decals = new Decals(this.flat, LOW ? 70 : 160);
     this.emberT = circleTex(8); this.burnN = 0; this.fxN = 0; this.wind = 4;
+    this.marks = new Marks(this.over, LOW ? 900 : 2600); this.markOn = false;      // Sorot Pasukan (spectators): unit markers from afar
     this.glows = new Glows(this.sky);
     this.arrow = arrowTex(); this.bullet = bulletTex(); this.ball = ballTex(); this.white = Texture.WHITE;
     this.birdT = [birdTex(true), birdTex(false)]; this.fishT = [fishTex(0), fishTex(1)];
@@ -545,6 +564,9 @@ export class View {
     const seen = new Set();
     this.glows.begin();
     const smoke = Math.random() < dt * 6, fires = night > 0.15;
+    // unit markers: full when zoomed out, gone by the time the units themselves are easy to see
+    const mk = this.markOn ? Math.max(0, Math.min(1, (0.85 - this.cam.zoom) / 0.4)) : 0; this.marks.begin();
+    if (mk && !this.markHex) this.markHex = W.players.map(p => { const c = PLAYER_RGB[p.color] || [220, 220, 220]; return (c[0] << 16) | (c[1] << 8) | c[2]; });
     // war effects budget: fewer, bigger puffs zoomed out; the busier the screen, the thinner each fire (a fixed cost)
     this.lod = Math.min(2.5, Math.max(1, 0.55 / this.cam.zoom)); this.wind = 4 + 2.5 * Math.sin(this.t * 0.07);
     this.burnK = Math.min(1, (FX.rich ? 9 : 4) / Math.max(1, this.burnN)) * (FX.rich ? 1 : 0.6); this.burnN = 0; this.fxN = 0;
@@ -637,6 +659,11 @@ export class View {
         }
       }
       // torches carried at night
+      if (mk && e.kind === 'unit' && us && !us.animal && e.owner >= 0 && (visible || mineE)) {
+        const big = us.general ? 13 : us.cls === 'siege' || us.naval ? 11 : e.type === 'villager' || e.type === 'child' ? 6 : 9;
+        const [ox, oy] = iso(e.px ?? e.x, e.py ?? e.y), dx = sx - ox, dy = sy - oy, moving = dx * dx + dy * dy > 0.04;
+        this.marks.put(sx, sy - 10, big, this.markHex[e.owner], mk * (e.type === 'villager' || e.type === 'child' ? 0.7 : 0.95), this.cam.zoom, moving ? Math.atan2(dy, dx) : null);
+      }
       if (fires && e.kind === 'unit' && us && !us.animal && (visible || mineE) && e.owner >= 0 && !e.inside) {
         const fl = 0.85 + 0.15 * Math.sin(this.t * 11 + e.id);
         if (!us.naval) this.glows.put(sx + 6, sy - 34, 0.7, 0xffb050, 0.32 * night * fl, sy + 2);
@@ -668,6 +695,7 @@ export class View {
     this.renderLights();
     this.ambient(dt, night);
     this.weather(dt);
+    this.marks.end();
     this.parts.update(dt); this.smoke.update(dt); this.flame.update(dt); this.decals.update(dt, this.light); this.updateFloats(dt);
     this.drawSelection(sel, alpha);
     this.drawMarkers(dt);

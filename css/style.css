@@ -234,6 +234,8 @@ body.watch #pResign { display: none; }
 /* ---------- advisor ---------- */
 #advBtn { position: fixed; left: 10px; top: 40px; z-index: 12; width: 34px; height: 34px; border-radius: 50%; border: 2px solid #1a110a; background: radial-gradient(circle at 35% 30%, #ffe08a, #c08a20); color: #3a2208; font: 900 20px Cinzel, serif; box-shadow: 0 2px 8px #000a; cursor: pointer; }
 #fogBtn { position: fixed; left: 10px; top: 82px; z-index: 12; width: 34px; height: 34px; border-radius: 50%; border: 2px solid #1a110a; background: radial-gradient(circle at 35% 30%, #ffe08a, #c08a20); font: 17px/1 sans-serif; box-shadow: 0 2px 8px #000a; cursor: pointer; padding: 0; }
+#markBtn { position: fixed; left: 10px; top: 124px; z-index: 12; width: 34px; height: 34px; border-radius: 50%; border: 2px solid #1a110a; background: radial-gradient(circle at 35% 30%, #ffe08a, #c08a20); font: 16px/1 sans-serif; box-shadow: 0 2px 8px #000a; cursor: pointer; padding: 0; }
+#markBtn.off { background: radial-gradient(circle at 35% 30%, #6a6458, #2a241c); filter: grayscale(1); }
 #fogBtn.off { background: radial-gradient(circle at 35% 30%, #6a6458, #2a241c); filter: grayscale(1); }
 #advBtn.fresh { animation: pulse 0.6s infinite alternate; box-shadow: 0 0 14px #ffd040, 0 2px 8px #000a; }
 #notify { left: 52px !important; }

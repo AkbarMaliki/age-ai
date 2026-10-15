@@ -1,24 +1,24 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD, MERCS, MERC } from './data.js?v=20261015094610';
-import { openTechTree } from './techtree.js?v=20261015094610';
-import { Saves } from './saves.js?v=20261015094610';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261015094610';
-import { townRing, pacted, POST } from './sim.js?v=20261015094610';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261015094610';
-import { generate } from './map.js?v=20261015094610';
-import { AI } from './ai.js?v=20261015094610';
-import { loadAll, vq } from './assets.js?v=20261015094610';
-import { MenuScene, MENU_COLORS } from './menuscene.js?v=20261015094610';
-import { View, iso, UNIT_BOX, FX } from './render.js?v=20261015094610';
-import { HUD } from './ui.js?v=20261015094610';
-import { Sound } from './audio.js?v=20261015094610';
-import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261015094610';
-import { CardPanel, DeckBuilder } from './cards.js?v=20261015094610';
-import { Advisor } from './advisor.js?v=20261015094610';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261015094610';
-import { Lockstep } from './lockstep.js?v=20261015094610';
-import { Lobby } from './lobby.js?v=20261015094610';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD, MERCS, MERC } from './data.js?v=20261015104257';
+import { openTechTree } from './techtree.js?v=20261015104257';
+import { Saves } from './saves.js?v=20261015104257';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261015104257';
+import { townRing, pacted, POST } from './sim.js?v=20261015104257';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261015104257';
+import { generate } from './map.js?v=20261015104257';
+import { AI } from './ai.js?v=20261015104257';
+import { loadAll, vq } from './assets.js?v=20261015104257';
+import { MenuScene, MENU_COLORS } from './menuscene.js?v=20261015104257';
+import { View, iso, UNIT_BOX, FX } from './render.js?v=20261015104257';
+import { HUD } from './ui.js?v=20261015104257';
+import { Sound } from './audio.js?v=20261015104257';
+import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261015104257';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261015104257';
+import { Advisor } from './advisor.js?v=20261015104257';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261015104257';
+import { Lockstep } from './lockstep.js?v=20261015104257';
+import { Lobby } from './lobby.js?v=20261015104257';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -315,7 +315,18 @@ class Game {
     this.hud.notify('Mode penonton: kamera bebas — tarik dengan klik kiri, WASD/panah, tepi layar atau minimap. Tab = ganti sudut pandang, C = kamera otomatis, 1/2/4/8/0 = kecepatan (0 = 20x).', 'age');
   }
   // the eye: spectators (and beaten players) see the whole map, or only what the kingdom they follow has explored and knows
-  fogButton() { const b = $('fogBtn'); b.classList.remove('hidden'); b.onclick = () => this.toggleFog(); this.toggleFog(false, true); }
+  fogButton() {
+    const b = $('fogBtn'); b.classList.remove('hidden'); b.onclick = () => this.toggleFog(); this.toggleFog(false, true);
+    const m = $('markBtn'); m.classList.remove('hidden'); m.onclick = () => this.toggleMarks(); let on = false; try { on = localStorage.getItem('ak_marks') === '1'; } catch { } this.toggleMarks(on, true);
+  }
+  // Sorot Pasukan: every unit shows as a dot in its kingdom's colour from afar (a tail when it moves) — watch armies move
+  toggleMarks(on = !this.view.markOn, quiet = false) {
+    this.view.markOn = on; const m = $('markBtn'); m.classList.toggle('off', !on);
+    m.title = on ? 'Sorot Pasukan AKTIF (H): titik warna kerajaan untuk setiap unit saat diperkecil — klik untuk mematikan' : 'Sorot Pasukan (H): titik berwarna kerajaan untuk setiap unit, terlihat dari kejauhan';
+    try { localStorage.setItem('ak_marks', on ? '1' : '0'); } catch { }
+    if (quiet) return; this.snd.play('click');
+    this.hud.notify(on ? '📍 Sorot Pasukan aktif — perkecil peta untuk melihat pergerakan setiap kerajaan.' : '📍 Sorot Pasukan mati.', 'age');
+  }
   toggleFog(on = !this.fogPov, quiet = false) {
     this.fogPov = on; this.view.reveal = !on; this.view.revealed = false; this.view.fogT = 0;
     const b = $('fogBtn'); b.classList.toggle('off', on); b.title = on ? 'Kabut perang AKTIF (V): hanya wilayah yang dijelajahi dan diketahui kerajaan yang sedang dilihat — klik untuk membuka seluruh peta' : 'Kabut perang MATI (V): seluruh peta terlihat — klik untuk melihat hanya apa yang diketahui kerajaan yang sedang dilihat';
@@ -844,6 +855,7 @@ class Game {
         if (e.key === 'Tab') { e.preventDefault(); this.cyclePov(); return; }
         if (e.key === 'c' || e.key === 'C') { this.toggleAutoCam(); return; }
         if (e.key === 'v' || e.key === 'V') { this.toggleFog(); return; }
+        if (e.key === 'h' || e.key === 'H') { this.toggleMarks(); return; }
         if (e.key === 'l' || e.key === 'L') { this.toggleScore(); return; }
         if (/^[12480]$/.test(e.key) && !e.ctrlKey) { this.setSpeed(e.key === '0' ? 20 : +e.key); this.snd.play('click'); return; }
       }
@@ -870,7 +882,8 @@ class Game {
     this.paused = !this.paused; $('pauseMenu').classList.toggle('hidden', !this.paused);      // online: only the menu opens
     this.snd.play('click');
   }
-  destroy() { this.dead = true; $('netStatus').classList.add('hidden'); $('btnChat').classList.add('hidden'); $('chatBox').classList.add('hidden'); $('pSpeed').classList.remove('hidden'); $('pauseMenu').querySelector('h2').textContent = 'Permainan Dijeda'; $('statsPanel').classList.add('hidden'); $('cardsPanel').classList.add('hidden'); $('advPanel').classList.add('hidden'); this.view.weatherG.destroy(); $('endWatch').classList.add('hidden'); document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
+  destroy() { this.dead = true; ['fogBtn', 'markBtn', 'scoreBox', 'mercBox'].forEach(id => $(id).classList.add('hidden')); document.body.classList.remove('cine'); this.fogPov = false;      // (spectator overlays go with the game)
+    $('netStatus').classList.add('hidden'); $('btnChat').classList.add('hidden'); $('chatBox').classList.add('hidden'); $('pSpeed').classList.remove('hidden'); $('pauseMenu').querySelector('h2').textContent = 'Permainan Dijeda'; $('statsPanel').classList.add('hidden'); $('cardsPanel').classList.add('hidden'); $('advPanel').classList.add('hidden'); this.view.weatherG.destroy(); $('endWatch').classList.add('hidden'); document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
 }
 
 // ---------------------------------------------------------------- boot / menus
@@ -938,9 +951,9 @@ async function boot() {
   $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
   window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
-  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261015094610);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
+  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261015104257);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261015094610);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261015104257);background-position:-${p[0]}px -${p[1]}px` : ''; };
   let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;

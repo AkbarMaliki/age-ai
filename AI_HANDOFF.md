@@ -344,6 +344,15 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
 - Fallback / first seconds: `#menuBg` (`assets/menu_bg.jpg`, since v22 a shot of the game itself: a castle-age town at minute 35 framed to the left, captured headless from spectator mode with the HUD hidden) pans slowly (`menuPan`, 46 s) under a warm soft-light glow (`menuLight`); a vignette and top / bottom shading keep the text readable.
 - Measured: live after ~6 s on desktop, page 60 fps. `window.__akMenu` is the running scene (debug / screenshots). Test: `tests/browser/menu.cjs`.
 
+### v23: Sorot Pasukan (unit markers from afar)
+- Spectators and beaten players: `#markBtn` 📍 under the 👁 eye, hotkey H, remembered in `ak_marks`. `Game.toggleMarks` sets `view.markOn`.
+- render.js `Marks`: a fixed pool (2600, or 900 on phones) of tiny sprites in the `over` layer (above the night light map, so they read by day and night).
+  - Each visible unit gets a dot in its kingdom's colour, a constant size on screen: villagers 6 px at 70% alpha, soldiers 9, siege and ships 11, the Panglima 13.
+  - A moving unit gets a tail (heading from `px/py`).
+  - Fades in below zoom 0.85, full below 0.45; respects the fog-of-war eye.
+- `Game.destroy` now hides the spectator overlays (eye, markers, score panel, mercenary prompt), so they don't linger into a game played after watching.
+- Measured: 333 markers on a 288 map at 55 fps.
+
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
 - Changes from it: archer atk 5, +3 vs infantry, cost 30w/40g; pikeman 55 hp, 0 pierce armour, 40f/30w; cataphract 115 hp, 3/3 armour, 35 iron; militia atk 5, 1 melee armour, 55f/20g; fire archer atk 6. Wells and outposts (and children) no longer keep a kingdom alive; the AI resigns when crushed (< 15 pop vs > 5x, for 2 min); exhaustion no longer kills; town-watch patrols recover energy. Bug: the AI's life timer shared its name (`lcT`) with the lumber-camp timer, so taverns / wells / hospitals were rarely considered (now `lifeT`). Expansion reserves the Town Center's cost once a site is known (`expandNeed`). `expansionSite` uses a resource grid (was a 75 ms spike).

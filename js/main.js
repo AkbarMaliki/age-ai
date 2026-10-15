@@ -315,7 +315,18 @@ class Game {
     this.hud.notify('Mode penonton: kamera bebas — tarik dengan klik kiri, WASD/panah, tepi layar atau minimap. Tab = ganti sudut pandang, C = kamera otomatis, 1/2/4/8/0 = kecepatan (0 = 20x).', 'age');
   }
   // the eye: spectators (and beaten players) see the whole map, or only what the kingdom they follow has explored and knows
-  fogButton() { const b = $('fogBtn'); b.classList.remove('hidden'); b.onclick = () => this.toggleFog(); this.toggleFog(false, true); }
+  fogButton() {
+    const b = $('fogBtn'); b.classList.remove('hidden'); b.onclick = () => this.toggleFog(); this.toggleFog(false, true);
+    const m = $('markBtn'); m.classList.remove('hidden'); m.onclick = () => this.toggleMarks(); let on = false; try { on = localStorage.getItem('ak_marks') === '1'; } catch { } this.toggleMarks(on, true);
+  }
+  // Sorot Pasukan: every unit shows as a dot in its kingdom's colour from afar (a tail when it moves) — watch armies move
+  toggleMarks(on = !this.view.markOn, quiet = false) {
+    this.view.markOn = on; const m = $('markBtn'); m.classList.toggle('off', !on);
+    m.title = on ? 'Sorot Pasukan AKTIF (H): titik warna kerajaan untuk setiap unit saat diperkecil — klik untuk mematikan' : 'Sorot Pasukan (H): titik berwarna kerajaan untuk setiap unit, terlihat dari kejauhan';
+    try { localStorage.setItem('ak_marks', on ? '1' : '0'); } catch { }
+    if (quiet) return; this.snd.play('click');
+    this.hud.notify(on ? '📍 Sorot Pasukan aktif — perkecil peta untuk melihat pergerakan setiap kerajaan.' : '📍 Sorot Pasukan mati.', 'age');
+  }
   toggleFog(on = !this.fogPov, quiet = false) {
     this.fogPov = on; this.view.reveal = !on; this.view.revealed = false; this.view.fogT = 0;
     const b = $('fogBtn'); b.classList.toggle('off', on); b.title = on ? 'Kabut perang AKTIF (V): hanya wilayah yang dijelajahi dan diketahui kerajaan yang sedang dilihat — klik untuk membuka seluruh peta' : 'Kabut perang MATI (V): seluruh peta terlihat — klik untuk melihat hanya apa yang diketahui kerajaan yang sedang dilihat';
@@ -844,6 +855,7 @@ class Game {
         if (e.key === 'Tab') { e.preventDefault(); this.cyclePov(); return; }
         if (e.key === 'c' || e.key === 'C') { this.toggleAutoCam(); return; }
         if (e.key === 'v' || e.key === 'V') { this.toggleFog(); return; }
+        if (e.key === 'h' || e.key === 'H') { this.toggleMarks(); return; }
         if (e.key === 'l' || e.key === 'L') { this.toggleScore(); return; }
         if (/^[12480]$/.test(e.key) && !e.ctrlKey) { this.setSpeed(e.key === '0' ? 20 : +e.key); this.snd.play('click'); return; }
       }
@@ -870,7 +882,8 @@ class Game {
     this.paused = !this.paused; $('pauseMenu').classList.toggle('hidden', !this.paused);      // online: only the menu opens
     this.snd.play('click');
   }
-  destroy() { this.dead = true; $('netStatus').classList.add('hidden'); $('btnChat').classList.add('hidden'); $('chatBox').classList.add('hidden'); $('pSpeed').classList.remove('hidden'); $('pauseMenu').querySelector('h2').textContent = 'Permainan Dijeda'; $('statsPanel').classList.add('hidden'); $('cardsPanel').classList.add('hidden'); $('advPanel').classList.add('hidden'); this.view.weatherG.destroy(); $('endWatch').classList.add('hidden'); document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
+  destroy() { this.dead = true; ['fogBtn', 'markBtn', 'scoreBox', 'mercBox'].forEach(id => $(id).classList.add('hidden')); document.body.classList.remove('cine'); this.fogPov = false;      // (spectator overlays go with the game)
+    $('netStatus').classList.add('hidden'); $('btnChat').classList.add('hidden'); $('chatBox').classList.add('hidden'); $('pSpeed').classList.remove('hidden'); $('pauseMenu').querySelector('h2').textContent = 'Permainan Dijeda'; $('statsPanel').classList.add('hidden'); $('cardsPanel').classList.add('hidden'); $('advPanel').classList.add('hidden'); this.view.weatherG.destroy(); $('endWatch').classList.add('hidden'); document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
 }
 
 // ---------------------------------------------------------------- boot / menus
