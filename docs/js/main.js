@@ -1,24 +1,25 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD, MERCS, MERC } from './data.js?v=20261015104257';
-import { openTechTree } from './techtree.js?v=20261015104257';
-import { Saves } from './saves.js?v=20261015104257';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261015104257';
-import { townRing, pacted, POST } from './sim.js?v=20261015104257';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261015104257';
-import { generate } from './map.js?v=20261015104257';
-import { AI } from './ai.js?v=20261015104257';
-import { loadAll, vq } from './assets.js?v=20261015104257';
-import { MenuScene, MENU_COLORS } from './menuscene.js?v=20261015104257';
-import { View, iso, UNIT_BOX, FX } from './render.js?v=20261015104257';
-import { HUD } from './ui.js?v=20261015104257';
-import { Sound } from './audio.js?v=20261015104257';
-import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261015104257';
-import { CardPanel, DeckBuilder } from './cards.js?v=20261015104257';
-import { Advisor } from './advisor.js?v=20261015104257';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261015104257';
-import { Lockstep } from './lockstep.js?v=20261015104257';
-import { Lobby } from './lobby.js?v=20261015104257';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD, MERCS, MERC } from './data.js?v=20261016001631';
+import { openTechTree } from './techtree.js?v=20261016001631';
+import { Saves } from './saves.js?v=20261016001631';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261016001631';
+import { townRing, pacted, POST } from './sim.js?v=20261016001631';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261016001631';
+import { generate } from './map.js?v=20261016001631';
+import { AI } from './ai.js?v=20261016001631';
+import { Assist, ASSIST_SCOPE } from './assist.js?v=20261016001631';
+import { loadAll, vq } from './assets.js?v=20261016001631';
+import { MenuScene, MENU_COLORS } from './menuscene.js?v=20261016001631';
+import { View, iso, UNIT_BOX, FX } from './render.js?v=20261016001631';
+import { HUD } from './ui.js?v=20261016001631';
+import { Sound } from './audio.js?v=20261016001631';
+import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261016001631';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261016001631';
+import { Advisor } from './advisor.js?v=20261016001631';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261016001631';
+import { Lockstep } from './lockstep.js?v=20261016001631';
+import { Lobby } from './lobby.js?v=20261016001631';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -36,6 +37,8 @@ class Game {
     if (on) this.seats = on.seats;
     this.W = generate({ size: setup.size, seed: setup.seed, type: setup.map, opts: { season: setup.season, night: setup.night, relicWin: setup.relicWin, life: setup.life === undefined ? false : setup.life !== 'off', victory: setup.victory, treaty: setup.treaty, popLimit: setup.popLimit, startRes: setup.startRes }, players: setup.players });
     this.ais = setup.ais.map(a => new AI(this.W, a.pid, a.diff));
+    // Main + Bantuan AI: a helper AI looks after the units and buildings the player leaves alone (offline games only)
+    this.assist = setup.assist && !on ? new Assist(this.W, setup.me || 0, setup.assist) : null;
     // the command log (save / replay): commands keyed by the tick they were given at
     this.rec = { v: 2, setup, cmds: rp && rp.mode === 'load' ? [] : rp ? rp.rec.cmds : [] };
     if (rp) { this.feedI = 0; this.feedEnd = rp.rec.tick || 0; if (rp.mode === 'load') this.ff = this.feedEnd; }
@@ -66,6 +69,8 @@ class Game {
     if (!this.watch && allies.length) this.hud.notify(`🤝 Sekutu: ${allies.map(p => p.name).join(', ')} — berbagi pandangan. Upeti & tanda di 🤝 Diplomasi (Alt+klik = tanda).`, 'age');
     $('pSpeed').textContent = `Kecepatan: ${this.speed}x`;
     $('btnDiplo').classList.toggle('hidden', !!this.watch); $('btnDiplo').onclick = () => this.toggleDiplo();
+    $('btnAssist').onclick = () => this.toggleAssist(); this.assistUi(true);
+    if (this.assist && this.assist.on && !this.watch) this.hud.notify(`🤖 Bantuan AI (${ASSIST_SCOPE[this.assist.scope]}): unit & bangunan yang tidak kamu pilih atau perintah selama ${this.assist.delay} detik diurus AI${this.assist.scope === 'eco' ? ' — ekonomi saja, tentara tetap milikmu' : ''}. Tombol 🤖 di atas untuk mematikan.`, 'age');
     $('diploClose').onclick = () => this.toggleDiplo(false);
     $('btnTree').onclick = () => openTechTree(this.W.players[this.me], (k, z) => this.hud.iconStyle(k, z));
     if (!this.watch) this.hud.notify('Lokasi musuh belum diketahui. Kirim pengintai untuk menjelajah! (I = statistik)');
@@ -90,7 +95,8 @@ class Game {
       deck: ai ? null : (opts.deck && opts.deck.length >= 8 ? [...opts.deck] : null), style: ai ? deckKeys[rnd(deckKeys.length)] : null, civ: civOf(ai ? null : opts.civ) }; });
     return { size: opts.size, seed: opts.seed || ((Math.random() * 1e9) | 0), map: opts.map, season: opts.season === 'random' ? null : opts.season, night: opts.night || 'full',
       relicWin: opts.relicWin === 'on', life: opts.life || 'on', victory: opts.victory || 'conquest', treaty: +opts.treaty || 0, popLimit: +opts.popLimit || 200, startRes: opts.startRes || 'standar', speed: +opts.speed || 1,
-      players, ais: players.map((p, i) => p.ai ? { pid: i, diff: opts.diff } : null).filter(Boolean), me: 0, watch };
+      players, ais: players.map((p, i) => p.ai ? { pid: i, diff: opts.diff } : null).filter(Boolean), me: 0, watch,
+      assist: watch ? null : { on: opts.mode === 'assist', delay: +opts.assistDelay || 20, scope: opts.assistScope === 'full' ? 'full' : 'eco' } };
   }
   // online: everything comes from the host's game record, so every client builds the identical world
   static onlineSetup(on) {
@@ -104,6 +110,8 @@ class Game {
   applyMeta(c) {
     const W = this.W, P = W.players[c.pid]; if (!P) return;
     if (c.t === '_ai' && !this.ais.some(a => a.pid === c.pid)) { P.ai = true; this.ais.push(new AI(W, c.pid, 'normal')); }
+    if (c.t === '_sel' && this.assist) this.assist.select(c.ids || []);
+    if (c.t === '_assist') { if (!this.assist) this.assist = new Assist(W, c.pid, { on: false }); this.assist.on = !!c.on; this.selKey = null; }
     if (c.t === '_human') { P.ai = false; this.ais = this.ais.filter(a => a.pid !== c.pid || this.setup.ais.some(s => s.pid === c.pid)); }
   }
   // replay / load: hand the sim the recorded commands of this tick (before the AIs think, like when they were given)
@@ -113,7 +121,7 @@ class Game {
     const src = this.replay.mode === 'load' ? this.replay.rec.cmds : cmds;
     while (this.feedI < src.length && src[this.feedI][0] <= W.tick) {
       const c = JSON.parse(JSON.stringify(src[this.feedI][1])); this.feedI++;
-      if (c.t[0] === '_') this.applyMeta(c); else command(W, c);
+      if (c.t[0] === '_') this.applyMeta(c); else { command(W, c); if (this.assist) this.assist.note(c); }
       if (this.replay.mode === 'load') cmds.push([W.tick, c]);
     }
   }
@@ -121,6 +129,7 @@ class Game {
   tickOnce(events = true) {
     this.feed();
     for (const ai of this.ais) ai.tick();
+    if (this.assist) this.assist.tick();
     step(this.W); this.hist.tick();
     for (const e of this.W.ev) if (events || e.k === 'victory' || e.k === 'defeated') this.onEvent(e);
     this.W.ev.length = 0;
@@ -149,6 +158,28 @@ class Game {
     if (this.watch || this.ff) return;
     this.rec.cmds.push([this.W.tick, JSON.parse(JSON.stringify(c))]);      // the log (saves, replays)
     command(this.W, c);
+    if (this.assist) this.assist.note(c);
+  }
+  // a meta command of the local player (logged like a command, so saves and replays rebuild it)
+  meta(c) { if (this.watch || this.ff || this.online) return; this.rec.cmds.push([this.W.tick, c]); this.applyMeta(c); }
+  // AI Assist: what the player has selected is theirs; the helper hears about every change of selection
+  assistSel() {
+    if (!this.assist || this.watch || this.ff) return;
+    const ids = this.sel.filter(id => { const e = this.W.ents.get(id); return e && e.owner === this.me && (e.kind === 'unit' || e.kind === 'building'); }).slice(0, 240), key = ids.join();
+    if (key !== this.selKey) { this.selKey = key; this.meta({ t: '_sel', pid: this.me, ids }); }
+  }
+  toggleAssist(on = !(this.assist && this.assist.on)) {
+    if (this.watch || this.online || this.lost) return;
+    this.meta({ t: '_assist', pid: this.me, on }); this.assistUi(true);
+    const A = this.assist; this.hud.notify(on ? `🤖 Bantuan AI (${ASSIST_SCOPE[A.scope]}) aktif: unit & bangunan yang tidak kamu pilih atau perintah selama ${A.delay} detik diurus AI.` : '🤖 Bantuan AI dimatikan — semua kembali di tanganmu.', 'age');
+  }
+  assistUi(now) {
+    const b = $('btnAssist'), A = this.assist; if (!b) return;
+    if ((this.assistT = (this.assistT || 0) - (now ? 1e9 : this.app.ticker.deltaMS / 1000)) > 0) return; this.assistT = 0.5;
+    b.classList.toggle('hidden', !!(this.watch || this.online));
+    const on = !!(A && A.on && !this.lost), n = on ? A.count() : 0;
+    b.classList.toggle('on', on); b.querySelector('b').textContent = on ? n : '';
+    b.title = on ? `Bantuan AI (${ASSIST_SCOPE[A.scope]}) aktif — ${n} unit sedang dibantu (tidak dipilih / diperintah ${A.delay} detik). Klik untuk mematikan.` : 'Bantuan AI mati — klik agar AI mengurus unit yang kamu biarkan';
   }
   openChat() {
     const box = $('chatBox'), inp = $('chatIn'); box.classList.remove('hidden'); inp.value = ''; inp.focus();
@@ -163,6 +194,7 @@ class Game {
   // ---------------------------------------------------------------- loop
   frame() {
     const dt = Math.min(0.1, this.app.ticker.deltaMS / 1000);
+    this.assistSel();
     if (this.ff) {                       // loading a save: replay every command at full speed
       const t0 = performance.now();
       while (this.W.tick < this.ff && performance.now() - t0 < 40) this.tickOnce(false);
@@ -193,6 +225,7 @@ class Game {
     this.view.applyCam();
     this.sel = this.sel.filter(id => this.W.ents.has(id));
     this.view.sync(Math.min(1, this.acc / TICK), this.paused && !this.lock ? 0 : dt * this.speed, this.sel, this.hover);
+    this.assistUi(false);
     this.hud.update(dt); this.stats.update(dt); this.story.update(dt); this.mercPrompt(dt); this.cards.update(dt); this.advisor.update(dt);
     if ((this.trackT = (this.trackT || 0) - dt) <= 0) { this.trackT = 2; let v = 0; for (const e of this.W.dyn.values()) if (e.kind === 'unit' && e.owner === this.me && e.type === 'villager') v++; this.track.maxVil = Math.max(this.track.maxVil, v); }
     if (this.placing) this.updateGhost();
@@ -883,7 +916,7 @@ class Game {
     this.snd.play('click');
   }
   destroy() { this.dead = true; ['fogBtn', 'markBtn', 'scoreBox', 'mercBox'].forEach(id => $(id).classList.add('hidden')); document.body.classList.remove('cine'); this.fogPov = false;      // (spectator overlays go with the game)
-    $('netStatus').classList.add('hidden'); $('btnChat').classList.add('hidden'); $('chatBox').classList.add('hidden'); $('pSpeed').classList.remove('hidden'); $('pauseMenu').querySelector('h2').textContent = 'Permainan Dijeda'; $('statsPanel').classList.add('hidden'); $('cardsPanel').classList.add('hidden'); $('advPanel').classList.add('hidden'); this.view.weatherG.destroy(); $('endWatch').classList.add('hidden'); document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
+    $('netStatus').classList.add('hidden'); $('btnChat').classList.add('hidden'); $('chatBox').classList.add('hidden'); $('pSpeed').classList.remove('hidden'); $('pauseMenu').querySelector('h2').textContent = 'Permainan Dijeda'; $('statsPanel').classList.add('hidden'); $('cardsPanel').classList.add('hidden'); $('advPanel').classList.add('hidden'); this.view.weatherG.destroy(); $('endWatch').classList.add('hidden'); $('btnAssist').classList.add('hidden'); document.body.classList.remove('watch'); $('specBar').classList.add('hidden'); this.app.ticker.remove(this.frame, this); this.app.stage.removeChildren(); this.snd.music(null); this.snd.ambience(false); }
 }
 
 // ---------------------------------------------------------------- boot / menus
@@ -901,7 +934,7 @@ async function boot() {
   if (!opts.night) opts.night = 'full';
   if (!opts.civ) opts.civ = 'random';
   if (!opts.relicWin) opts.relicWin = 'off';
-  for (const [k, v] of Object.entries({ life: 'on', victory: 'conquest', teams: 'ffa', treaty: 0, popLimit: 200, startRes: 'standar', speed: 1 })) if (opts[k] === undefined) opts[k] = v;
+  for (const [k, v] of Object.entries({ assistDelay: 20, assistScope: 'eco', life: 'on', victory: 'conquest', teams: 'ffa', treaty: 0, popLimit: 200, startRes: 'standar', speed: 1 })) if (opts[k] === undefined) opts[k] = v;
   // map sizes were doubled (Kecil 224 ... Kolosal 560): a choice saved before that becomes its new, twice-as-big version
   if (!opts.sizeV) { opts.size = { 112: 224, 144: 288, 180: 360, 220: 440, 280: 560 }[opts.size] || opts.size; opts.sizeV = 2; }
   if (!(opts.size >= 64 && opts.size <= 600)) opts.size = 288;
@@ -912,7 +945,8 @@ async function boot() {
   const MAPN = { random: 'Peta acak', padang: 'Padang', rimba: 'Rimba', danau: 'Danau', sungai: 'Sungai', tambang: 'Tambang', pegunungan: 'Gunung', kepulauan: 'Pulau' };
   const refresh = () => {
     const civ = CIVS[opts.civ];
-    $('quickInfo').textContent = opts.mode === 'watch' ? `Tonton ${opts.players} AI · ${MAPN[opts.map] || opts.map}` : `${civ ? civ.glyph + ' ' + civ.name : '🎲 Peradaban acak'} · ${MAPN[opts.map] || opts.map} · 1 vs ${opts.players - 1} · ${{ easy: 'Mudah', normal: 'Normal', hard: 'Sulit' }[opts.diff]}`;
+    $('quickInfo').textContent = opts.mode === 'watch' ? `Tonton ${opts.players} AI · ${MAPN[opts.map] || opts.map}` : `${civ ? civ.glyph + ' ' + civ.name : '🎲 Peradaban acak'} · ${MAPN[opts.map] || opts.map} · 1 vs ${opts.players - 1} · ${{ easy: 'Mudah', normal: 'Normal', hard: 'Sulit' }[opts.diff]}${opts.mode === 'assist' ? ` · 🤖 Bantuan AI ${ASSIST_SCOPE[opts.assistScope] || ''}` : ''}`;
+    $('assistOpts').classList.toggle('hidden', opts.mode !== 'assist');
     $('civDesc').textContent = civ ? civ.desc : 'Peradaban dipilih acak di awal permainan.';
     const auto = Saves.list().find(x => x.id === 'auto');
     $('btnContinue').classList.toggle('hidden', !auto);
@@ -951,9 +985,9 @@ async function boot() {
   $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
   window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
-  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261015104257);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
+  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261016001631);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261015104257);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261016001631);background-position:-${p[0]}px -${p[1]}px` : ''; };
   let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;

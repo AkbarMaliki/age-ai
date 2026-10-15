@@ -45,6 +45,7 @@ export class AI {
     this.foes = new Map();       // enemy units seen: id -> { t, x, y, type, nav } (last sighting; counters + hunting survivors)
     this.tried = new Map();      // exploration cells already targeted: cell -> time
     this.scoutGoal = null; this.lastSweep = -99; this.attacked = 0; this.lastHit = -99; this.intel = null; this.inv = null;
+    this.mayUse = null; this.mayPlace = null;      // AI Assist: only what the player has left alone (null: everything is ours)
   }
   tick() {
     const W = this.W; if (W.t < this.next) return; this.next = W.t + this.D.think;
@@ -137,7 +138,7 @@ export class AI {
     // ---- give up when the kingdom can't come back (AoE2 AIs resign too)
     if (this.hopeless(tc, vils, army)) { if (!this.hopeT) this.hopeT = W.t; else if (W.t - this.hopeT > 20) { command(W, { t: 'resign', pid: this.pid }); return; } } else this.hopeT = 0;
     // ---- Home City shipment + market trades + spies
-    if (P.ships > 0 && !P.shipment) { const c = this.pickCard(); if (c) command(W, { t: 'card', pid: this.pid, card: c }); }
+    if (P.ships > 0 && !P.shipment && !this.mayUse) { const c = this.pickCard(); if (c) command(W, { t: 'card', pid: this.pid, card: c }); }
     if (W.t > (this.mkT || 0)) { this.mkT = W.t + 5; this.trade(); }
     const aca = mine.bld.find(b => b.type === 'academy' && b.built);
     if (aca && P.techs.has('spy_network') && W.t >= P.spyCd && W.t - (this.spyT || -999) > 150) { this.spyT = W.t; command(W, { t: 'ability', pid: this.pid, bid: aca.id }); this.intel = spyReport(W, this.pid); }
@@ -176,7 +177,7 @@ export class AI {
     const unfinished = mine.bld.filter(b => !b.built && b.id && !b.nb && !unreachable(W, b.id, this.pid));
     const night = restNow(W, P);          // the village sleeps: nobody is sent out until dawn
     for (const v of vils) {
-      if (v.order || night) continue;
+      if (v.order || night || (this.mayUse && !this.mayUse(v))) continue;
       if (unfinished.length) { const b = unfinished.shift(); command(W, { t: 'smart', pid: this.pid, ids: [v.id], target: b.id, x: b.x, y: b.y }); continue; }
       const res = Object.keys(want).filter(k => want[k] > 0).sort((a, b) => (now[a] - vils.length * want[a]) - (now[b] - vils.length * want[b]))[0];
       let tgt = null;
@@ -457,7 +458,7 @@ export class AI {
   }
   builders(n, i, j) {
     if (restNow(this.W, this.P)) return [];
-    return this.m.units.filter(u => u.type === 'villager' && (!u.order || u.order.t === 'gather')).sort((a, b) => Math.hypot(a.x - i, a.y - j) - Math.hypot(b.x - i, b.y - j)).slice(0, n).map(v => v.id);
+    return this.m.units.filter(u => u.type === 'villager' && (!u.order || u.order.t === 'gather') && (!this.mayUse || this.mayUse(u))).sort((a, b) => Math.hypot(a.x - i, a.y - j) - Math.hypot(b.x - i, b.y - j)).slice(0, n).map(v => v.id);
   }
   // damaged buildings get two villagers once no enemy is close
   repair(vils) {
@@ -1749,8 +1750,9 @@ export class AI {
   }
   order(type, i, j) {
     const W = this.W;
-    const vils = this.m.units.filter(u => u.type === 'villager').sort((a1, b1) => Math.hypot(a1.x - i, a1.y - j) - Math.hypot(b1.x - i, b1.y - j));
+    const vils = this.m.units.filter(u => u.type === 'villager' && (!this.mayUse || this.mayUse(u))).sort((a1, b1) => Math.hypot(a1.x - i, a1.y - j) - Math.hypot(b1.x - i, b1.y - j));
     const builders = restNow(W, this.P) ? [] : vils.filter(v => !v.order || v.order.t !== 'build').slice(0, type === 'house' || type === 'farm' ? 1 : type === 'castle' || type === 'town_center' ? 4 : 2).map(v => v.id);
+    if (this.mayUse && !builders.length) return;          // a helper never leaves a foundation nobody is free to build
     command(W, { t: 'place', pid: this.pid, type, i, j, ids: builders });
     this.m.bld.push({ type, built: false, placedAt: W.t, x: i, y: j });
   }
@@ -1785,7 +1787,7 @@ export class AI {
     return best;
   }
   build(type, near, rMin, rMax, anywhere = false) {
-    const W = this.W, P = this.P; if (!canBuild(W, this.pid, type) || !canAfford(P, costOf(P, type))) return false;
+    const W = this.W, P = this.P; if (!canBuild(W, this.pid, type) || !canAfford(P, costOf(P, type)) || (this.mayPlace && !this.mayPlace(type))) return false;
     const Q = this.lifeNeed, X = this.expandNeed, c0 = costOf(P, type);          // the tavern the people need and the next town come before other buildings
     if ((Q || X) && !['house', 'farm', 'tavern', 'hospital', 'mill', 'town_center', 'dock', 'barn', 'well'].includes(type) && Object.keys(c0).some(k => P.res[k] < c0[k] + (Q && Q[k] || 0) + (X && X[k] || 0))) return false;
     const d = BUILDINGS[type], n = d.n;

@@ -441,3 +441,7 @@ table.diplo .trib { white-space: nowrap; } table.diplo .trib button { width: aut
 #info .nm small.role { display: inline; margin-left: 8px; }
 #info .cs { font-size: 13px; opacity: 0.95; margin-top: 2px; }
 #info .one .stats { font-size: 13px; line-height: 1.3; }
+/* AI Assist: the helper's button (number = units it is looking after now) */
+#btnAssist { opacity: 0.6; } #btnAssist.on { opacity: 1; box-shadow: inset 0 0 0 2px #7cc8ff; background: linear-gradient(180deg, #3f6a8a, #24405a); }
+#btnAssist b { font-size: 11px; margin-left: 3px; } #btnAssist b:empty { display: none; }
+#assistOpts { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; } #assistOpts.hidden { display: none; }

@@ -37,6 +37,7 @@
     <button id="btnCards" class="tb" title="Kiriman Kerajaan (K)">🃏 <span>Kiriman</span><b id="cardN"></b><i class="xpbar"><i id="cardXp"></i></i></button>
     <button id="btnStats" class="tb" title="Statistik perang (I)">📊 <span>Statistik</span></button>
     <button id="btnDiplo" class="tb" title="Diplomasi: sekutu, upeti dan tanda">🤝</button>
+    <button id="btnAssist" class="tb hidden" title="Bantuan AI">🤖<b></b></button>
     <button id="btnTree" class="tb" title="Pohon teknologi">🌳</button>
     <button id="btnChat" class="tb hidden" title="Chat (Enter)">💬</button>
     <button id="btnMenu" class="tb">Menu</button>
@@ -123,7 +124,11 @@
       <div class="lbl">Warna</div>
       <div class="seg colors" data-k="color"><button data-v="blue" class="c-blue">Biru</button><button data-v="red" class="c-red">Merah</button><button data-v="green" class="c-green">Hijau</button><button data-v="yellow" class="c-yellow">Kuning</button></div>
       <div class="lbl">Mode</div>
-      <div class="seg" data-k="mode"><button data-v="play">Bermain</button><button data-v="watch">Tonton Bot vs Bot</button></div>
+      <div class="seg" data-k="mode"><button data-v="play">Bermain</button><button data-v="assist" title="Kamu tetap bermain; AI mengurus unit &amp; bangunan yang tidak kamu pilih atau perintah selama beberapa detik">Main + Bantuan AI</button><button data-v="watch">Tonton Bot vs Bot</button></div>
+      <div id="assistOpts" class="hidden">
+        <div class="seg" data-k="assistScope"><button data-v="eco" title="AI hanya mengurus ekonomi: penduduk, kapal nelayan, rumah, kamp, ladang, riset ekonomi dan melatih penduduk. Tentara tetap milikmu">🌾 Ekonomi</button><button data-v="full" title="AI juga melatih &amp; memimpin tentara yang menganggur, meneliti dan naik zaman">⚔ Penuh</button></div>
+        <div class="seg" data-k="assistDelay"><button data-v="10" title="AI mengambil alih unit yang tidak kamu sentuh 10 detik">⏱ 10 dtk</button><button data-v="20" title="AI mengambil alih unit yang tidak kamu sentuh 20 detik">⏱ 20 dtk</button><button data-v="40" title="AI mengambil alih unit yang tidak kamu sentuh 40 detik">⏱ 40 dtk</button></div>
+      </div>
       <div class="lbl">Lawan</div>
       <div class="seg" data-k="players"><button data-v="2">1 vs 1</button><button data-v="3">1 vs 2</button><button data-v="4">1 vs 3</button></div>
       <div class="seg" data-k="diff"><button data-v="easy">Mudah</button><button data-v="normal">Normal</button><button data-v="hard">Sulit</button></div>
@@ -205,7 +210,7 @@
     <h3>Garnisun &amp; Pertahanan</h3><p>Pilih tentara lalu klik kanan Menara, Pusat Kota atau Kastil untuk <b>bergarnisun</b>: bangunan menembakkan lebih banyak panah dan tentara di dalam sembuh perlahan. Infanteri bisa naik ke dalam <b>Pendobrak</b> (lebih cepat). Tombol ⏏ mengeluarkan mereka. <b>Pagar Kayu</b> tersedia sejak Zaman Kegelapan; menara bisa ditingkatkan jadi Menara Pengawal dan Benteng Menara; <b>gerbang bisa dikunci</b> 🔒.</p>
     <h3>Dagang &amp; Ekonomi Lanjutan</h3><p><b>Gerobak Dagang</b> (Pasar) dan <b>Kapal Dagang</b> (Dermaga): klik kanan pasar/dermaga lain — makin jauh makin banyak emas, rute ke sekutu lebih untung. Di Penggilingan, <b>antre tanam ulang</b> ladang (bayar di muka) agar ladang yang habis langsung ditanam lagi. Dermaga bisa memasang <b>perangkap ikan</b>. Riset ekonomi baru: Gergaji, Bajak Berat, Rotasi Tanaman, Poros Tambang, Gerobak Tangan.</p>
     <h3>Kapal Perang</h3><p>Selain Kapal Perang: <b>Kapal Api</b> (membakar kapal dari dekat), <b>Kapal Peledak</b> (meledak di tengah armada musuh), <b>Kapal Meriam</b> (Imperial, butuh Bubuk Mesiu) dan riset <b>Galleon</b>.</p>
-    <h3>Mode &amp; Aturan</h3><p>Di <b>Permainan Baru → Aturan</b>: <b>Penaklukan</b> (atau bangun <b>Keajaiban Dunia</b> dan pertahankan 10 menit), <b>Regicide</b> (lindungi Rajamu — dia otomatis berlindung di Pusat Kota), <b>Raja Bukit</b> (kuasai Monumen di tengah peta 10 menit). Juga gencatan senjata, sumber daya awal (sampai <b>Deathmatch</b>), batas populasi dan kecepatan. Pilih <b>Bertim</b> untuk bermain bersama sekutu AI.</p>
+    <h3>Mode &amp; Aturan</h3><p>Di <b>Permainan Baru → Aturan</b>: <b>Penaklukan</b> (atau bangun <b>Keajaiban Dunia</b> dan pertahankan 10 menit), <b>Regicide</b> (lindungi Rajamu — dia otomatis berlindung di Pusat Kota), <b>Raja Bukit</b> (kuasai Monumen di tengah peta 10 menit). Juga gencatan senjata, sumber daya awal (sampai <b>Deathmatch</b>), batas populasi dan kecepatan. Pilih <b>Bertim</b> untuk bermain bersama sekutu AI. <b>Main + Bantuan AI</b>: kamu tetap bermain, tetapi unit &amp; bangunan yang tidak kamu pilih atau perintah selama 10/20/40 detik diurus AI — <b>Ekonomi</b> (penduduk, rumah, kamp, ladang) atau <b>Penuh</b> (juga tentara, riset, naik zaman). Tombol 🤖 di atas menyalakan / mematikannya kapan saja.</p>
     <h3>Wilayah Kekuasaan</h3><p>Pusat Kota, Kastil dan <b>Pos Perbatasan</b> menguasai tanah di sekitarnya (garis batas berwarna). Di wilayah sendiri pengumpulan +10%; di wilayah musuh hanya bangunan militer yang boleh dibangun (markas depan). Mulai Zaman Feodal kamu boleh membangun <b>kota baru</b> — satu Pusat Kota per zaman — dekat sumber daya kaya atau di pulau lain.</p>
     <h3>Diplomasi</h3><p>Tombol <b>🤝</b>: lihat sekutu dan musuh, kirim <b>upeti</b> (komisi 20%). <b>Alt + klik</b> peta atau minimap untuk memberi <b>tanda</b> ke sekutu. Sekutu berbagi pandangan.</p></div>
     <div><h3>Kontrol</h3><table>

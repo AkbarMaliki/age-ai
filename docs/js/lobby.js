@@ -1,7 +1,7 @@
 // Online lobby: create a room, share its link, seat players and AIs, pick teams and the map, start.
-import { Net, MAX_SEATS, BOT_NAME } from './net.js?v=20261015104257';
-import { PLAYER_COLORS, PLAYER_RGB, DECKS, CIVS, CIV_KEYS } from './data.js?v=20261015104257';
-import { Sound } from './audio.js?v=20261015104257';
+import { Net, MAX_SEATS, BOT_NAME } from './net.js?v=20261016001631';
+import { PLAYER_COLORS, PLAYER_RGB, DECKS, CIVS, CIV_KEYS } from './data.js?v=20261016001631';
+import { Sound } from './audio.js?v=20261016001631';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
