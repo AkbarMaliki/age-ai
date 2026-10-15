@@ -986,7 +986,7 @@ function startMenuScene() {
   if (menuScene || game || !liveMenuOk()) return;
   const same = assetsCache && assetsCache.colors === MENU_COLORS.join();
   menuScene = new MenuScene(app, (A) => { if (!assetsCache) { assetsCache = A; assetsCache.colors = MENU_COLORS.join(); } });     // its sprites are kept for a 4-kingdom game
-  menuScene.start(same ? assetsCache : null);
+  menuScene.start(same ? assetsCache : null); window.__akMenu = menuScene;      // (debug / screenshots)
 }
 function stopMenuScene() { if (menuScene) { menuScene.destroy(); menuScene = null; } }
 async function loadAssets(colors) {

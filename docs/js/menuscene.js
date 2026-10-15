@@ -1,12 +1,12 @@
 // The living menu background: a small world of three computer kingdoms runs behind the main menu (desktop only). It
 // is made off-screen in small steps (the static picture shows meanwhile), fast-forwarded until there are real towns,
 // then faded in; a slow director camera glides between towns, forts and battles. Nothing here touches a real game.
-import { View, iso } from './render.js?v=20261015091550';
-import { generate } from './map.js?v=20261015091550';
-import { step, TICK } from './sim.js?v=20261015091550';
-import { AI } from './ai.js?v=20261015091550';
-import { GAME_SPEED } from './data.js?v=20261015091550';
-import { loadAll } from './assets.js?v=20261015091550';
+import { View, iso } from './render.js?v=20261015092649';
+import { generate } from './map.js?v=20261015092649';
+import { step, TICK } from './sim.js?v=20261015092649';
+import { AI } from './ai.js?v=20261015092649';
+import { GAME_SPEED } from './data.js?v=20261015092649';
+import { loadAll } from './assets.js?v=20261015092649';
 
 export const MENU_COLORS = ['blue', 'red', 'green', 'yellow'];
 const MAPS = ['padang', 'rimba', 'danau', 'sungai'];
@@ -19,11 +19,11 @@ export class MenuScene {
       const A = assets || await loadAll(MENU_COLORS, () => { }, 1);
       if (this.dead) return;
       if (!assets && this.onAssets) this.onAssets(A);
-      // a world of three kingdoms, grown for 16 game-minutes in small slices (the menu stays responsive)
+      // a world of three kingdoms, grown for 12 game-minutes in small slices (the menu stays responsive)
       const seed = (Math.random() * 1e9) | 0, type = MAPS[(Math.random() * MAPS.length) | 0];
-      const W = generate({ size: 144, seed, type, players: MENU_COLORS.slice(0, 3).map((c, i) => ({ name: c, color: c, ai: true, team: i, style: null })), opts: { night: 'full', life: true } });
+      const W = generate({ size: 144, seed, type, players: MENU_COLORS.slice(0, 3).map((c, i) => ({ name: c, color: c, ai: true, team: i, style: null })), opts: { night: 'full', life: true, season: ['semi', 'gugur', 'kemarau'][(Math.random() * 3) | 0] } });      // (no grey winter behind a menu)
       const ais = W.players.map((p, i) => new AI(W, i, 'hard'));
-      for (let n = 0; n < 16 * 60 / TICK && !this.dead; n++) {
+      for (let n = 0; n < 12 * 60 / TICK && !this.dead; n++) {
         for (const a of ais) a.tick(); step(W); W.ev.length = 0;
         if (n % 150 === 149) await new Promise(r => setTimeout(r, 0));
       }

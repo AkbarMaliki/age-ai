@@ -334,14 +334,14 @@ audio.js  synth SFX fallback + sampled SFX (assets/sfx) with pan/attenuation + u
 - **Soldiers on duty** (any order): only step aside for water or a doctor within 25 tiles, never for the tavern; they get thirsty at half rate (water skins). This was pulling soldiers off campaigns back to their home towns.
 
 ### v22: living menu background
-- `js/menuscene.js` `MenuScene`: three hard AIs on a 144 map (padang / rimba / danau / sungai at random, day and night), grown 16 game-minutes in slices of 150 ticks (`setTimeout` between, so the menu stays responsive), then rendered with a `View` (`reveal`, no border lines) and the class `livebg` on `body` fades the picture out.
+- `js/menuscene.js` `MenuScene`: three hard AIs on a 144 map (padang / rimba / danau / sungai at random, a season other than winter, day and night), grown 12 game-minutes in slices of 150 ticks (`setTimeout` between, so the menu stays responsive), then rendered with a `View` (`reveal`, no border lines) and the class `livebg` on `body` fades the picture out.
   - A director camera picks a shot every 13 s: a battle (hit heat) 60% of the time when one rages, else mostly towns (TC / castle / market / monastery / wonder), sometimes forts, camps or other buildings. Shots are framed left / right of the button column in turn, with a slow drift and zoom 0.7–1.05.
   - `app.ticker.maxFPS = 30` while it runs.
 - main.js: `startMenuScene()` on boot and in `toMenu()`; `stopMenuScene()` at the start of `loadAssets()` (every game start).
   - The scene loads its own atlases with `MENU_COLORS`; when nothing is cached yet they become `assetsCache`, so a 4-kingdom game starting with blue needs no second load.
   - Off on touch devices, `deviceMemory < 4`, reduced motion and automated browsers (`navigator.webdriver`) unless the URL has `?live`; `?nolive` forces it off.
-- Fallback / first seconds: `#menuBg` (the old picture) pans slowly (`menuPan`, 46 s) under a warm soft-light glow (`menuLight`); a vignette and top / bottom shading keep the text readable.
-- Measured: live after ~9 s on desktop, page 60 fps. Test: `tests/browser/menu.cjs`.
+- Fallback / first seconds: `#menuBg` (`assets/menu_bg.jpg`, since v22 a shot of the game itself: a castle-age town at minute 35 framed to the left, captured headless from spectator mode with the HUD hidden) pans slowly (`menuPan`, 46 s) under a warm soft-light glow (`menuLight`); a vignette and top / bottom shading keep the text readable.
+- Measured: live after ~6 s on desktop, page 60 fps. `window.__akMenu` is the running scene (debug / screenshots). Test: `tests/browser/menu.cjs`.
 
 ### Balance pass (tools: `tests/tournament.mjs` + `tests/tournament_report.mjs`, `tests/duels.mjs`)
 - `node tests/tournament.mjs <first> <count> <minutes> > out.jsonl` plays AI-vs-AI 1v1 games rotating maps, decks and civilizations (JSON line per game); `node tests/tournament_report.mjs out*.jsonl` summarises win rates, game length, age timings, units, economy, life and perf. `node tests/duels.mjs [budget] [age]` prints an equal-value fight matrix between unit types.
