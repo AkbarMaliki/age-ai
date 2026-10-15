@@ -26,9 +26,20 @@ input[type=text], #nameIn { background: #1b140e; border: 1px solid var(--gold); 
 .vol input { flex: 1; accent-color: var(--gold); } .vol span { min-width: 0 !important; }
 
 /* ---------- menu ---------- */
-#menu { background: url(../assets/menu_bg.jpg) center / cover, #2a2018; }
-#menu::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.65)); pointer-events: none; }
-#menu > * { position: relative; }
+/* menu background: the picture drifts slowly (a cinematic pan) under a warm moving light; on desktop a living world
+   (js/menuscene.js) fades in behind it once it is ready */
+#menu { background: #1a120b; overflow: hidden; transition: background-color 2s ease; }
+#menu > #menuBg { position: absolute; inset: -6%; z-index: 0; background: url(../assets/menu_bg.jpg) center / cover; animation: menuPan 46s ease-in-out infinite alternate; transition: opacity 2.4s ease; will-change: transform; }
+@keyframes menuPan { 0% { transform: scale(1.02) translate(0, 0); } 50% { transform: scale(1.09) translate(-2.2%, -1.2%); } 100% { transform: scale(1.05) translate(1.8%, -2.4%); } }
+#menu::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 32%, rgba(0, 0, 0, 0.62)), linear-gradient(180deg, rgba(10, 6, 2, 0.35), transparent 22%, transparent 72%, rgba(10, 6, 2, 0.55)); }
+#menu::after { content: ''; position: absolute; inset: -20%; z-index: 1; pointer-events: none; mix-blend-mode: soft-light; opacity: 0.55;
+  background: radial-gradient(ellipse 45% 35% at 30% 20%, rgba(255, 214, 140, 0.55), transparent 70%), radial-gradient(ellipse 40% 30% at 75% 70%, rgba(255, 170, 90, 0.35), transparent 70%);
+  animation: menuLight 24s ease-in-out infinite alternate; }
+@keyframes menuLight { from { transform: translate(-4%, -2%) rotate(-2deg); } to { transform: translate(4%, 3%) rotate(2deg); } }
+#menu > * { position: relative; z-index: 2; }
+body.livebg #menu { background-color: transparent; } body.livebg #menu > #menuBg { opacity: 0; } body.livebg #menu::after { opacity: 0.3; }
+@media (prefers-reduced-motion: reduce) { #menu > #menuBg, #menu::after { animation: none; } }
 .title { text-align: center; } .title h1 { font-size: 64px; font-weight: 800; margin: 0; } .title p { margin: 0; font-size: 18px; text-shadow: 0 2px 4px #000; }
 .credit { position: absolute; bottom: 8px; font-size: 12px; opacity: 0.7; text-shadow: 0 1px 2px #000; }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; } .cols p { margin: 4px 0 10px; line-height: 1.4; }

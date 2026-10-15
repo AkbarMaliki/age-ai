@@ -9,6 +9,7 @@ import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt
 import { generate } from './map.js';
 import { AI } from './ai.js';
 import { loadAll, vq } from './assets.js';
+import { MenuScene, MENU_COLORS } from './menuscene.js';
 import { View, iso, UNIT_BOX, FX } from './render.js';
 import { HUD } from './ui.js';
 import { Sound } from './audio.js';
@@ -878,6 +879,7 @@ async function boot() {
   app = new Application();
   await app.init({ resizeTo: window, background: '#000000', antialias: false, autoDensity: true, resolution: Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2), preference: 'webgl' });
   $('game').appendChild(app.canvas);
+  startMenuScene();
   // menu state
   const opts = store.get('opts', { diff: 'normal', color: 'blue', size: 288, seed: 0, players: 2, name: '', mode: 'play', sizeV: 2 });
   if (!opts.mode) opts.mode = 'play';
@@ -977,8 +979,18 @@ function goFullscreen() {
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
   if (!document.fullscreenElement && req) Promise.resolve(req.call(el)).then(() => screen.orientation?.lock?.('landscape').catch(() => { })).catch(() => { });
 }
-let assetsCache = null;
+let assetsCache = null, menuScene = null;
+// the living menu background (desktop; not on phones, low-memory devices, reduced motion or automated browsers unless ?live)
+const liveMenuOk = () => { const q = new URLSearchParams(location.search); return q.has('live') || (!q.has('nolive') && !navigator.webdriver && !IS_TOUCH && (navigator.deviceMemory || 8) >= 4 && !matchMedia('(prefers-reduced-motion: reduce)').matches); };
+function startMenuScene() {
+  if (menuScene || game || !liveMenuOk()) return;
+  const same = assetsCache && assetsCache.colors === MENU_COLORS.join();
+  menuScene = new MenuScene(app, (A) => { if (!assetsCache) { assetsCache = A; assetsCache.colors = MENU_COLORS.join(); } });     // its sprites are kept for a 4-kingdom game
+  menuScene.start(same ? assetsCache : null);
+}
+function stopMenuScene() { if (menuScene) { menuScene.destroy(); menuScene = null; } }
 async function loadAssets(colors) {
+  stopMenuScene();
   if (IS_TOUCH) goFullscreen();
   $('menu').classList.add('hidden'); $('loading').classList.remove('hidden'); $('loadBar').style.width = '0%';
   try {
@@ -1022,5 +1034,6 @@ function toMenu() {
   $('endReplay').textContent = '🎬 Simpan Replay';
   ['pauseMenu', 'endScreen', 'hud'].forEach(id => $(id).classList.add('hidden'));
   $('menu').classList.remove('hidden'); Sound.menuMusic();
+  startMenuScene();
 }
 boot();
