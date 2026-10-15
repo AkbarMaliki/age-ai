@@ -1,6 +1,6 @@
 // Deterministic RTS simulation (no rendering). Fixed tick; commands are queued and applied at tick start
 // so the same code can later run in lockstep online. Coordinates are in tiles; tile (i, j) spans [i, i+1) x [j, j+1).
-import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX, MERCS, MERC, LEVY } from './data.js?v=20261015092649';
+import { UNITS, BUILDINGS, TECHS, RESOURCES, RATE, CARRY, START_RES, POP_LIMIT, RES, GAIA, TREASURES, MARKET, XP, CARDS, MILITARY, DAY, SEASONS, TER, FORMATIONS, CIVS, RELICS, START_PRESETS, WONDER_TIME, KOTH_TIME, LIFE, NAMES, FORWARD, TERR_BONUS, TOWN_POP, TOWNS_MAX, MERCS, MERC, LEVY } from './data.js?v=20261015094610';
 
 export const TICK = 0.1;            // game-seconds per tick
 const SQ2 = Math.SQRT2;
@@ -449,19 +449,22 @@ export function findPath(W, owner, sx, sy, goal, tx, ty, maxNodes = 0, nav = fal
     }
   }
   W.paths++; W.nodes += n;
+  // the path found (or the best part of it) is read out first: a waypoint search below reuses the same scratch arrays
+  const end = found >= 0 ? found : best, exhausted = found < 0 && open.size === 0;
+  const pts = []; for (let k = end; k !== -1 && k !== s; k = G.from[k]) pts.push([k % S + 0.5, ((k / S) | 0) + 0.5]);
+  pts.reverse();
   // a long trip the search could not finish (round a big lake, a mountain chain): follow the coarse route map instead,
   // with a short exact path to a waypoint some way along it ('via': on the way, not there yet)
-  if (found < 0 && !nav && !raw && far > 30 && open.size) {
+  // (never from inside such a leg: a leg that itself ran out would fall back again, and again, until the stack overflowed)
+  if (found < 0 && !nav && !raw && far > 30 && !exhausted && !G.inVia) {
     const via = coarseStep(W, owner, si, sj, tx, ty);
     if (via) {
-      const [wi, wj] = via, sub = findPath(W, owner, sx, sy, (i, j) => Math.abs(i - wi) <= 1 && Math.abs(j - wj) <= 1, wi + 0.5, wj + 0.5, 6000, false, false);
+      const [wi, wj] = via; let sub;
+      G.inVia = true; try { sub = findPath(W, owner, sx, sy, (i, j) => Math.abs(i - wi) <= 1 && Math.abs(j - wj) <= 1, wi + 0.5, wj + 0.5, 6000, false, false); } finally { G.inVia = false; }
       if (sub.complete && sub.pts.length) { sub.complete = false; sub.via = true; return sub; }
     }
   }
-  const end = found >= 0 ? found : best;
-  const pts = []; for (let k = end; k !== -1 && k !== s; k = G.from[k]) pts.push([k % S + 0.5, ((k / S) | 0) + 0.5]);
-  pts.reverse();
-  return { pts: smooth(W, owner, sx, sy, pts, nav), raw: raw ? pts : null, complete: found >= 0, exhausted: found < 0 && open.size === 0 };
+  return { pts: smooth(W, owner, sx, sy, pts, nav), raw: raw ? pts : null, complete: found >= 0, exhausted };
 }
 // ---------------------------------------------------------------- the coarse route map (4x4-tile cells)
 // A cell is open when most of its tiles are walkable (water, rock, forests and buildings taken into account); remade
