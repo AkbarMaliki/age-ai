@@ -311,6 +311,7 @@ class Game {
       case 'totalwar': this.snd.play('alert'); this.hud.notify('🔥 ' + e.text, 'bad'); break;
       case 'hired': if (mine) { this.snd.play('trained'); this.hud.notify(`💰 ${e.n} tentara bayaran dari ${e.name} bergabung!`, 'age', [e.x, e.y]); } else if (vis) this.hud.notify(`${W.players[e.owner].name} menyewa tentara bayaran.`, 'enemy', [e.x, e.y]); break;
       case 'mercoffer': if (mine) { this.snd.play('card'); this.mercT = 0; } break;
+      case 'intruder': if (mine) { this.snd.play('alert'); this.hud.notify(`🛡 ${e.guard ? 'Penjaga kota' : 'Patroli'} menghadang ${UNITS[e.type] ? UNITS[e.type].name : 'musuh'} ${W.players[e.foe] ? W.players[e.foe].name : ''} yang masuk wilayah kita!`, 'bad', [e.x, e.y]); } break;
       case 'levy': if (mine) { this.snd.play('trained'); this.hud.notify(`⚔ ${e.n} penduduk mengangkat senjata sebagai ${UNITS[e.type].name}!`, 'age', [e.x, e.y]); } else if (vis) this.hud.notify(`${W.players[e.owner].name} mempersenjatai rakyatnya!`, 'enemy', [e.x, e.y]); break;
       case 'unlevy': if (mine) this.hud.notify(`🌾 ${e.n} prajurit rakyat kembali menjadi penduduk desa.`, '', [e.x, e.y]); break;
       case 'mercarrive': if (mine) { this.snd.play('ship'); this.hud.notify('🛡 ' + e.text, 'age', [e.x, e.y]); } break;

@@ -1,9 +1,9 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS, WONDER_TIME, KOTH_TIME, MERCS, MERC, LEVY } from './data.js?v=20261016001631';
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261016001631';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST, hireWhy } from './sim.js?v=20261016001631';
-import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261016001631';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME, MERCS, MERC, LEVY } from './data.js?v=20261016141208';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261016141208';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST, hireWhy } from './sim.js?v=20261016141208';
+import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261016141208';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -81,7 +81,7 @@ export class HUD {
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
   // k: scale of a 64 px icon (small boxes shrink the whole sheet, so the offsets must shrink too)
-  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261016001631);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261016141208);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
   // portrait of a unit as this kingdom fields it (upgraded lines have their own look)
   spriteOf(owner, type) { const d = UNITS[type]; if (!d) return type; const s = owner >= 0 && !d.animal ? stat(this.g.W, owner, type).sprite : null; return s && this.icons.icons[s] ? s : d.sprite; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
@@ -199,8 +199,8 @@ export class HUD {
         if (mil.length) Object.entries(FORMATIONS).forEach(([f, d], k) => this.setBtn(k, { glyph: d.glyph, name: 'Formasi ' + d.name, desc: d.desc + (P.techs.has('doc_formation') ? '<br><b>Doktrin Taktik Formasi: bonus x2.</b>' : ''), active: (mil[0].form || 'garis') === f, act: () => G.setFormation(f) }));
         if (mil.length) STANCES.forEach((st, k) => this.setBtn(5 + k, { glyph: STANCE[st][0], name: 'Sikap: ' + STANCE[st][1], desc: STANCE[st][2], active: (mil[0].stance || 'agresif') === st, act: () => G.setStance(st) }));
         if (mil.length) {
-          this.setBtn(10, { glyph: '🔁', name: 'Patroli', desc: 'Bolak-balik antara posisi sekarang dan titik yang kamu klik, menyerang musuh yang terlihat. (Shift: tambahkan ke antrean)', act: () => G.startTarget('patrol') });
-          this.setBtn(9, { glyph: '🏰', name: 'Jaga Kota', desc: 'Pasukan terpilih menjadi penjaga kota: berpatroli keliling pos-pos jaga di sekitar Pusat Kota dan menyerang musuh yang masuk. Sisanya bebas berperang di luar.', act: () => G.townWatch() });
+          this.setBtn(10, { glyph: '🔁', name: 'Patroli', desc: 'Bolak-balik antara posisi sekarang dan titik yang kamu klik, menyerang musuh yang terlihat — dan mengejar musuh yang masuk wilayah kita (Bela Wilayah). (Shift: tambahkan ke antrean)', act: () => G.startTarget('patrol') });
+          this.setBtn(9, { glyph: '🏰', name: 'Jaga Kota', desc: 'Pasukan terpilih menjadi penjaga kota: berpatroli keliling pos-pos jaga di sekitar Pusat Kota dan langsung menghadang musuh yang masuk wilayah kita, lalu kembali berjaga. Sisanya bebas berperang di luar.', act: () => G.townWatch() });
           this.setBtn(11, { glyph: '🛡', name: 'Kawal', desc: 'Klik unit kawan untuk dikawal: mengikuti dan menyerang musuh yang mendekatinya (mis. kawal Biarawan atau Pendobrak).', act: () => G.startTarget('follow') });
           if (mil.some(u => stat(W, u.owner, u.type).splash)) this.setBtn(12, { glyph: '🎯', name: 'Serang Tanah', desc: 'Mesin pengepung menembaki titik tertentu (ledakan area), misalnya kerumunan di balik tembok.', act: () => G.startTarget('ground') });
         }

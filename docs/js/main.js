@@ -1,25 +1,25 @@
 // Abad Kerajaan — an AoE2-style RTS for the web.  Boot, menus, game loop and input.
 import { Application } from 'pixi.js';
-import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD, MERCS, MERC } from './data.js?v=20261016001631';
-import { openTechTree } from './techtree.js?v=20261016001631';
-import { Saves } from './saves.js?v=20261016001631';
-import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261016001631';
-import { townRing, pacted, POST } from './sim.js?v=20261016001631';
-import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261016001631';
-import { generate } from './map.js?v=20261016001631';
-import { AI } from './ai.js?v=20261016001631';
-import { Assist, ASSIST_SCOPE } from './assist.js?v=20261016001631';
-import { loadAll, vq } from './assets.js?v=20261016001631';
-import { MenuScene, MENU_COLORS } from './menuscene.js?v=20261016001631';
-import { View, iso, UNIT_BOX, FX } from './render.js?v=20261016001631';
-import { HUD } from './ui.js?v=20261016001631';
-import { Sound } from './audio.js?v=20261016001631';
-import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261016001631';
-import { CardPanel, DeckBuilder } from './cards.js?v=20261016001631';
-import { Advisor } from './advisor.js?v=20261016001631';
-import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261016001631';
-import { Lockstep } from './lockstep.js?v=20261016001631';
-import { Lobby } from './lobby.js?v=20261016001631';
+import { CIVS, RELICS, CIV_KEYS, VICTORY, FORWARD, MERCS, MERC } from './data.js?v=20261016141208';
+import { openTechTree } from './techtree.js?v=20261016141208';
+import { Saves } from './saves.js?v=20261016141208';
+import { UNITS, BUILDINGS, TECHS, AGES, PLAYER_COLORS, PLAYER_NAMES, GAME_SPEED, PLAYER_RGB, RES_NAME, TREASURES, CARDS, XP, DECKS, SEASONS, MILITARY, DAY } from './data.js?v=20261016141208';
+import { townRing, pacted, POST } from './sim.js?v=20261016141208';
+import { step, command, TICK, placementOk, canBuild, canAfford, distTo, hasBuilt, idx, alive, costOf, passable, nearestFree, trainType, unitCost } from './sim.js?v=20261016141208';
+import { generate } from './map.js?v=20261016141208';
+import { AI } from './ai.js?v=20261016141208';
+import { Assist, ASSIST_SCOPE } from './assist.js?v=20261016141208';
+import { loadAll, vq } from './assets.js?v=20261016141208';
+import { MenuScene, MENU_COLORS } from './menuscene.js?v=20261016141208';
+import { View, iso, UNIT_BOX, FX } from './render.js?v=20261016141208';
+import { HUD } from './ui.js?v=20261016141208';
+import { Sound } from './audio.js?v=20261016141208';
+import { History, StatsPanel, StoryView, score, exploredPct } from './stats.js?v=20261016141208';
+import { CardPanel, DeckBuilder } from './cards.js?v=20261016141208';
+import { Advisor } from './advisor.js?v=20261016141208';
+import { recordGame, achievementsHtml, loadProfile, rankOf } from './achievements.js?v=20261016141208';
+import { Lockstep } from './lockstep.js?v=20261016141208';
+import { Lobby } from './lobby.js?v=20261016141208';
 
 const $ = (id) => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('ak_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('ak_' + k, JSON.stringify(v)); } catch { } } };
@@ -311,6 +311,7 @@ class Game {
       case 'totalwar': this.snd.play('alert'); this.hud.notify('🔥 ' + e.text, 'bad'); break;
       case 'hired': if (mine) { this.snd.play('trained'); this.hud.notify(`💰 ${e.n} tentara bayaran dari ${e.name} bergabung!`, 'age', [e.x, e.y]); } else if (vis) this.hud.notify(`${W.players[e.owner].name} menyewa tentara bayaran.`, 'enemy', [e.x, e.y]); break;
       case 'mercoffer': if (mine) { this.snd.play('card'); this.mercT = 0; } break;
+      case 'intruder': if (mine) { this.snd.play('alert'); this.hud.notify(`🛡 ${e.guard ? 'Penjaga kota' : 'Patroli'} menghadang ${UNITS[e.type] ? UNITS[e.type].name : 'musuh'} ${W.players[e.foe] ? W.players[e.foe].name : ''} yang masuk wilayah kita!`, 'bad', [e.x, e.y]); } break;
       case 'levy': if (mine) { this.snd.play('trained'); this.hud.notify(`⚔ ${e.n} penduduk mengangkat senjata sebagai ${UNITS[e.type].name}!`, 'age', [e.x, e.y]); } else if (vis) this.hud.notify(`${W.players[e.owner].name} mempersenjatai rakyatnya!`, 'enemy', [e.x, e.y]); break;
       case 'unlevy': if (mine) this.hud.notify(`🌾 ${e.n} prajurit rakyat kembali menjadi penduduk desa.`, '', [e.x, e.y]); break;
       case 'mercarrive': if (mine) { this.snd.play('ship'); this.hud.notify('🛡 ' + e.text, 'age', [e.x, e.y]); } break;
@@ -985,9 +986,9 @@ async function boot() {
   $('endReplay').onclick = () => { if (!game) return; const id = game.saveGame(null, 'replay'); $('endReplay').textContent = id ? '🎬 Replay tersimpan ✓' : 'Penyimpanan penuh'; };
   window.__akRefresh = refresh; refresh();
   $('btnHow').onclick = () => $('howto').classList.remove('hidden');
-  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261016001631);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
+  $('btnTreeHome').onclick = () => { Sound.ui(); openTechTree(null, (k, z = 1) => { const p = iconsMeta && iconsMeta.icons[k]; return p ? `background-image:url(assets/icons.webp?v=20261016141208);background-position:-${p[0] * z}px -${p[1] * z}px;background-size:${1024 * z}px auto` : ''; }); };
   // deck builder + achievements
-  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261016001631);background-position:-${p[0]}px -${p[1]}px` : ''; };
+  const iconCss = (key) => { const p = iconsMeta && iconsMeta.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261016141208);background-position:-${p[0]}px -${p[1]}px` : ''; };
   let iconsMeta = null; fetch(vq('assets/icons.json')).then(r => r.json()).then(j => { iconsMeta = j; }).catch(() => { });
   const deckB = new DeckBuilder(store, iconCss);
   opts.deck = deckB.deck;

@@ -199,8 +199,8 @@ export class HUD {
         if (mil.length) Object.entries(FORMATIONS).forEach(([f, d], k) => this.setBtn(k, { glyph: d.glyph, name: 'Formasi ' + d.name, desc: d.desc + (P.techs.has('doc_formation') ? '<br><b>Doktrin Taktik Formasi: bonus x2.</b>' : ''), active: (mil[0].form || 'garis') === f, act: () => G.setFormation(f) }));
         if (mil.length) STANCES.forEach((st, k) => this.setBtn(5 + k, { glyph: STANCE[st][0], name: 'Sikap: ' + STANCE[st][1], desc: STANCE[st][2], active: (mil[0].stance || 'agresif') === st, act: () => G.setStance(st) }));
         if (mil.length) {
-          this.setBtn(10, { glyph: '🔁', name: 'Patroli', desc: 'Bolak-balik antara posisi sekarang dan titik yang kamu klik, menyerang musuh yang terlihat. (Shift: tambahkan ke antrean)', act: () => G.startTarget('patrol') });
-          this.setBtn(9, { glyph: '🏰', name: 'Jaga Kota', desc: 'Pasukan terpilih menjadi penjaga kota: berpatroli keliling pos-pos jaga di sekitar Pusat Kota dan menyerang musuh yang masuk. Sisanya bebas berperang di luar.', act: () => G.townWatch() });
+          this.setBtn(10, { glyph: '🔁', name: 'Patroli', desc: 'Bolak-balik antara posisi sekarang dan titik yang kamu klik, menyerang musuh yang terlihat — dan mengejar musuh yang masuk wilayah kita (Bela Wilayah). (Shift: tambahkan ke antrean)', act: () => G.startTarget('patrol') });
+          this.setBtn(9, { glyph: '🏰', name: 'Jaga Kota', desc: 'Pasukan terpilih menjadi penjaga kota: berpatroli keliling pos-pos jaga di sekitar Pusat Kota dan langsung menghadang musuh yang masuk wilayah kita, lalu kembali berjaga. Sisanya bebas berperang di luar.', act: () => G.townWatch() });
           this.setBtn(11, { glyph: '🛡', name: 'Kawal', desc: 'Klik unit kawan untuk dikawal: mengikuti dan menyerang musuh yang mendekatinya (mis. kawal Biarawan atau Pendobrak).', act: () => G.startTarget('follow') });
           if (mil.some(u => stat(W, u.owner, u.type).splash)) this.setBtn(12, { glyph: '🎯', name: 'Serang Tanah', desc: 'Mesin pengepung menembaki titik tertentu (ledakan area), misalnya kerumunan di balik tembok.', act: () => G.startTarget('ground') });
         }

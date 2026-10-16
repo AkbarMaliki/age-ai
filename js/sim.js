@@ -1121,7 +1121,7 @@ function unitTick(W, u) {
         u.order = o.resume || null; u.path = null; return;
       }
       o.lx = t.x; o.ly = t.y;
-      if (o.auto && distTo(t, u.x, u.y) > losOf(W, u) + 3 + (s.range || 0)) { u.order = o.resume || null; u.path = null; return; }
+      if (o.auto && distTo(t, u.x, u.y) > losOf(W, u) + 3 + (s.range || 0) && !(o.land && t.kind === 'unit' && W.terr && W.terr[tileAt(W, t.x, t.y)] === u.owner + 1)) { u.order = o.resume || null; u.path = null; return; }
       const reach = reachOf(W, u, t);
       if (s.explode && distTo(t, u.x, u.y) <= reach + 0.4) { explode(W, u, s); return; }       // demolition ship
       if (o.auto && u.stance === 'diam' && distTo(t, u.x, u.y) > reach + 0.2) { u.order = null; u.path = null; return; }          // stand ground
@@ -1211,7 +1211,17 @@ function unitTick(W, u) {
       break;
     }
     case 'patrol': {
-      if (u.scan === undefined || (u.scan -= TICK) <= 0) { u.scan = 0.6; const t = findEnemy(W, u, Math.max(losOf(W, u), s.range || 0)); if (t) { u.order = { t: 'attack', id: t.id, resume: o, auto: true }; u.path = null; return; } }
+      if (u.scan === undefined || (u.scan -= TICK) <= 0) {
+        u.scan = 0.6; const t = findEnemy(W, u, Math.max(losOf(W, u), s.range || 0)); if (t) { u.order = { t: 'attack', id: t.id, resume: o, auto: true }; u.path = null; return; }
+        if ((u.landT = (u.landT || 0) - 1) <= 0) {          // every other scan: anyone on our land?
+          u.landT = 2; const e = u.stance !== 'pasif' && u.stance !== 'diam' && intruder(W, u);
+          if (e) {
+            u.order = { t: 'attack', id: e.id, resume: o, auto: true, land: true }; u.path = null;
+            const P = W.players[u.owner]; if (W.t - (P.intrT ?? -99) > 20) { P.intrT = W.t; W.ev.push({ k: 'intruder', owner: u.owner, foe: e.owner, type: e.type, x: e.x, y: e.y, guard: !!o.guard }); }
+            return;
+          }
+        }
+      }
       const [px, py] = o.pts ? o.pts[o.i % o.pts.length] : o.leg ? [o.bx, o.by] : [o.ax, o.ay];
       if (Math.hypot(u.x - px, u.y - py) < 0.8 || moveAlong(W, u, px, py, (i, j) => Math.abs(i + 0.5 - px) < 0.8 && Math.abs(j + 0.5 - py) < 0.8, true) || (u.path && u.path.exhausted && u.pi >= u.path.pts.length - 1)) { if (o.pts) o.i = (o.i + 1) % o.pts.length; else o.leg = 1 - o.leg; u.path = null; }
       break;
@@ -1431,6 +1441,23 @@ function findEnemy(W, u, r) {
     if (!inb(W, i, j)) continue; const o = W.occ[idx(W, i, j)]; if (!o || seen.has(o)) continue; seen.add(o);
     const e = W.ents.get(o); if (e && e.kind === 'building') consider(e);
   }
+  return best;
+}
+// Bela Wilayah: a patrol or the town watch answers an enemy that sets foot on our land (and that we can see), not only
+// what comes into its own sight. The nearest intruder within LAND_R; enemy soldiers before villagers and scouts.
+export const LAND_R = 26;
+function intruder(W, u) {
+  const T = W.terr; if (!T) return null;
+  const me = u.owner + 1, vis = W.players[u.owner].vis, s = stat(W, u.owner, u.type);
+  let best = null, bd = 1e9;
+  unitsNear(W, u.x, u.y, LAND_R, (e) => {
+    if (e.kind !== 'unit' || e.hp <= 0 || e.inside || passive(e) || !enemies(W, e.owner, u.owner) || !targetable(e)) return;
+    const k = tileAt(W, e.x, e.y); if (T[k] !== me || !vis[k] || hiddenFrom(W, e, u.owner)) return;
+    if ((e.nav && !s.range) || (u.nav && !s.range)) return;
+    const dd = Math.hypot(e.x - u.x, e.y - u.y); if (dd > LAND_R) return;
+    const sc = dd + (MILITARY(e.type) ? 0 : 4);
+    if (sc < bd && !unreachable(W, e.id, u.owner)) { bd = sc; best = e; }
+  });
   return best;
 }
 // damage of one hit: attack - armour (with formation, high ground, class bonuses, charges)
