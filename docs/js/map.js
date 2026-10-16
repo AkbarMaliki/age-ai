@@ -2,8 +2,8 @@
 // rotation and a random seat for each player. Fairness: each player's home resources follow one shared, randomly rolled
 // layout (relative to the direction of the map centre), the map-wide features are copied around the centre once per
 // seat (rotational symmetry), and a final pass tops up any player that still ends up short of wood, gold, stone or food.
-import { createWorld, addResource, addBuilding, addUnit, addTreasure, addRelic, addMonument, addPost, addCamp, rng, idx, del } from './sim.js?v=20261016141208';
-import { GAIA, TREASURES, RESOURCES, UNITS, TER, SEASONS, CIVS, MERCS } from './data.js?v=20261016141208';
+import { createWorld, addResource, addBuilding, addUnit, addTreasure, addRelic, addMonument, addPost, addCamp, rng, idx, del } from './sim.js?v=20261016141724';
+import { GAIA, TREASURES, RESOURCES, UNITS, TER, SEASONS, CIVS, MERCS } from './data.js?v=20261016141724';
 
 export const T_GRASS = TER.GRASS, T_DIRT = TER.DIRT, T_FOREST = TER.FOREST, T_WATER = TER.WATER, T_GRASS2 = TER.GRASS2, T_HILL = TER.HILL, T_ROCK = TER.ROCK;
 

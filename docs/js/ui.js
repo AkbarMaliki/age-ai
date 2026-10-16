@@ -1,9 +1,9 @@
 // AoE2-style HUD: resource bar, command grid, selection info, diamond minimap, notifications, tooltips,
 // day / season indicator and the advisor ("!") with counter-strategy advice.
-import { CIVS, RELICS, WONDER_TIME, KOTH_TIME, MERCS, MERC, LEVY } from './data.js?v=20261016141208';
-import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261016141208';
-import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST, hireWhy } from './sim.js?v=20261016141208';
-import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261016141208';
+import { CIVS, RELICS, WONDER_TIME, KOTH_TIME, MERCS, MERC, LEVY } from './data.js?v=20261016141724';
+import { UNITS, BUILDINGS, TECHS, RES, RES_NAME, AGES, PLAYER_RGB, TREASURES, MARKET, FORMATIONS, SEASONS, DAY, MILITARY } from './data.js?v=20261016141724';
+import { canAfford, canBuild, canTrain, techOk, idx, buyPrice, sellPrice, marketFee, stat, bstat, trainType, techCost, costOf, timeOfDay, raining, STANCES, unitCost, personName, personAge, townsMax, POST, hireWhy } from './sim.js?v=20261016141724';
+import { NAMES, LIFE, TOWN_POP } from './data.js?v=20261016141724';
 
 const $ = (id) => document.getElementById(id);
 const KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
@@ -81,7 +81,7 @@ export class HUD {
     $('advBtn').onclick = () => this.g.advisor.toggle();
   }
   // k: scale of a 64 px icon (small boxes shrink the whole sheet, so the offsets must shrink too)
-  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261016141208);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
+  iconStyle(key, k = 1) { const p = this.icons.icons[key]; return p ? `background-image:url(assets/icons.webp?v=20261016141724);background-position:-${p[0] * k}px -${p[1] * k}px` + (k !== 1 ? `;background-size:${1024 * k}px auto` : '') : ''; }
   // portrait of a unit as this kingdom fields it (upgraded lines have their own look)
   spriteOf(owner, type) { const d = UNITS[type]; if (!d) return type; const s = owner >= 0 && !d.animal ? stat(this.g.W, owner, type).sprite : null; return s && this.icons.icons[s] ? s : d.sprite; }
   costHtml(c) { return RES.filter(r => c[r]).map(r => `<b class="rc"><i style="${this.iconStyle('res_' + r)}">${this.icons.icons['res_' + r] ? '' : r === 'iron' ? '⛓' : ''}</i>${c[r]}</b>`).join(' '); }
@@ -94,7 +94,7 @@ export class HUD {
     while ($('notify').children.length > 6) $('notify').firstChild.remove();
   }
   tip(b) {
-    const t = $('tooltip');
+    const t = $('tooltip'); this.tipEl = b;
     if (!b || !b.tipHtml) { t.style.display = 'none'; return; }
     t.innerHTML = b.tipHtml; t.style.display = 'block';
     const r = b.getBoundingClientRect(); t.style.left = Math.max(4, r.left) + 'px'; t.style.bottom = (innerHeight - r.top + 8) + 'px';
@@ -106,6 +106,18 @@ export class HUD {
     b.firstChild.setAttribute('style', o.icon ? this.iconStyle(o.icon) : ''); b.firstChild.textContent = o.icon && this.icons.icons[o.icon] ? '' : (o.glyph || '');
     b.tipHtml = `<b>${o.name}</b> <small>(${KEYS[i]})</small>${o.cost ? '<div>' + this.costHtml(o.cost) + '</div>' : ''}${o.desc ? '<div class="d">' + o.desc + '</div>' : ''}${o.why ? '<div class="why">' + o.why + '</div>' : ''}`;
   }
+  // what a queued item is, how far along it is, what happens on a click
+  queueTip(b, i) {
+    const W = this.g.W, q = b.queue[i]; if (!q) return '';
+    const T = q.unit ? stat(W, b.owner, q.unit).time : TECHS[q.tech].time, td = q.tech && TECHS[q.tech];
+    const name = q.unit ? (stat(W, b.owner, q.unit).name || UNITS[q.unit].name) : td.name;
+    const desc = q.unit ? UNITS[q.unit].desc : td.desc || (td.toAge ? `Naik ke ${AGES[td.toAge]}: membuka bangunan & unit baru` : '');
+    const mine = b.owner === this.g.me, housed = q.unit && i === 0 && W.players[b.owner].housed;
+    const left = Math.max(0, Math.ceil(T - q.t)), wait = b.queue.slice(0, i).reduce((a, x) => a + (x.unit ? stat(W, b.owner, x.unit).time : TECHS[x.tech].time) - x.t, 0);
+    const state = i === 0 ? `<b class="good">${q.unit ? 'Sedang dilatih' : 'Sedang diteliti'} ${Math.floor(q.t / T * 100)}%</b> · selesai ±${left} dtk${housed ? ' · <b class="warn">tertahan: butuh rumah!</b>' : ''}`
+      : `Antrean ke-${i + 1} · mulai ±${Math.ceil(wait)} dtk lagi, butuh ${Math.ceil(T)} dtk`;
+    return `<b>${q.unit ? 'Melatih' : 'Meneliti'}: ${name}</b><div>${state}</div>${desc ? `<div class="d">${desc}</div>` : ''}${mine ? '<div class="d"><i>Klik untuk membatalkan — biaya dikembalikan.</i></div>' : ''}`;
+  }
   hotkey(k) { const i = KEYS.indexOf(k.toUpperCase()); if (i >= 0 && this.btns[i].act && !this.btns[i].disabled) { this.g.sfx('click'); this.btns[i].act(); return true; } return false; }
   unitDesc(P, type) {
     const s = stat(this.g.W, P.id, type), d = UNITS[type];
@@ -116,6 +128,7 @@ export class HUD {
   // ---------------------------------------------------------------- per frame
   update(dt) {
     const G = this.g, W = G.W, P = W.players[G.me];
+    if (this.tipEl && !this.tipEl.isConnected) this.tip(null);      // what was hovered is gone (a queue item done or cancelled)
     for (const r of RES) { const el = $('r_' + r); if (el) el.textContent = Math.floor(P.res[r]); }
     $('r_pop').textContent = `${P.pop}/${P.popCap}`; $('r_pop').parentElement.classList.toggle('warn', P.pop >= P.popCap);
     if (this.popT !== P.popLim) { this.popT = P.popLim; $('r_pop').parentElement.title = `Populasi / kapasitas rumah. Batas kerajaan: ${P.popLim} (+${TOWN_POP} untuk tiap Pusat Kota baru)`; }
@@ -298,8 +311,12 @@ export class HUD {
       const icon = e.kind === 'camp' ? UNITS[MERCS[e.faction].unit].sprite : e.kind === 'monument' ? 'monument' : e.type === 'palisade' ? 'pal_post' : e.kind === 'relic' ? 'relic' : e.kind === 'treasure' ? 'treasure_' + e.type : e.type === 'carcass' ? e.animal : e.kind === 'res' ? 'res_' + { tree: 'wood', gold: 'gold', stone: 'stone', iron: 'iron', berry: 'food', fish: 'food' }[e.type] : e.type === 'stone_wall' ? 'wall_post' : e.type === 'gate' ? 'gate_x' : e.kind === 'unit' ? this.spriteOf(e.owner, e.type) : e.type;
       el.innerHTML = `<div class="one"><div class="por" style="${this.iconStyle(icon)}">${this.icons.icons[icon] ? '' : UGLYPH[e.type] || ''}</div><div class="nm"><b>${name}</b>${owner ? `<small style="color:rgb(${PLAYER_RGB[owner.color]})">${owner.name}</small>` : e.kind === 'unit' ? '<small class="gaia">Alam liar</small>' : ''}</div>
         <div class="hp"><i></i><span></span></div><div class="stats"></div><div class="queue"></div></div>`;
-      if (e.kind === 'building') el.querySelector('.queue').innerHTML = e.queue.map((q, i) => `<i data-i="${i}" style="${q.unit ? this.iconStyle(UNITS[q.unit].sprite, 42 / 64) : ''}">${q.tech ? (GLYPH[q.tech] || '📜') : ''}<b></b></i>`).join('');
-      el.querySelectorAll('.queue i').forEach(i => i.onclick = () => G.cancel(e, +i.dataset.i));
+      if (e.kind === 'building') el.querySelector('.queue').innerHTML = e.queue.map((q, i) => `<i data-i="${i}" style="${q.unit ? this.iconStyle(this.spriteOf(e.owner, q.unit), 42 / 64) : ''}">${q.tech ? (TECHS[q.tech].toAge ? '👑' : TECHS[q.tech].glyph || GLYPH[q.tech] || '📜') : ''}<b></b></i>`).join('');
+      el.querySelectorAll('.queue i').forEach(i => {
+        i.onclick = () => { this.tip(null); G.cancel(e, +i.dataset.i); };
+        i.onmouseenter = () => { i.tipHtml = this.queueTip(e, +i.dataset.i); this.tip(i); }; i.onmouseleave = () => this.tip(null);
+        i.onpointerdown = (ev) => { if (ev.pointerType === 'touch') { i.tipHtml = this.queueTip(e, +i.dataset.i); this.tip(i); clearTimeout(this.tipT); this.tipT = setTimeout(() => this.tip(null), 1800); } };
+      });
     }
     const hp = e.kind === 'res' || e.kind === 'treasure' || e.kind === 'monument' || e.kind === 'post' || e.kind === 'camp' ? null : e;
     const hpEl = el.querySelector('.hp');
@@ -360,6 +377,7 @@ export class HUD {
       if (d.wonder && W.wonders && W.wonders.has(e.id)) st += ` · 🏛 menang dalam ${Math.ceil((WONDER_TIME - (W.t - W.wonders.get(e.id))) / 60)} menit`;
       const qi = el.querySelectorAll('.queue i');
       e.queue.forEach((q, i) => { if (qi[i]) { const T = q.unit ? stat(W, e.owner, q.unit).time : TECHS[q.tech].time; qi[i].lastChild.style.width = (i === 0 ? q.t / T * 100 : 0) + '%'; } });
+      if (this.tipEl && this.tipEl.parentElement && this.tipEl.parentElement.classList.contains('queue') && el.contains(this.tipEl)) { const h = this.queueTip(e, +this.tipEl.dataset.i); if (h !== this.tipEl.tipHtml) { this.tipEl.tipHtml = h; $('tooltip').innerHTML = h; } }   // the hovered item's progress, live
     }
     const se = el.querySelector('.stats'); if (se.innerHTML !== st) se.innerHTML = st;
   }

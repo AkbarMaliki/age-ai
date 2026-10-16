@@ -6,9 +6,9 @@
 // farms, economy research, more villagers); 'full' also trains, researches, ages up and leads the idle army.
 // Everything it depends on comes from the sim and the command log (player orders, '_sel' and '_assist' meta commands),
 // so a saved game or a replay rebuilds the same helper decisions.
-import { UNITS, GAME_SPEED } from './data.js?v=20261016141208';
-import { TICK } from './sim.js?v=20261016141208';
-import { AI } from './ai.js?v=20261016141208';
+import { UNITS, GAME_SPEED } from './data.js?v=20261016141724';
+import { TICK } from './sim.js?v=20261016141724';
+import { AI } from './ai.js?v=20261016141724';
 
 export const ASSIST_DELAYS = [10, 20, 40];
 const ECO_BLD = new Set(['house', 'mill', 'lumber_camp', 'mining_camp', 'mine_shaft', 'farm', 'dock', 'well', 'tavern', 'hospital', 'barn']);

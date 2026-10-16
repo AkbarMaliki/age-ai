@@ -96,7 +96,7 @@ body.livebg #menu { background-color: transparent; } body.livebg #menu > #menuBg
 #idleVil span { position: absolute; right: 2px; bottom: 0; font-size: 12px; font-weight: 700; color: #ffd040; text-shadow: 0 0 2px #000; }
 @keyframes pulse { to { filter: brightness(1.4); } }
 #tooltip { position: fixed; z-index: 30; display: none; background: #1d150f; border: 1px solid var(--gold); padding: 8px 10px; max-width: 300px; font-size: 14px; box-shadow: 0 6px 18px #000a; pointer-events: none; }
-#tooltip b { color: var(--gold2); } #tooltip .d { margin-top: 4px; opacity: 0.9; } #tooltip .why { margin-top: 4px; color: #ff8070; }
+#tooltip b { color: var(--gold2); } #tooltip .d { margin-top: 4px; opacity: 0.9; } #tooltip .why { margin-top: 4px; color: #ff8070; } #tooltip .warn { color: #ff8070; } #tooltip b.good { color: #8fe070; }
 #notify { position: fixed; left: 10px; top: 44px; z-index: 9; display: flex; flex-direction: column; gap: 3px; pointer-events: none; }
 .note { font-size: 16px; font-weight: 700; text-shadow: 0 0 3px #000, 0 1px 2px #000; transition: opacity 0.7s; }
 .note.go { pointer-events: auto; cursor: pointer; } .note.go:hover { text-decoration: underline dotted; filter: brightness(1.25); }

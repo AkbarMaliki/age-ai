@@ -1,12 +1,12 @@
 // The living menu background: a small world of three computer kingdoms runs behind the main menu (desktop only). It
 // is made off-screen in small steps (the static picture shows meanwhile), fast-forwarded until there are real towns,
 // then faded in; a slow director camera glides between towns, forts and battles. Nothing here touches a real game.
-import { View, iso } from './render.js?v=20261016141208';
-import { generate } from './map.js?v=20261016141208';
-import { step, TICK } from './sim.js?v=20261016141208';
-import { AI } from './ai.js?v=20261016141208';
-import { GAME_SPEED } from './data.js?v=20261016141208';
-import { loadAll } from './assets.js?v=20261016141208';
+import { View, iso } from './render.js?v=20261016141724';
+import { generate } from './map.js?v=20261016141724';
+import { step, TICK } from './sim.js?v=20261016141724';
+import { AI } from './ai.js?v=20261016141724';
+import { GAME_SPEED } from './data.js?v=20261016141724';
+import { loadAll } from './assets.js?v=20261016141724';
 
 export const MENU_COLORS = ['blue', 'red', 'green', 'yellow'];
 const MAPS = ['padang', 'rimba', 'danau', 'sungai'];
